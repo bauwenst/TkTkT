@@ -37,10 +37,16 @@ class WordSplitter(Pretokeniser):
                 results.append(self.marker.substitute)
 
         elif self.marker.location == MarkerLocation.START:
-            pass  # TODO: Implement SoW
+            results = text.split()
+            for i in range(len(results)):
+                if i != 0 or text[0].isspace():
+                    results[i] = self.marker.substitute + results[i]
 
         elif self.marker.location == MarkerLocation.END:
-            pass  # TODO: Implement EoW
+            results = text.split()
+            for i in range(len(results)):
+                if i != len(results)-1 or text[-1].isspace():
+                    results[i] = results[i] + self.marker.substitute
 
         return results
 

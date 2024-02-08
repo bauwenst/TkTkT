@@ -16,3 +16,6 @@ class SpaceMarker:
     substitute: str
     detached: bool
     location: MarkerLocation
+
+
+ROBERTA_SPACING = SpaceMarker("Ġ", location=MarkerLocation.START, detached=True)

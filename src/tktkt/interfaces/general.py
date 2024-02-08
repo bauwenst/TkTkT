@@ -13,7 +13,7 @@ class Tokeniser(ABC):
         self.pretokeniser = pretokeniser
 
     @abstractmethod
-    def tokenise(self, text: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> List[str]:
         pass
 
     def prepareAndTokenise(self, text: str) -> List[str]:
