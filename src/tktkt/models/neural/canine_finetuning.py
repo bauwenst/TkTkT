@@ -102,6 +102,7 @@ def train():
     model.to("cuda")
 
     # Training arguments
+    interval = (len(datasetdict["train"]) // BATCH_SIZE) // EVALS_PER_EPOCH
     training_args = TrainingArguments(
         output_dir=PATH_CHECKPOINTS.as_posix(),
 
@@ -115,16 +116,17 @@ def train():
 
         # Evaluating
         evaluation_strategy="steps",
-        eval_steps=(len(datasetdict["train"]) // BATCH_SIZE) // EVALS_PER_EPOCH,
-        # eval_steps=1,
+        eval_steps=interval,
 
         # Artifacts
         report_to="none",   # Disables weights-and-biases login requirement
         logging_strategy="no",
         push_to_hub=False,
+
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         save_strategy="steps",  # Because we want to load the best model at the end, we need to be able to go back to it. Hence, we need to allow saving each evaluation.
+        save_steps=interval,    # ... and save on the same interval.
         save_total_limit=1,     # This will keep the last model stored plus the best model if those aren't the same. https://stackoverflow.com/a/67615225/9352077
     )
 

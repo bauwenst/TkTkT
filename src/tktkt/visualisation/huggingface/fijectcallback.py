@@ -23,9 +23,9 @@ class FijectCallback(TrainerCallback):
     def _set_metric_name(self, args: TrainingArguments):
         metric_to_check = args.metric_for_best_model
         if not metric_to_check.startswith("eval_"):
-            return metric_to_check
+            self.metric_name = metric_to_check
         else:
-            return metric_to_check[len("eval_"):]
+            self.metric_name = metric_to_check[len("eval_"):]
 
     def on_evaluate(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, metrics, **kwargs):
         # Based on the early-stopping callback, which also accesses the evaluation loss https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/trainer_callback.py#L586
