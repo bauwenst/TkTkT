@@ -6,20 +6,27 @@
 #                 though (OSCAR but filtered by checking if any word is in the lemma set, and with labels constructed
 #                 by padding the given labels with long sequences of -100).
 import re
-import numpy as np
+import time
 
-import torch
-import transformers.optimization
 from datasets import Dataset, DatasetDict
 from transformers import CanineForTokenClassification, DataCollatorForTokenClassification, Trainer, TrainingArguments, AutoTokenizer
 from transformers.models.canine.modeling_canine import CanineForTokenClassification as CFTC
 from transformers.models.canine.tokenization_canine import CanineTokenizer
+import transformers.optimization
 import torch
 import evaluate
 
 from bpe_knockout.project.config import morphologyGenerator
 
+from ...files.paths import setTkTkToutputRoot, getTkTkToutputPath, PATH_ROOT
+from ...visualisation.huggingface.fijectcallback import FijectCallback
+PATH_DATA_OUT = PATH_ROOT / "data" / "out"  ### TODO: Should use CWD since the package should be installable without -e
 
+from fiject import setFijectOutputFolder
+setFijectOutputFolder(PATH_DATA_OUT)
+
+
+##################################
 MAX_TRAINING_EPOCHS = 20
 BATCH_SIZE = 32
 EVALS_PER_EPOCH = 3
@@ -29,6 +36,7 @@ BATCHES_WARMUP = 10_000  # Warmup steps from the RoBERTa paper.
 LEARNING_RATE = 2e-5
 L2_REGULARISATION = 0.01
 MAX_INPUT_LENGTH_CANINE = 2048
+##################################
 
 
 def datasetOutOfContext():
@@ -72,9 +80,8 @@ def dataloaderFromIterable(iterable):
 
 
 def train():
-    # Set up paths for checkpointing  TODO: If you do it relative to the root, this only works in an editable install.
-    from src.tktkt.files.paths import setTkTkToutputRoot, PATH_ROOT, getTkTkToutputPath
-    setTkTkToutputRoot(PATH_ROOT / "data" / "out")
+    # Set up paths for checkpointing
+    setTkTkToutputRoot(PATH_DATA_OUT)
     output_goes_under_here = getTkTkToutputPath()  # runs a mkdir
     PATH_CHECKPOINTS = output_goes_under_here / "checkpoints"
     PATH_CHECKPOINTS.mkdir(exist_ok=True)
@@ -130,7 +137,10 @@ def train():
         data_collator=collator,
         train_dataset=datasetdict["train"],
         optimizers=(optimizer, scheduler),
-        callbacks=[transformers.trainer_callback.EarlyStoppingCallback(early_stopping_patience=EVALS_OF_PATIENCE)],  # Patience is the amount of eval calls you can tolerate worsening loss.
+        callbacks=[
+            transformers.trainer_callback.EarlyStoppingCallback(early_stopping_patience=EVALS_OF_PATIENCE),  # Patience is the amount of eval calls you can tolerate worsening loss.
+            FijectCallback("CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_per_commit=5)
+        ],
 
         eval_dataset=datasetdict["valid"],
         compute_metrics=compute_metrics,
@@ -141,12 +151,19 @@ def train():
     print(trainer.evaluate())
 
 
+metrics = evaluate.combine([
+    evaluate.load("accuracy"),
+    evaluate.load("precision"),
+    evaluate.load("recall"),
+    evaluate.load("f1")
+])
+
 def compute_metrics(eval: transformers.EvalPrediction) -> dict:
     predictions, labels = eval.predictions.argmax(-1), eval.label_ids  # The last dimension of predictions (i.e. the logits) is the amount of classes.
     predictions, labels = predictions.flatten(), labels.flatten()  # Both are EXAMPLES x TOKENS
     mask = labels != -100  # Only select results where the label isn't padding.
 
-    results = metric.compute(predictions=predictions[mask].tolist(), references=labels[mask].tolist())
+    results = metrics.compute(predictions=predictions[mask].tolist(), references=labels[mask].tolist())
     return {  # To this dictionary, the eval loss will be added post-hoc.
         "re": results["recall"],
         "pr": results["precision"],
@@ -155,6 +172,8 @@ def compute_metrics(eval: transformers.EvalPrediction) -> dict:
     }
 
 
+
+##################################################
 # Other examples
 ##################################################
 
@@ -179,21 +198,10 @@ def exampleInference():
     print(predicted_tokens_classes)
 
 
-metric = evaluate.combine([
-    evaluate.load("accuracy"),
-    evaluate.load("precision"),
-    evaluate.load("recall"),
-    evaluate.load("f1")
-])
 def exampleMetrics():
-    print(metric.compute(predictions=[0,1,1,1,1,1], references=[0,0,0,0,1,0]))
+    print(metrics.compute(predictions=[0,1,1,1,1,1], references=[0,0,0,0,1,0]))
 
 
 def exampleDataset():
     for thing in dataloaderFromIterable(datasetOutOfContext())["train"]:
         print(thing)
-
-
-if __name__ == "__main__":
-    # exampleDataset()
-    train()
