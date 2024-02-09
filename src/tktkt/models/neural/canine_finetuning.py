@@ -6,8 +6,10 @@
 #                 though (OSCAR but filtered by checking if any word is in the lemma set, and with labels constructed
 #                 by padding the given labels with long sequences of -100).
 import re
+import numpy as np
 
 import torch
+import transformers.optimization
 from datasets import Dataset, DatasetDict
 from transformers import CanineForTokenClassification, DataCollatorForTokenClassification, Trainer, TrainingArguments, AutoTokenizer
 from transformers.models.canine.modeling_canine import CanineForTokenClassification as CFTC
@@ -18,8 +20,14 @@ import evaluate
 from bpe_knockout.project.config import morphologyGenerator
 
 
-TRAINING_EPOCHS = 3
+MAX_TRAINING_EPOCHS = 20
 BATCH_SIZE = 32
+EVALS_PER_EPOCH = 3
+EVALS_OF_PATIENCE = 3
+
+BATCHES_WARMUP = 10_000  # Warmup steps from the RoBERTa paper.
+LEARNING_RATE = 2e-5
+L2_REGULARISATION = 0.01
 MAX_INPUT_LENGTH_CANINE = 2048
 
 
@@ -76,39 +84,53 @@ def train():
 
     # Get the batch generator, a.k.a. collator (https://huggingface.co/docs/transformers/main_classes/data_collator).
     # Note that unlike sequence classification, the labels per example have variable length in token classification.
-    # Since you pad input IDs, you must also pad labels. Otherwise, you will get the very confusing
+    # Since you pad input IDs, you must also pad labels. This is one of the reasons you can get the very confusing
     #       ValueError: Unable to create tensor, you should probably activate truncation and/or padding with
     #       'padding=True' 'truncation=True' to have batched tensors with the same length.
+    # The other reason is the too-deeply-nested tensors due to return_tensors="pt".
     collator = DataCollatorForTokenClassification(tokenizer, padding="longest", max_length=MAX_INPUT_LENGTH_CANINE)
 
     # Get model
-    model: CFTC = CanineForTokenClassification.from_pretrained("google/canine-s", num_labels=20)
+    model: CFTC = CanineForTokenClassification.from_pretrained("google/canine-s", num_labels=2)
     model.to("cuda")
 
     # Training arguments
     training_args = TrainingArguments(
         output_dir=PATH_CHECKPOINTS.as_posix(),
-        save_strategy="no",
-        # load_best_model_at_end=False,
 
-        num_train_epochs=TRAINING_EPOCHS,
-        learning_rate=2e-5,
+        # Training
+        num_train_epochs=MAX_TRAINING_EPOCHS,
         per_device_train_batch_size=BATCH_SIZE,
         per_device_eval_batch_size=BATCH_SIZE,
-        weight_decay=0.01,  # L2 regularisation constant
-        report_to="none",   # Disables weights-and-biases login requirement
+        # Not sure whether you need these given the custom AdamW in the Trainer constructor.
+        weight_decay=L2_REGULARISATION,  # L2 regularisation constant
+        learning_rate=LEARNING_RATE,  # Not sure if this is still needed
 
-        evaluation_strategy="epoch",
-        logging_strategy="no"
-        # push_to_hub=True,
+        # Evaluating
+        evaluation_strategy="steps",
+        eval_steps=(len(datasetdict["train"]) // BATCH_SIZE) // EVALS_PER_EPOCH,
+        # eval_steps=1,
+
+        # Artifacts
+        report_to="none",   # Disables weights-and-biases login requirement
+        logging_strategy="no",
+        push_to_hub=False,
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_loss",
+        save_strategy="steps",  # Because we want to load the best model at the end, we need to be able to go back to it. Hence, we need to allow saving each evaluation.
+        save_total_limit=1,     # This will keep the last model stored plus the best model if those aren't the same. https://stackoverflow.com/a/67615225/9352077
     )
 
+    optimizer = transformers.optimization.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=L2_REGULARISATION)
+    scheduler = transformers.optimization.get_constant_schedule_with_warmup(optimizer=optimizer, num_warmup_steps=BATCHES_WARMUP)  # Not using a linear decay because that's the whole point of having Adam.
     trainer = Trainer(
         model=model,
         args=training_args,
 
         data_collator=collator,
         train_dataset=datasetdict["train"],
+        optimizers=(optimizer, scheduler),
+        callbacks=[transformers.trainer_callback.EarlyStoppingCallback(early_stopping_patience=EVALS_OF_PATIENCE)],  # Patience is the amount of eval calls you can tolerate worsening loss.
 
         eval_dataset=datasetdict["valid"],
         compute_metrics=compute_metrics,
@@ -119,9 +141,18 @@ def train():
     print(trainer.evaluate())
 
 
-def compute_metrics(stuff):
-    print(stuff)
+def compute_metrics(eval: transformers.EvalPrediction) -> dict:
+    predictions, labels = eval.predictions.argmax(-1), eval.label_ids  # The last dimension of predictions (i.e. the logits) is the amount of classes.
+    predictions, labels = predictions.flatten(), labels.flatten()  # Both are EXAMPLES x TOKENS
+    mask = labels != -100  # Only select results where the label isn't padding.
 
+    results = metric.compute(predictions=predictions[mask].tolist(), references=labels[mask].tolist())
+    return {  # To this dictionary, the eval loss will be added post-hoc.
+        "re": results["recall"],
+        "pr": results["precision"],
+        "f1": results["f1"],
+        "acc": results["accuracy"]
+    }
 
 
 # Other examples
@@ -148,13 +179,13 @@ def exampleInference():
     print(predicted_tokens_classes)
 
 
+metric = evaluate.combine([
+    evaluate.load("accuracy"),
+    evaluate.load("precision"),
+    evaluate.load("recall"),
+    evaluate.load("f1")
+])
 def exampleMetrics():
-    metric = evaluate.combine([
-        evaluate.load("accuracy"),
-        evaluate.load("precision"),
-        evaluate.load("recall"),
-        evaluate.load("f1")
-    ])
     print(metric.compute(predictions=[0,1,1,1,1,1], references=[0,0,0,0,1,0]))
 
 
