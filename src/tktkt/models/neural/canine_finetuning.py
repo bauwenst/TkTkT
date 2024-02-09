@@ -19,7 +19,7 @@ import evaluate
 from bpe_knockout.project.config import morphologyGenerator
 
 from ...files.paths import setTkTkToutputRoot, getTkTkToutputPath, PATH_ROOT
-from ...visualisation.huggingface.fijectcallback import FijectCallback
+from ...visualisation.huggingface.fijectcallback import FijectCallback, EvaluateBeforeTrainingCallback
 PATH_DATA_OUT = PATH_ROOT / "data" / "out"  ### TODO: Should use CWD since the package should be installable without -e
 
 from fiject import setFijectOutputFolder
@@ -29,7 +29,7 @@ setFijectOutputFolder(PATH_DATA_OUT)
 ##################################
 MAX_TRAINING_EPOCHS = 20
 BATCH_SIZE = 32
-EVALS_PER_EPOCH = 3
+EVALS_PER_EPOCH = 9
 EVALS_OF_PATIENCE = 3
 
 BATCHES_WARMUP = 10_000  # Warmup steps from the RoBERTa paper.
@@ -130,7 +130,7 @@ def train():
         save_total_limit=1,     # This will keep the last model stored plus the best model if those aren't the same. https://stackoverflow.com/a/67615225/9352077
     )
 
-    optimizer = transformers.optimization.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=L2_REGULARISATION)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=L2_REGULARISATION)  # Not using transformers.optimization because it gives a deprecation warning.
     scheduler = transformers.optimization.get_constant_schedule_with_warmup(optimizer=optimizer, num_warmup_steps=BATCHES_WARMUP)  # Not using a linear decay because that's the whole point of having Adam.
     trainer = Trainer(
         model=model,
@@ -140,13 +140,27 @@ def train():
         train_dataset=datasetdict["train"],
         optimizers=(optimizer, scheduler),
         callbacks=[
-            transformers.trainer_callback.EarlyStoppingCallback(early_stopping_patience=EVALS_OF_PATIENCE),  # Patience is the amount of eval calls you can tolerate worsening loss.
-            FijectCallback("CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_per_commit=5)
+            EvaluateBeforeTrainingCallback(),
+            FijectCallback("loss_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=5),
+            FijectCallback("bnry_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=5, metrics=["pr", "re", "f1", "acc"]),
+            transformers.trainer_callback.EarlyStoppingCallback(early_stopping_patience=EVALS_OF_PATIENCE)  # Patience is the amount of eval calls you can tolerate worsening loss.
         ],
 
         eval_dataset=datasetdict["valid"],
         compute_metrics=compute_metrics,
     )
+
+    print("=== TRAINING SIZES ===")
+    print("Batch size:", BATCH_SIZE)
+    print("Training set:")
+    print("\t", len(datasetdict["train"]), "examples per epoch")
+    print("\t", len(datasetdict["train"]) // BATCH_SIZE, "batches per epoch")
+    print("\t", MAX_TRAINING_EPOCHS, "epochs")
+    print("\t", (len(datasetdict["train"]) // BATCH_SIZE)*MAX_TRAINING_EPOCHS, "batches in total")
+    print("Evaluation set:")
+    print("\t", EVALS_PER_EPOCH, "evals per epoch")
+    print("\t", (len(datasetdict["train"]) // BATCH_SIZE) // EVALS_PER_EPOCH, "batches between evals")
+    print("======================")
 
     trainer.train()
     trainer.save_model()
@@ -205,5 +219,4 @@ def exampleMetrics():
 
 
 def exampleDataset():
-    for thing in dataloaderFromIterable(datasetOutOfContext())["train"]:
-        print(thing)
+    print(dataloaderFromIterable(datasetOutOfContext()))

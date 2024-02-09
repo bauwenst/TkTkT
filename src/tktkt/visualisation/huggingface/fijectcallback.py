@@ -1,51 +1,64 @@
 from transformers.trainer_callback import TrainingArguments, TrainerState, TrainerControl, TrainerCallback
 from fiject import LineGraph, CacheMode
 import logging as logger
+from typing import List
 
 
 class FijectCallback(TrainerCallback):
     """
     Callback object passed to a Trainer that will add an evaluation point to a Fiject graph, and will commit
     the result every-so-often.
+
+    You can either choose the evaluation metrics yourself, or let it default to the metric used to rank models.
     """
 
-    def __init__(self, name: str, evals_per_commit: int=-1):
-        self.graph = LineGraph(name, CacheMode.NONE)
-        self.evals_per_commit = evals_per_commit
+    def __init__(self, plot_name: str, metrics: List[str]=None, evals_between_commits: int=-1):  # Metrics default to the eval loss.
+        self.graph = LineGraph(plot_name, CacheMode.NONE)
+        self.evals_per_commit = evals_between_commits
         self.evals_so_far = 0
 
-        self.metric_name = ""
+        self.metric_names = None if not metrics else [name[name.startswith("eval_")*len("eval_"):] for name in metrics]
 
-    def _commit(self):
-        self.graph.commit(legend_position="upper right", x_label="Training batches", y_label=self.metric_name.replace("_", "-"),
-                          do_points=False, grid_linewidth=0.1)
+    def _automatic_metric_name(self, args: TrainingArguments):
+        """
+        Based on the early-stopping callback, which also accesses the evaluation loss
+        https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/trainer_callback.py#L586
+        """
+        ranking_metric = args.metric_for_best_model
+        self.metric_names = [ranking_metric[ranking_metric.startswith("eval_")*len("eval_"):]]
 
-    def _set_metric_name(self, args: TrainingArguments):
-        metric_to_check = args.metric_for_best_model
-        if not metric_to_check.startswith("eval_"):
-            self.metric_name = metric_to_check
-        else:
-            self.metric_name = metric_to_check[len("eval_"):]
+    def on_evaluate(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, metrics: dict, **kwargs):
+        if not self.metric_names:
+            self._automatic_metric_name(args)
 
-    def on_evaluate(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, metrics, **kwargs):
-        # Based on the early-stopping callback, which also accesses the evaluation loss https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/trainer_callback.py#L586
-        if not self.metric_name:
-            self._set_metric_name(args)
+        for name in self.metric_names:
+            key = "eval_" + name
+            if key not in metrics:
+                logger.warning(f"What the fuck, you asked for metric '{key}' but you're not computing it, you fucking weirdo.")
+                continue
 
-        metric_to_check = "eval_" + self.metric_name
-        metric_value = metrics.get(metric_to_check)
-        if metric_value is None:
-            logger.warning(f"What the fuck, you asked for {metric_to_check} but you're not computing it, you fucking weirdo.")
-            return
+            self.graph.add(name.replace("_", "-"), state.global_step, metrics.get(key))
 
-        # Add to graph, and commit if necessary
-        self.graph.add("evaluation", state.global_step, metric_value)
+        self.evals_so_far += 1  # By incrementing first, you never commit after just one iteration.
         if self.evals_per_commit > 0 and self.evals_so_far % self.evals_per_commit == 0:
             self._commit()
-        self.evals_so_far += 1
 
     def on_train_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        if not self.metric_name:
-            self._set_metric_name(args)
-
         self._commit()
+
+    def _commit(self):
+        self.graph.commit(legend_position="upper right", x_label="Training batches", y_label="Validation set performance",
+                          do_points=False, grid_linewidth=0.1)
+
+
+class EvaluateBeforeTrainingCallback(TrainerCallback):
+    """
+    Triggers evaluation before the first training batch, so that you can benchmark all metrics before any finetuning
+    has been done (and then print it or let it be caught by another callback like the above for plotting).
+    https://discuss.huggingface.co/t/how-to-evaluate-before-first-training-step/18838/7
+
+    Hoping this doesn't slow down the training too much, since you are interrupting every batch with this.
+    """
+    def on_step_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        if state.global_step == 0:
+            control.should_evaluate = True
