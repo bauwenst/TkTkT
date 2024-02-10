@@ -13,7 +13,7 @@ class FijectCallback(TrainerCallback):
     """
 
     def __init__(self, plot_name: str, metrics: List[str]=None, evals_between_commits: int=-1):  # Metrics default to the eval loss.
-        self.graph = LineGraph(plot_name, CacheMode.NONE)
+        self.graph = LineGraph(plot_name, CacheMode.WRITE_ONLY)
         self.evals_per_commit = evals_between_commits
         self.evals_so_far = 0
 

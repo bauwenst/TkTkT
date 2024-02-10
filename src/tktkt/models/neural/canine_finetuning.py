@@ -141,8 +141,8 @@ def train():
         optimizers=(optimizer, scheduler),
         callbacks=[
             EvaluateBeforeTrainingCallback(),
-            FijectCallback("loss_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=5),
-            FijectCallback("bnry_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=5, metrics=["pr", "re", "f1", "acc"]),
+            FijectCallback("loss_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=EVALS_PER_EPOCH),
+            FijectCallback("bnry_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=EVALS_PER_EPOCH, metrics=["pr", "re", "f1", "acc"]),
             transformers.trainer_callback.EarlyStoppingCallback(early_stopping_patience=EVALS_OF_PATIENCE)  # Patience is the amount of eval calls you can tolerate worsening loss.
         ],
 
