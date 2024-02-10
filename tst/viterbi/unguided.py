@@ -1,6 +1,6 @@
 from transformers import RobertaTokenizer
 
-from src.tktkt.models.viterbi.unguided import UnguidedViterbi
+from src.tktkt.models.viterbi._deprecated import UnguidedViterbi
 from src.tktkt.preparation.spacemarking import ROBERTA_SPACING
 
 from tst.viterbi.framework import makeTokeniser

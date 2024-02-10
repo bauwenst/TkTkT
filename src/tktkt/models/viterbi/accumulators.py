@@ -1,4 +1,4 @@
-from .lattice import ViterbiAccumulator
+from .framework import ViterbiAccumulator
 
 
 class Plus(ViterbiAccumulator):

@@ -1,3 +1,7 @@
+"""
+Guided score functions. These are informed by knowledge of the language, e.g. models that estimate the probability of a
+token appearing at all (with or without considering context), or models that estimate the probability of a split point.
+"""
 from typing import List
 from abc import abstractmethod
 

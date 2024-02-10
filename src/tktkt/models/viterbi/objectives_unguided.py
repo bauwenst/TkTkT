@@ -1,4 +1,8 @@
-from .lattice import *
+"""
+Unguided score functions. These are informed by nothing except the substring being scored as-is, e.g. its
+length or its presence in a given set.
+"""
+from .framework import *
 
 
 class MinimiseTokenAmount(ViterbiStepScoreGenerator):

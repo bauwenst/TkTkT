@@ -1,4 +1,4 @@
-from src.tktkt.models.viterbi.lattice import *
+from src.tktkt.models.viterbi.framework import *
 from src.tktkt.models.viterbi.accumulators import *
 from src.tktkt.models.viterbi.objectives_unguided import *
 
