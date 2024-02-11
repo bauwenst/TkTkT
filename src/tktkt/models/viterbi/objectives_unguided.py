@@ -13,7 +13,7 @@ class MinimiseTokenAmount(ViterbiStepScoreGenerator):
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=-INFTY)  # Note that the bottom-right triangle of the grid will never be used by the algorithm. It can have any value, doesn't matter, won't be used.
-        for n in range(len(string)):
+        for n in range(N):
             for k in range(max_k):
                 subword = string[n:n+(k+1)]
                 if subword in self.vocab:
@@ -30,7 +30,7 @@ class MaximiseTokenLength(ViterbiStepScoreGenerator):
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=-INFTY)
-        for n in range(len(string)):
+        for n in range(N):
             for k in range(max_k):
                 subword = string[n:n+(k+1)]
                 if subword in self.vocab:

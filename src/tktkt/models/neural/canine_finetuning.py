@@ -5,6 +5,9 @@
 #                 the characters part of the word of interest. Much richer data. Would be loaded completely differently
 #                 though (OSCAR but filtered by checking if any word is in the lemma set, and with labels constructed
 #                 by padding the given labels with long sequences of -100).
+#
+# TODO: There's something to be said for having a split point before the first character and after the last character.
+#       This way, the model will better learn compound boundaries.
 import re
 import time
 

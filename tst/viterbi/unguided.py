@@ -1,3 +1,5 @@
+# TODO: Implement RA_Product in this framework and compare it to our deprecated implementation.
+
 from transformers import RobertaTokenizer
 
 from src.tktkt.models.viterbi._deprecated import UnguidedViterbi
