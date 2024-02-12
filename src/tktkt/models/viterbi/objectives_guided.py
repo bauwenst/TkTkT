@@ -15,7 +15,7 @@ TODO: Now make these compatible with a subword vocabulary... I have a feeling th
       doesn't exist in the subword vocab. Indeed, the same split point now has two probabilities associated with it
       rather than one: its actual probability, and 0, depending on the step. Works out fine!
 """
-from typing import List
+from typing import List, MutableSequence
 from abc import abstractmethod
 
 import numpy as np
@@ -24,15 +24,21 @@ import torch
 from bpe_knockout.project.config import morphologyGenerator
 
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
+from ...interfaces.general import Vocab
 
 
 class SplitpointClassifier:
 
     @abstractmethod
-    def getPointProbabilities(self, pretoken: str) -> List[float]:
+    def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:  # "MutableSequence" is just "anything that can be indexed with [], has order, and can be modified"
         """
-        Returns a list of binary classification probabilities that say, for each of the n characters, whether it
+        Returns a list of binary classification log probabilities that say, for each of the n characters, whether it
         should be followed by a split point.
+
+        Note that these are log probabilities, not just probabilities. The reason is two-fold:
+            - Neural models produce logits, which need only a constant subtracted to be log probabilities, rather than an expensive softmax.
+            - It's more accurate to convert logarithms to probabilities than the inverse due to rounding errors.
+              Also, for further computations, it's much more numerically stable to do (-5) + (-5) + (-5) than (10^(-5)) * (10^(-5)) * (10^(-5)).
         """
         pass
 
@@ -40,9 +46,9 @@ class SplitpointClassifier:
 class StringClassifier:
 
     @abstractmethod
-    def getSegmentProbabilities(self, pretoken: str, max_k: int) -> List[List[float]]:
+    def getSegmentLogProbabilities(self, pretoken: str, max_k: int) -> MutableSequence[MutableSequence[float]]:
         """
-        Returns a matrix of probabilities that say, for each substring of length k starting at each of the n characters,
+        Returns a matrix of log probabilities that say, for each substring of length k starting at each of the n characters,
         what its probability of occurring is across some domain of substrings (e.g. a subword vocabulary).
         """
         pass
@@ -76,7 +82,7 @@ class MaximiseSplitsOnBoundaries(ViterbiStepScoreGenerator):
         easy to see when you take the ln, where you are now punished by -INFTY if you get it wrong but getting it right
         is invisible.
         """
-        boundary_scores = [2*label-1 for label in self.model.getPointProbabilities(string)]  # one entry for each character
+        boundary_scores = [2*np.exp(ln)-1 for ln in self.model.getPointLogProbabilities(string)]  # one entry for each character
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
@@ -102,17 +108,50 @@ class MaximiseSplitsEverywhere(ViterbiStepScoreGenerator):
             P(boundary after char 2 | abcdef)
         but instead as
             P(boundary after char 2 | abcdef)*P(no boundary after char 1 | abcdef)*P(no boundary after char 0 | abcdef)
+
+        Computations are done in log space and with addition, to keep numerical stability.
         """
-        boundary_probabilities = self.model.getPointProbabilities(string)  # one entry for each character
+        boundary_log_probabilities = self.model.getPointLogProbabilities(string)  # one entry for each character
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
             for k in range(max_k):
-                probability = boundary_probabilities[n+k]  # This is like the above class.
+                log_probability = boundary_log_probabilities[n+k]  # This is like in the previous class.
                 for i in range(k):
-                    probability *= (1-boundary_probabilities[n+i])
-                scores.set(n, k, probability)
+                    logp = boundary_log_probabilities[n+i]
+                    log_probability += np.log(1-np.exp(logp))  # ln(1-p) == ln(1 - e^(ln p))
+                scores.set(n, k, log_probability)
 
+        return scores
+
+
+class ConstrainVocabulary(ViterbiStepScoreGenerator):
+    """
+    Post-processor for a score grid that resets all steps that aren't allowed by the given subword vocabulary.
+    """
+
+    def __init__(self, nested_generator: ViterbiStepScoreGenerator, subword_vocabulary: Vocab, reset_value: float=0.0):
+        self.nested_generator = nested_generator
+        self.vocab = subword_vocabulary
+        self.default = reset_value
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        grid = self.nested_generator.generateGrid(string, max_k)
+        for n in range(len(string)):
+            for k in range(max_k):  # It doesn't really matter that for large n, n:n+k is the same string every iteration.
+                if string[n:n+(k+1)] not in self.vocab:
+                    grid.set(n,k, self.default)
+        return grid
+
+
+class ConvertToProbabilities(ViterbiStepScoreGenerator):
+
+    def __init__(self, nested_generator: ViterbiStepScoreGenerator):
+        self.nested_generator = nested_generator
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        scores = self.nested_generator.generateGrid(string, max_k)
+        scores.grid = np.exp(scores.grid)  # e^ln(p) == p
         return scores
 
 
@@ -127,8 +166,8 @@ class GoldSplits(SplitpointClassifier):
     def __init__(self):
         self.gold_segmentations = {obj.lemma(): obj.morphSplit() for obj in morphologyGenerator()}
 
-    def getLabels(self, pretoken: str) -> List[float]:
-        labels = np.zeros(len(pretoken), dtype=np.int8)
+    def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
+        labels = np.zeros(len(pretoken), dtype=np.float32)
 
         sow, word = pretoken[0], pretoken[1:]  # TODO: Obviously this is heresy.
         if word in self.gold_segmentations:
@@ -138,24 +177,28 @@ class GoldSplits(SplitpointClassifier):
             split_positions = np.cumsum([len(t) for t in tokens[:-1]]) - 1  # Alternative for the regex code I normally use. Seems like it'd be faster.
             labels[split_positions] = 1
 
-        return labels.tolist()
+        return np.log(labels)
 
 
 from transformers.models.canine.modeling_canine import CanineForTokenClassification, TokenClassifierOutput
 from transformers.models.canine.tokenization_canine import CanineTokenizer
 
 class HuggingFaceCharacterModelForTokenClassification(SplitpointClassifier):
+    """
+    NOTE: Outputs log probabilities, not probabilities.
+    """
 
     def __init__(self, characters_to_model_input: CanineTokenizer, for_token_classification: CanineForTokenClassification):  # Sadly there is no generic "ForTokenClassification" type in HuggingFace's API, but any should work.
         self.input_generator = characters_to_model_input
         self.model           = for_token_classification
 
-    def getPointProbabilities(self, pretoken: str) -> List[float]:
+    def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         input_to_model = self.input_generator(pretoken, add_special_tokens=False, return_tensors="pt")
-        prediction: TokenClassifierOutput = self.model(**input_to_model)
+        with torch.no_grad():  # no_grad means all tensors returned don't have their gradient tracked, so you don't need to .detach() them before going to numpy.
+            prediction: TokenClassifierOutput = self.model(**input_to_model)
 
         chars_by_classes = prediction.logits.squeeze()  # Remove batch dimension (because it has size 1).
-        positive_logits = chars_by_classes[:,1]  # Logits are equal to log probabilities up to a constant, so you actually don't need to argmax if you want the likelihood.
-        normalisation_constant = torch.logsumexp(positive_logits, dim=0)
-        logprobabilities = positive_logits #- normalisation_constant   # You actually don't need to normalise for a Viterbi trellis, because you're only comparing anyway.
-        return logprobabilities.tolist()
+        normalisation_constants = torch.logsumexp(chars_by_classes, dim=1)  # Note that normalisation happens not OVER characters, but PER character. It happens over two binary classes, N times.
+        positive_logits = chars_by_classes[:,1]
+        logprobabilities = positive_logits - normalisation_constants
+        return logprobabilities.numpy()

@@ -42,7 +42,7 @@ INFTY = float("inf")
 class ViterbiStepScores:
 
     def __init__(self, N: int, K: int, default=0):
-        self.grid = np.full(shape=(N,K), fill_value=default)
+        self.grid = np.full(shape=(N,K), fill_value=default, dtype=np.float32)
 
     def get(self, n: int, k: int):
         return self.grid[n,k]

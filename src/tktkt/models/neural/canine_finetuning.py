@@ -1,3 +1,11 @@
+"""
+About model choice, according to J.H. Clark via personal correspondence:
+  > Canine-C + N-grams was not released since it didn't seem to give huge quality gains despite being
+    substantially more complicated (it wasn't really the "hero" model of the paper, IMO).
+  > We didn't explore Canine-S too much more because we feel that the main research direction for this work
+    is not engineering the best subword models we can, but rather showing the pros (and deficiencies) of current
+    character-level models.
+"""
 # TODO: There are two ways to set up training.
 #   - Out of context: you give only the word and its labels, and ask the model to predict at each character.
 #   - In context: you use the pre-training corpus to get sentences that contain at least one word from the dataset.
@@ -22,11 +30,11 @@ import evaluate
 from bpe_knockout.project.config import morphologyGenerator
 
 from ...files.paths import setTkTkToutputRoot, getTkTkToutputPath, PATH_ROOT
-from ...visualisation.huggingface.fijectcallback import FijectCallback, EvaluateBeforeTrainingCallback
+from fiject.hooks.transformers import FijectCallback, EvaluateBeforeTrainingCallback
 PATH_DATA_OUT = PATH_ROOT / "data" / "out"  ### TODO: Should use CWD since the package should be installable without -e
 
 from fiject import setFijectOutputFolder
-setFijectOutputFolder(PATH_DATA_OUT)
+setFijectOutputFolder(PATH_DATA_OUT)  # TODO: You should centralise this, but you should NOT put this in paths.py because then other libraries that use TkTkT will have their Fiject setting be altered.
 
 
 ##################################
@@ -35,10 +43,12 @@ BATCH_SIZE = 32
 EVALS_PER_EPOCH = 9
 EVALS_OF_PATIENCE = 3
 
-BATCHES_WARMUP = 10_000  # Warmup steps from the RoBERTa paper.
+BATCHES_WARMUP = 1000  # The RoBERTa paper's finetuning does warmup for the first 6% of all batches. Since this script converges after like 10k, 1k batches is conservative.
 LEARNING_RATE = 2e-5
 L2_REGULARISATION = 0.01
 MAX_INPUT_LENGTH_CANINE = 2048
+
+CHECKPOINT = "google/canine-c"
 ##################################
 
 
@@ -58,7 +68,7 @@ def datasetOutOfContext():
 
 
 print("> Loading tokeniser")
-tokenizer: CanineTokenizer = AutoTokenizer.from_pretrained("google/canine-s")  # There is no unk_token because any Unicode codepoint is mapped via a hash table to an ID (which is better than UTF-8 byte tokenisation although not reversible).
+tokenizer: CanineTokenizer = AutoTokenizer.from_pretrained(CHECKPOINT)  # There is no unk_token because any Unicode codepoint is mapped via a hash table to an ID (which is better than UTF-8 byte tokenisation although not reversible).
 
 
 def dataloaderFromIterable(iterable):
@@ -83,11 +93,13 @@ def dataloaderFromIterable(iterable):
 
 
 def train():
+    global_model_identifier = CHECKPOINT.split("/")[-1].upper() + "_" + time.strftime("%F_%X").replace(":", "-")
+
     # Set up paths for checkpointing
     setTkTkToutputRoot(PATH_DATA_OUT)
     output_goes_under_here = getTkTkToutputPath()  # runs a mkdir
-    PATH_CHECKPOINTS = output_goes_under_here / "checkpoints"
-    PATH_CHECKPOINTS.mkdir(exist_ok=True)
+    PATH_CHECKPOINTS = output_goes_under_here / "checkpoints" / global_model_identifier
+    PATH_CHECKPOINTS.mkdir(exist_ok=True, parents=True)
 
     # Get dataset
     datasetdict = dataloaderFromIterable(datasetOutOfContext())
@@ -101,7 +113,7 @@ def train():
     collator = DataCollatorForTokenClassification(tokenizer, padding="longest", max_length=MAX_INPUT_LENGTH_CANINE)
 
     # Get model
-    model: CFTC = CanineForTokenClassification.from_pretrained("google/canine-s", num_labels=2)
+    model: CFTC = CanineForTokenClassification.from_pretrained(CHECKPOINT, num_labels=2)
     model.to("cuda")
 
     # Training arguments
@@ -144,8 +156,8 @@ def train():
         optimizers=(optimizer, scheduler),
         callbacks=[
             EvaluateBeforeTrainingCallback(),
-            FijectCallback("loss_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=EVALS_PER_EPOCH),
-            FijectCallback("bnry_CANINE_" + time.strftime("%F_%X").replace(":", "-"), evals_between_commits=EVALS_PER_EPOCH, metrics=["pr", "re", "f1", "acc"]),
+            FijectCallback(global_model_identifier + "_loss", evals_between_commits=EVALS_PER_EPOCH),
+            FijectCallback(global_model_identifier + "_bnry", evals_between_commits=EVALS_PER_EPOCH, metrics=["pr", "re", "f1", "acc"]),
             transformers.trainer_callback.EarlyStoppingCallback(early_stopping_patience=EVALS_OF_PATIENCE)  # Patience is the amount of eval calls you can tolerate worsening loss.
         ],
 
