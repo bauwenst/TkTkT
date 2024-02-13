@@ -27,7 +27,7 @@ import transformers.optimization
 import torch
 import evaluate
 
-from bpe_knockout.project.config import morphologyGenerator
+from bpe_knockout.project.config import morphologyGenerator, setupEnglish, TemporaryContext
 
 from ...files.paths import setTkTkToutputRoot, getTkTkToutputPath, PATH_ROOT
 from fiject.hooks.transformers import FijectCallback, EvaluateBeforeTrainingCallback
@@ -57,14 +57,16 @@ def datasetOutOfContext():
 
     BAR = "|"
     FIND_BAR = re.compile(re.escape(BAR))
-    for obj in morphologyGenerator():
-        splitstring = obj.morphSplit()
-        split_indices = [match.start() // 2 for match in FIND_BAR.finditer(" ".join(splitstring).replace("   ", BAR))]
 
-        text = obj.lemma()
-        labels = torch.zeros(len(text), dtype=torch.int8)
-        labels[split_indices] = 1
-        yield {"text": text, "labels": labels}
+    with TemporaryContext(setupEnglish()):
+        for obj in morphologyGenerator():
+            splitstring = obj.morphSplit()
+            split_indices = [match.start() // 2 for match in FIND_BAR.finditer(" ".join(splitstring).replace("   ", BAR))]
+
+            text = obj.lemma()
+            labels = torch.zeros(len(text), dtype=torch.int8)
+            labels[split_indices] = 1
+            yield {"text": text, "labels": labels}
 
 
 print("> Loading tokeniser")
