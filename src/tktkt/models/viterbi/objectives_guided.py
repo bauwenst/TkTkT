@@ -14,6 +14,8 @@ TODO: Now make these compatible with a subword vocabulary... I have a feeling th
       domain. A split point has a baseline probability that is collected by any step that reaches it, UNLESS that step
       doesn't exist in the subword vocab. Indeed, the same split point now has two probabilities associated with it
       rather than one: its actual probability, and 0, depending on the step. Works out fine!
+
+TODO: Why the fuck did you make such a high-key dogshit naming convention bro
 """
 from typing import List, MutableSequence
 from abc import abstractmethod
@@ -21,13 +23,14 @@ from abc import abstractmethod
 import numpy as np
 import torch
 
-from bpe_knockout.project.config import morphologyGenerator
+from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
-from ...interfaces.general import Vocab
+from ...preparation.spacemarking import MarkerLocation
+from ...preparation.splitters import WordSplitter
 
 
-class SplitpointClassifier:
+class CharacterClassifier:
 
     @abstractmethod
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:  # "MutableSequence" is just "anything that can be indexed with [], has order, and can be modified"
@@ -63,7 +66,7 @@ class MaximiseSplitsOnBoundaries(ViterbiStepScoreGenerator):
     Should be used with sum.
     """
 
-    def __init__(self, point_model: SplitpointClassifier):
+    def __init__(self, point_model: CharacterClassifier):
         self.model = point_model
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
@@ -99,7 +102,7 @@ class MaximiseSplitsEverywhere(ViterbiStepScoreGenerator):
     Should be used with product, or be ln'd and be used with sum.
     """
 
-    def __init__(self, point_model: SplitpointClassifier):
+    def __init__(self, point_model: CharacterClassifier):
         self.model = point_model
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
@@ -125,56 +128,28 @@ class MaximiseSplitsEverywhere(ViterbiStepScoreGenerator):
         return scores
 
 
-class ConstrainVocabulary(ViterbiStepScoreGenerator):
-    """
-    Post-processor for a score grid that resets all steps that aren't allowed by the given subword vocabulary.
-    """
-
-    def __init__(self, nested_generator: ViterbiStepScoreGenerator, subword_vocabulary: Vocab, reset_value: float=0.0):
-        self.nested_generator = nested_generator
-        self.vocab = subword_vocabulary
-        self.default = reset_value
-
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        grid = self.nested_generator.generateGrid(string, max_k)
-        for n in range(len(string)):
-            for k in range(max_k):  # It doesn't really matter that for large n, n:n+k is the same string every iteration.
-                if string[n:n+(k+1)] not in self.vocab:
-                    grid.set(n,k, self.default)
-        return grid
-
-
-class ConvertToProbabilities(ViterbiStepScoreGenerator):
-
-    def __init__(self, nested_generator: ViterbiStepScoreGenerator):
-        self.nested_generator = nested_generator
-
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        scores = self.nested_generator.generateGrid(string, max_k)
-        scores.grid = np.exp(scores.grid)  # e^ln(p) == p
-        return scores
-
-
 ###########################################################################################
 
 
-class GoldSplits(SplitpointClassifier):
+class GoldSplits(CharacterClassifier):
     """
     Uses gold segmentations as split point suggestions. This is cheating, but it is a good baseline!
     """
 
-    def __init__(self):
+    def __init__(self, pretokeniser: WordSplitter):
+        self.pretokeniser = pretokeniser
+        self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == MarkerLocation.START)
         self.gold_segmentations = {obj.lemma(): obj.morphSplit() for obj in morphologyGenerator()}
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         labels = np.zeros(len(pretoken), dtype=np.float32)
 
-        sow, word = pretoken[0], pretoken[1:]  # TODO: Obviously this is heresy.
+        word, _ = self.pretokeniser.stripMarker(pretoken)
         if word in self.gold_segmentations:
             tokens = self.gold_segmentations[word].split()
-            tokens[0] = sow + tokens[0]
+            split_positions = np.cumsum([len(t) for t in tokens[:-1]]) - 1
+            split_positions += self.pretoken_shift  # If "word" is shown to the character model as "Ġword", the suggested split indices should shift by 1.
 
-            split_positions = np.cumsum([len(t) for t in tokens[:-1]]) - 1  # Alternative for the regex code I normally use. Seems like it'd be faster.
             labels[split_positions] = 1
 
         return np.log(labels)
@@ -183,7 +158,7 @@ class GoldSplits(SplitpointClassifier):
 from transformers.models.canine.modeling_canine import CanineForTokenClassification, TokenClassifierOutput
 from transformers.models.canine.tokenization_canine import CanineTokenizer
 
-class HuggingFaceCharacterModelForTokenClassification(SplitpointClassifier):
+class HuggingFaceCharacterModelForTokenClassification(CharacterClassifier):
     """
     NOTE: Outputs log probabilities, not probabilities.
     """

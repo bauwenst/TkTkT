@@ -2,7 +2,7 @@ import numpy as np
 from pathlib import Path
 import os
 
-from ...models.viterbi.objectives_guided import SplitpointClassifier
+from ...models.viterbi.objectives_guided import CharacterClassifier
 
 
 def floatToUnicode(f: float) -> str:
@@ -44,7 +44,7 @@ def from_pretrained_absolutePath(cls, absolute_path: Path):
     return cls.from_pretrained((relativePath(Path(os.getcwd()), absolute_path)).as_posix())
 
 
-def visualisePredictedBoundaries(classifier: SplitpointClassifier, word: str):
+def visualisePredictedBoundaries(classifier: CharacterClassifier, word: str):
     logprobs = classifier.getPointLogProbabilities(word)
     probs = np.exp(logprobs)
 

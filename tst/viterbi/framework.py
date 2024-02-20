@@ -18,7 +18,7 @@ def makeTokeniser():
     from src.tktkt.preparation.splitters import WordSplitter
     from src.tktkt.preparation.spacemarking import ROBERTA_SPACING
 
-    return ViterbiTokeniser(WordSplitter(ROBERTA_SPACING), [objective1, objective2], max_step)
+    return ViterbiTokeniser(WordSplitter(ROBERTA_SPACING), max_step, [objective1, objective2])
 
 
 if __name__ == "__main__":

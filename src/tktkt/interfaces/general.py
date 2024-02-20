@@ -25,9 +25,6 @@ class Tokeniser(ABC):
 
 class TokeniserWithVocab(Tokeniser):
 
-    @abstractmethod
-    def getVocab(self) -> Vocab:
-        pass
-
-    def getVocabSize(self) -> int:
-        return len(self.getVocab())
+    def __init__(self, pretokeniser: Pretokeniser, vocab: Vocab):
+        super().__init__(pretokeniser)
+        self.vocab = vocab

@@ -111,8 +111,8 @@ class ViterbiTokeniser(Tokeniser):
     fallback score of longest-token-used, here 4 vs. 2.
     """
 
-    def __init__(self, pretokeniser: Pretokeniser,
-                 objectives: ViterbiObjectives, max_stepsize: int):
+    def __init__(self, pretokeniser: Pretokeniser, max_stepsize: int,
+                 objectives: ViterbiObjectives):
         super().__init__(pretokeniser)
         self.objectives = objectives
         self.K = max_stepsize
