@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 from abc import ABC, abstractmethod
 
 from ..preparation.spacemarking import SpaceMarker, MarkerLocation
@@ -50,17 +50,42 @@ class WordSplitter(Pretokeniser):
 
         return results
 
-    def splitWord(self, word: str) -> List[str]:
+    def splitWord(self, pretoken: str) -> List[str]:
         """
         Extra method for algorithms like BPE that require a word to start out as
         being split into characters.
+
+        Does NOT add SoW/EoW because this is already done when you split the sentence into words.
+        What it might do, however, is attach the SoW/EoW to the adjacent character.
         """
         if self.marker.location == MarkerLocation.START:
-            pass  # TODO
+            chars, sow = self.stripMarker(pretoken)
+            if self.marker.detached:
+                return [sow] + list(chars)
+            else:
+                return [sow + chars[0]] + list(chars[1:])
         elif self.marker.location == MarkerLocation.END:
-            pass  # TODO
+            chars, eow = self.stripMarker(pretoken)
+            if self.marker.detached:
+                return list(chars) + [eow]
+            else:
+                return list(chars[:-1]) + [chars[-1] + eow]
         else:
-            return list(word)
+            return list(pretoken)
+
+    def stripMarker(self, pretoken: str) -> Tuple[str,str]:
+        """
+        Retrieve the part of a pretoken that isn't a space marker.
+        """
+        L = len(self.marker.substitute)
+        if self.marker.location == MarkerLocation.START:
+            root, marker = pretoken[L:], pretoken[:L]
+        elif self.marker.location == MarkerLocation.END:
+            root, marker = pretoken[:len(pretoken)-L], pretoken[len(pretoken)-L:]
+        else:
+            root, marker = pretoken, ""
+
+        return root, marker
 
 
 def intercalate(lst: list, new_element):
