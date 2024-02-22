@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tktkt"
+version = "2024.02.01"
+dependencies = [
+  "transformers",
+  "tokenizers",
+  "bpe_knockout"
+]
+requires-python = ">= 3.9"
+authors = [
+  {name = "Thomas Bauwens", email = "thomas.bauwens@kuleuven.be"}
+]
+maintainers = [
+  {name = "Thomas Bauwens", email = "thomas.bauwens@kuleuven.be"}
+]
+description = "Tokeniser toolkit: a collection of Pythonic subword tokenisers and supporting tools."
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["NLP", "tokenizers", "tokenization", "subwords", "segmentation", "natural language"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]

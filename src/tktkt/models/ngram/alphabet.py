@@ -1,6 +1,6 @@
 from typing import List
 
-from ...interfaces.general import TokeniserWithVocab
+from ...interfaces.tokeniser import TokeniserWithVocab
 
 
 class Alphabet(TokeniserWithVocab):

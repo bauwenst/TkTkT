@@ -26,8 +26,8 @@ import torch
 from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
-from ...preparation.spacemarking import MarkerLocation
-from ...preparation.splitters import WordSplitter
+from ...preparation.spacemarking import SpaceMarkerLocation
+from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
 
 
 class CharacterClassifier:
@@ -134,11 +134,15 @@ class MaximiseSplitsEverywhere(ViterbiStepScoreGenerator):
 class GoldSplits(CharacterClassifier):
     """
     Uses gold segmentations as split point suggestions. This is cheating, but it is a good baseline!
+
+    TODO: Has to be able to handle byte-based input too. What you receive for scoring is a pretoken about to be
+          tokenised. That means for ë you will receive byte-based input and won't find it in your gold dictionary.
+          preprocessor.undo() probably works.
     """
 
-    def __init__(self, pretokeniser: WordSplitter):
+    def __init__(self, pretokeniser: WhitespaceAndMarkerPretokeniser):
         self.pretokeniser = pretokeniser
-        self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == MarkerLocation.START)
+        self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == SpaceMarkerLocation.START)
         self.gold_segmentations = {obj.lemma(): obj.morphSplit() for obj in morphologyGenerator()}
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:

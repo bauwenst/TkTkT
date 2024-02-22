@@ -1,7 +1,7 @@
 from typing import List
 from collections import Counter
 
-from .segmentation import BpeTokeniser, WordSplitter, Vocab
+from .segmentation import BpeTokeniser, WhitespaceAndMarkerPretokeniser, Vocab
 
 
 class TrimmedBPETokeniser(BpeTokeniser):
@@ -10,7 +10,7 @@ class TrimmedBPETokeniser(BpeTokeniser):
     recursively undoes applied merges until all tokens are NOT in a predefined set of illegal types.
     """
 
-    def __init__(self, pretokeniser: WordSplitter, vocab: Vocab, merges: List[str]):
+    def __init__(self, pretokeniser: WhitespaceAndMarkerPretokeniser, vocab: Vocab, merges: List[str]):
         super().__init__(pretokeniser, vocab, merges)
         self.disabled = set()
 

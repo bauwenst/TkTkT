@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-class MarkerLocation(Enum):
+class SpaceMarkerLocation(Enum):
     TOKEN = 1
     START = 2
     END   = 3
@@ -15,7 +15,7 @@ class MarkerLocation(Enum):
 class SpaceMarker:
     substitute: str
     detached: bool
-    location: MarkerLocation
+    location: SpaceMarkerLocation
 
 
-ROBERTA_SPACING = SpaceMarker("Ġ", location=MarkerLocation.START, detached=True)
+ROBERTA_SPACING = SpaceMarker("Ġ", location=SpaceMarkerLocation.START, detached=True)

@@ -17,3 +17,29 @@ def getTkTkToutputPath() -> Path:
     out = PATH_OUTPUT / "tktkt"
     out.mkdir(parents=True, exist_ok=True)
     return out
+
+
+def relativePath(path1: Path, path2: Path):
+    """
+    How do I get from path1 to path2?
+    Note: definitely won't work for all path pairs. Just works here.
+    """
+    result = ""
+    for i in range(min(len(path1.parts), len(path2.parts))):
+        if path1.parts[i] != path2.parts[i]:
+            result += "../"*len(path1.parts[i:])
+            result += "/".join(path2.parts[i:])
+            break
+    return Path(result)
+
+
+def relativeToCwd(absolute_path: Path) -> Path:
+    return relativePath(Path(os.getcwd()), absolute_path)
+
+
+def from_pretrained_absolutePath(cls, absolute_path: Path):
+    """
+    For some reason, HuggingFace doesn't accept absolute paths for loading models. This is stupid.
+    This function fixes that.
+    """
+    return cls.from_pretrained(relativeToCwd(absolute_path).as_posix())

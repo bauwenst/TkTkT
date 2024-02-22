@@ -7,15 +7,15 @@ Apparently this was published a year prior by Hofmann (2022). https://aclantholo
 """
 from typing import List
 
-from ...interfaces.general import TokeniserWithVocab, Vocab
+from ...interfaces.tokeniser import TokeniserWithVocab, Vocab
 from ...preparation.spacemarking import SpaceMarker
-from ...preparation.splitters import WordSplitter
+from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
 
 
 class RA_Greedy(TokeniserWithVocab):
 
     def __init__(self, vocab: Vocab, marker: SpaceMarker):
-        super().__init__(pretokeniser=WordSplitter(marker))
+        super().__init__(preprocessor=WhitespaceAndMarkerPretokeniser(marker))
         self.vocab = vocab
 
     def tokenise(self, word: str) -> List[str]:

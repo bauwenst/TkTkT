@@ -34,7 +34,7 @@ from typing import List, Tuple
 from abc import abstractmethod
 import numpy as np
 
-from ...interfaces.general import Tokeniser, Pretokeniser
+from ...interfaces.tokeniser import Tokeniser, Preprocessor
 
 INFTY = float("inf")
 
@@ -111,9 +111,9 @@ class ViterbiTokeniser(Tokeniser):
     fallback score of longest-token-used, here 4 vs. 2.
     """
 
-    def __init__(self, pretokeniser: Pretokeniser, max_stepsize: int,
+    def __init__(self, preprocessor: Preprocessor, max_stepsize: int,
                  objectives: ViterbiObjectives):
-        super().__init__(pretokeniser)
+        super().__init__(preprocessor)
         self.objectives = objectives
         self.K = max_stepsize
 

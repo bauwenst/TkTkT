@@ -1,6 +1,6 @@
 import numpy as np
 
-from ...interfaces.general import Vocab
+from ...interfaces.tokeniser import Vocab
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores
 
 

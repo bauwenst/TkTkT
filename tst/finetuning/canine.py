@@ -1,4 +1,4 @@
-from src.tktkt.models.neural.canine_finetuning import train, exampleDataset
+from tktkt.models.neural.canine_finetuning import train, exampleDataset
 
 
 if __name__ == "__main__":

@@ -1,13 +1,11 @@
-from src.tktkt.visualisation.neural.splitpoints_probabilities import *
+from tktkt.visualisation.neural.splitpoints_probabilities import *
 
 # Path setup
-from src.tktkt.files.paths import setTkTkToutputRoot, getTkTkToutputPath, PATH_ROOT
-setTkTkToutputRoot(PATH_ROOT / "data" / "out")
-checkpoints_path = getTkTkToutputPath() / "checkpoints"
-checkpoints_path.mkdir(parents=True, exist_ok=True)
+from tktkt.files.paths import from_pretrained_absolutePath
+from tst.preamble import *
 
 # Classifier setup
-from src.tktkt.models.viterbi.objectives_guided import HuggingFaceCharacterModelForTokenClassification, CanineTokenizer, CanineForTokenClassification
+from tktkt.models.viterbi.objectives_guided import HuggingFaceCharacterModelForTokenClassification, CanineTokenizer, CanineForTokenClassification
 tk   = CanineTokenizer.from_pretrained("google/canine-c")
 core = from_pretrained_absolutePath(CanineForTokenClassification, checkpoints_path / "CANINE-C_2024-02-12_19-35-28")
 classifier = HuggingFaceCharacterModelForTokenClassification(tk, core)

@@ -1,25 +1,22 @@
 """
 Taken from the BPE knockout repo.
 """
-from typing import Callable, Dict, Optional, List, Tuple
+from typing import Callable, Dict, Optional, List, Tuple, Iterable
 from dataclasses import dataclass
 
 import re
 
-from bpe_knockout.datahandlers.morphology import MorphologyVisitor, MorphSplit, LexSplit
+from bpe_knockout.datahandlers.morphology import MorphologyVisitor, MorphSplit, LexSplit, LemmaMorphology
 from bpe_knockout.datahandlers.holdout import Holdout
 from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 from bpe_knockout.auxiliary.tokenizer_interface import tokenizeAsWord
 
 from ..util.printing import wprint
 from ..files.paths import getTkTkToutputPath
-from ..interfaces.general import Tokeniser
+from ..interfaces.tokeniser import Tokeniser
 
 
-# Segmentation kernel
-SPLIT_MARKER = "|"
-SPLIT_MARKER_RE = re.compile(re.escape(SPLIT_MARKER))
-def compareSplits(candidate: str, reference: str):
+def compareSplits_cursors(candidate: str, reference: str):
     """
     Takes two words split with spaces and computes the factors of the precision and recall of those splits.
     For example,
@@ -29,42 +26,7 @@ def compareSplits(candidate: str, reference: str):
 
     Assumes they have the same amount of non-spaces.
     """
-    c = " ".join(candidate.strip()).replace("   ", SPLIT_MARKER)
-    r = " ".join(reference.strip()).replace("   ", SPLIT_MARKER)
 
-    c_indices = {match.start() for match in SPLIT_MARKER_RE.finditer(c)}
-    r_indices = {match.start() for match in SPLIT_MARKER_RE.finditer(r)}
-
-    tp = len(c_indices & r_indices)
-    relevant = len(r_indices)
-    predicted = len(c_indices)
-    total = len(r) // 2
-    return tp, predicted, relevant, total
-
-
-def compareSplits2(candidate: str, reference: str):
-    # Numpy implementation is short, but an order of magnitude slower!
-    # c_indices = np.cumsum([len(t) for t in candidate.split()]) - 1
-    # r_indices = np.cumsum([len(t) for t in reference.split()]) - 1
-    c_indices = [len(t) for t in candidate.split()]
-    r_indices = [len(t) for t in reference.split()]
-    cum = 0
-    for i in range(len(c_indices)):
-        cum += c_indices[i]
-        c_indices[i] = cum
-    cum = 0
-    for i in range(len(r_indices)):
-        cum += r_indices[i]
-        r_indices[i] = cum
-
-    tp = len(set(c_indices) & set(r_indices)) - 1
-    relevant = len(r_indices) - 1
-    predicted = len(c_indices) - 1
-    total = c_indices[-1] - 1
-    return tp, predicted, relevant, total
-
-
-def compareSplits3(candidate: str, reference: str):
     candidate_index = 0
     reference_index = 0
 
@@ -72,19 +34,19 @@ def compareSplits3(candidate: str, reference: str):
     relevant  = 0
     predicted = 0
     total     = 0
-    while candidate_index < len(candidate):
+    while candidate_index < len(candidate) and reference_index < len(reference):
         candidate_split = candidate[candidate_index] == " "
         reference_split = reference[reference_index] == " "
 
         tp += candidate_split and reference_split
-        relevant += reference_split
+        relevant  += reference_split
         predicted += candidate_split
         total += 1
 
         candidate_index += 1 + candidate_split
         reference_index += 1 + reference_split
 
-    return tp, predicted, relevant, total - 1
+    return tp, predicted, relevant, total - 1  # The `total` variable counts the amount of characters, not splits.
 
 
 class ConfusionMatrix:
@@ -152,49 +114,48 @@ class ConfusionMatrix:
 #########################
 ### Testing framework ###
 #########################
-def morphologyVersusTokenisation(morphology_method: MorphologyVisitor, tokenizer=robbert_tokenizer,  # Compared
+def tokeniseAsWord(string: str, tokeniser: Tokeniser) -> List[str]:
+    """
+    Tokenisation, but afterwards, you run each produced token back through (inverse of) the pretokeniser and normaliser.
+    """
+    # return [tokeniser.preprocessor.undo([token]) for token in tokeniser.prepareAndTokenise(" " + string)]
+    return tokeniser.preprocessor.undo_per_token(tokeniser.prepareAndTokenise(" " + string))
+
+
+def morphologyVersusTokenisation(morphological_generator: Iterable[LemmaMorphology],
+                                 morphology_method: MorphologyVisitor, tokenizer: Tokeniser,  # Compared
                                  weights: Dict[str, float]=None, holdout: Holdout=None,  # Experimental parameters
-                                 do_write_errors=False, quiet=False, display_confusion_matrix=False, log_name="log"):  # Display
+                                 do_write_fusions=False, quiet=False, display_confusion_matrix=False, log_name="log"):  # Display
     # Optional stuff
     weighted = weights is not None
-    if do_write_errors:
+    if do_write_fusions:
         output_dir = getTkTkToutputPath() / "evaluation"
         output_dir.mkdir(exist_ok=True)
-        log = open(output_dir / f"{log_name}_boundary_violations_{morphology_method.__name__}.txt", "w", encoding="utf-8")
+        log = open(output_dir / f"{log_name}_morpheme-fusions_{morphology_method.__name__}.txt", "w", encoding="utf-8")
 
+    # Result storage
     cm   = ConfusionMatrix()
     cm_w = ConfusionMatrix() if weighted else None
 
     if holdout is None:
         holdout = Holdout(0.0)  # 0% is in the training set, 100% in the test set.
 
-    for obj in holdout(morphologyGenerator(verbose=not quiet), test=True):
+    for obj in holdout(morphological_generator, test=True):
         lemma = obj.lemma()
 
         tokeniser_segmentation = " ".join(tokenizeAsWord(lemma, tokenizer=tokenizer)).strip()
         reference_segmentation = morphology_method(obj)
 
         # Compare
-        tp, predicted, relevant, total = compareSplits(candidate=tokeniser_segmentation, reference=reference_segmentation)
+        tp, predicted, relevant, total = compareSplits_cursors(candidate=tokeniser_segmentation, reference=reference_segmentation)
         cm.add(tp, predicted, relevant, total, 1)
         if weighted:
             cm_w.add(tp, predicted, relevant, total, weight=weights.get(lemma, 1))
 
-        # The .write condition below is a bit too sensitive w.r.t. interfices and prepositions [P] or adverbs [B].
-        # Perhaps need to compare against two acceptable splits? OTOH, splitting off an interfix is healthy
-        # since you're not duplicating a subword.
-        # Examples:
-        #     bruid s nacht     tokenised as	bruids nacht
-        #     voet bal match	tokenised as	voetbal match
-        #     vlieg en papier   tokenised as	vliegen papier
-        #     bouw toe zicht    tokenised as	bouw toezicht
-        #     voor hoofd        tokenised as	voorhoofd
-        #     weg nemen         tokenised as	wegnemen
-        #     wiel er baan      tokenised as	wieler baan
-        if do_write_errors and tp != relevant:  # This condition means "if you merged somewhere you shouldn't have". It ignores errors of excess tokenisation (tp != predicted).
+        if do_write_fusions and tp != relevant:  # This condition means "if you merged somewhere you shouldn't have". It ignores errors of excess tokenisation (tp != predicted).
             log.write(reference_segmentation + "\t->\t" + tokeniser_segmentation + "\n")
 
-    if do_write_errors:
+    if do_write_fusions:
         log.close()
 
     if not quiet:
@@ -226,7 +187,7 @@ class TokeniserEvaluation:
 
 
 # @timeit
-def intrinsicEvaluation(tokenisers: List[BasicStringTokeniser],
+def intrinsicEvaluation(tokenisers: List[Tokeniser],
                         reweighting_function: Callable[[float], float]=None, holdout: Holdout=None, do_whole_word=False,
                         verbose=False) -> List[TokeniserEvaluation]:
     """
@@ -263,16 +224,18 @@ def intrinsicEvaluation(tokenisers: List[BasicStringTokeniser],
         if verbose:
             print(name)
             wprint("\tMorph split accuracy:")
-        cm1, cm1_w = morphologyVersusTokenisation(MorphSplit(), tokenizer=t,
+        cm1, cm1_w = morphologyVersusTokenisation(morphologyGenerator(verbose=verbose),
+                                                  MorphSplit(), tokenizer=t,
                                                   weights=lemma_weights, holdout=holdout,
-                                                  do_write_errors=False, log_name=name, quiet=not verbose)
+                                                  do_write_fusions=False, log_name=name, quiet=not verbose)
 
         if do_whole_word:
             if verbose:
                 wprint("\tLemmatic split accuracy:")
-            cm2, cm2_w = morphologyVersusTokenisation(LexSplit(), tokenizer=t,
+            cm2, cm2_w = morphologyVersusTokenisation(morphologyGenerator(verbose=verbose),
+                                                      LexSplit(), tokenizer=t,
                                                       weights=lemma_weights, holdout=holdout,
-                                                      do_write_errors=False, log_name=name, quiet=not verbose)
+                                                      do_write_fusions=False, log_name=name, quiet=not verbose)
         else:
             cm2, cm2_w = None, None
         print()

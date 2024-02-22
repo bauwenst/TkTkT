@@ -10,7 +10,7 @@ Implementations adapted from my master's thesis (Bauwens, 2023). https://bauwens
 """
 from typing import List
 
-from ...interfaces.general import TokeniserWithVocab
+from ...interfaces.tokeniser import TokeniserWithVocab
 
 
 class L2R_Greedy(TokeniserWithVocab):

@@ -1,11 +1,7 @@
 from transformers import RobertaTokenizer
 
-from src.tktkt.preparation.spacemarking import ROBERTA_SPACING
-from src.tktkt.preparation.splitters import WordSplitter
-from src.tktkt.models.viterbi.framework import ViterbiTokeniser, ViterbiObjective
-from src.tktkt.models.viterbi.accumulators import Plus
+from src.tktkt.preparation.splitters import RobertaPretokeniser
 from src.tktkt.models.viterbi.objectives_guided import *
-from src.tktkt.models.viterbi.objectives_postprocessors import ConstrainVocabulary
 from src.tktkt.models.viterbi.instances import HFModelViterbi
 
 baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
@@ -15,9 +11,9 @@ checkpoint = "google/canine-c"  # By using a checkpoint that wasn't trained on t
 
 
 tk = HFModelViterbi(
-    WordSplitter(ROBERTA_SPACING),
-    15,
+    RobertaPretokeniser,
     vocab,
+    15,
     checkpoint,
     CanineTokenizer,
     CanineForTokenClassification
