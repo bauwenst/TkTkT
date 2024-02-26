@@ -1,17 +1,5 @@
 """
 Pretokenisation, i.e. splitting text into the units that will be tokenised separately.
-
-TODO:
-    - Punctuation splitting pretokenisation
-    - Unicode defines about 25 space characters. When you do byte mapping, they become one or more pseudos, but you
-      should split on them. It makes more sense to let regex split on them first and then byte-map. Problem: the thing
-      that splits is also the thing that adds a SoW and the SoW must not be encoded.
-        -> Actually, it should go like this:
-                0. split on non-hyphen punctuation and lose the information about the surrounding space
-                1. split on whitespace
-                2. bytemapping
-                3. add SoW/EoW
-                4. split on hyphens
 """
 from typing import List, Tuple
 from abc import ABC, abstractmethod
@@ -19,6 +7,8 @@ from enum import Enum
 
 from tokenizers import Regex
 from tokenizers import pre_tokenizers as tp
+from tokenizers import decoders as td
+from transformers import PreTrainedTokenizerFast
 from string import punctuation as BASIC_PUNCTUATION
 import re
 
@@ -106,7 +96,7 @@ class PunctuationPretokeniser(Pretokeniser):
         EXCLUDED = 2
         INCLUDED = 3
 
-    def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode"):
+    def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", grab_preceding_space: bool=False):
         punctuation_hyphens_only = "-–_"
         if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
             punctuation = punctuation_hyphens_only
@@ -121,7 +111,7 @@ class PunctuationPretokeniser(Pretokeniser):
                     punctuation = hyphen + punctuation  # Note: All of these will have effect.
 
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
-        self.core = tp.Split(pattern=Regex("[" + punctuation_escaped + "]+"), behavior="isolated")
+        self.core = tp.Split(pattern=Regex(" ?"*grab_preceding_space + "[" + punctuation_escaped + "]+"), behavior="isolated")
 
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.core.pre_tokenize_str(text)]
@@ -133,6 +123,12 @@ class PunctuationPretokeniser(Pretokeniser):
 class WhitespaceAndMarkerPretokeniser(Pretokeniser):
     """
     Splits on (and DESTROYS) consecutive whitespace, replacing it by a marker.
+
+    A general principle I adhere to is that the addition of space markings should NOT be signalled by the user text.
+    For example, the user should not have to put a space in front of his input to make the tokeniser put a marker
+    in front of the input.
+    If the user wants to control, for the same tokeniser, if a marker is added, it should be an argument to
+    the .prepareAndTokenise() method.
     """
 
     def __init__(self, replacement: SpaceMarker):
@@ -234,10 +230,17 @@ class WhitespacePretokeniser(Pretokeniser):
         pretokens = self.pattern.split(text)
         return [t for t in pretokens if t]
 
+    def invertToken(self, token: str) -> str:
+        return token
+
 
 class AddSpaceMarker(Pretokeniser):
     """
     Does not split text, but only adds a space marker, assuming the text in its entirety needs only one.
+
+    Is entirely insensitive to the presence of spaces. Using spaces as boundary markers is a bad idea for multiple
+    reasons, among which the fact that a text doesn't always start (for SoW) or end (for EoW) with a space, and that
+    punctuation sometimes removes preceding or succeeding space. A boundary is a boundary.
     """
 
     def __init__(self, marker: SpaceMarker):
@@ -271,3 +274,21 @@ class MapperAsPretokeniser(Pretokeniser):
 
     def invertToken(self, token: str) -> str:
         return self.core.invert(token)
+
+
+class HuggingFacePretokeniser(Pretokeniser):
+
+    def __init__(self, hf_model: PreTrainedTokenizerFast):
+        """
+        Steals the pretokeniser from a HuggingFace tokeniser.
+        Only possible for the "Fast" variants because some people don't know how to design a software system.
+        https://github.com/huggingface/transformers/issues/26254
+        """
+        self.encode: tp.PreTokenizer = hf_model.backend_tokenizer.pre_tokenizer
+        self.decode: td.Decoder      = hf_model.backend_tokenizer.decoder
+
+    def split(self, text: str) -> List[str]:
+        return [w for w, _ in self.encode.pre_tokenize_str(text)]
+
+    def invertToken(self, token: str) -> str:
+        return self.decode.decode([token])

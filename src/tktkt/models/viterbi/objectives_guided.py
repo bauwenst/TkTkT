@@ -167,12 +167,14 @@ class HuggingFaceCharacterModelForTokenClassification(CharacterClassifier):
     NOTE: Outputs log probabilities, not probabilities.
     """
 
-    def __init__(self, characters_to_model_input: CanineTokenizer, for_token_classification: CanineForTokenClassification):  # Sadly there is no generic "ForTokenClassification" type in HuggingFace's API, but any should work.
-        self.input_generator = characters_to_model_input
+    def __init__(self, characters_to_modelinput: CanineTokenizer, for_token_classification: CanineForTokenClassification,  # Sadly there is no generic "ForTokenClassification" type in HuggingFace's API, but any should work.
+                 input_kwargs: dict=None):
+        self.input_generator = characters_to_modelinput
         self.model           = for_token_classification
+        self.generator_args = input_kwargs or dict()
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
-        input_to_model = self.input_generator(pretoken, add_special_tokens=False, return_tensors="pt")
+        input_to_model = self.input_generator(pretoken, add_special_tokens=False, return_tensors="pt", **self.generator_args)
         with torch.no_grad():  # no_grad means all tensors returned don't have their gradient tracked, so you don't need to .detach() them before going to numpy.
             prediction: TokenClassifierOutput = self.model(**input_to_model)
 

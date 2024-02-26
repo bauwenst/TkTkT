@@ -47,11 +47,12 @@ class ProductViterbi(ViterbiTokeniser):
 class HFModelViterbi(ViterbiTokeniser):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
-                 huggingface_checkpoint: str, tokeniser_class: Type[PreTrainedTokenizer], model_class: Type[PreTrainedModel]):
+                 huggingface_checkpoint: str, tokeniser_class: Type[PreTrainedTokenizer], model_class: Type[PreTrainedModel], tokeniser_kwargs: dict=None):
         max_step = max_step or max(len(t) for t in vocab)
         probability_model = HuggingFaceCharacterModelForTokenClassification(
             tokeniser_class.from_pretrained(huggingface_checkpoint),
-            model_class.from_pretrained(huggingface_checkpoint)
+            model_class.from_pretrained(huggingface_checkpoint),
+            tokeniser_kwargs
         )
 
         super().__init__(preprocessor, max_step, objectives=[

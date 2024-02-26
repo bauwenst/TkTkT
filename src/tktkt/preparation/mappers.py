@@ -31,6 +31,12 @@ class Normaliser(TextMapper):
         return self.hf.normalize_str(text)
 
 
+class Stripper(TextMapper):
+
+    def convert(self, text: str) -> str:
+        return text.strip()
+
+
 #####################################################################
 
 
@@ -62,14 +68,18 @@ class IdentityMapper(InvertibleSequenceMapper):
         super().__init__([])
 
 
-class AddPrefixSpace(InvertibleTextMapper):
+class AppendSpace(InvertibleTextMapper):
+
+    def __init__(self, front_not_back: bool):
+        self.front = front_not_back
 
     def convert(self, text: str) -> str:
-        return " " + text
+        return " "*self.front + text + " "*(not self.front)
 
     def invert(self, text: str) -> str:
-        return text[1:]
-
+        trim_front = text[0].isspace() and self.front
+        trim_back  = text[-1].isspace() and not self.front
+        return text[trim_front : len(text) - trim_back]
 
 
 def bytes_to_unicode_documented():

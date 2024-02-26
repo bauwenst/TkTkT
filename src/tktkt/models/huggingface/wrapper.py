@@ -1,0 +1,37 @@
+from typing import List
+from copy import deepcopy
+
+from transformers import PreTrainedTokenizerFast
+import tokenizers.pre_tokenizers as tp
+from ...interfaces.tokeniser import Tokeniser, Preprocessor
+from ...preparation.splitters import HuggingFacePretokeniser
+from ...preparation.instances import HuggingFacePreprocessorForWords
+
+
+class HuggingFaceTokeniser(Tokeniser):
+    """
+    Takes a HuggingFace tokeniser and splits it into its pretokeniser and core tokeniser.
+    This way, the user can choose whether to apply the pretokeniser or not.
+    """
+
+    def __init__(self, wrapped_tokeniser: PreTrainedTokenizerFast, for_single_words: bool=False):
+        if not for_single_words:  # Copy whatever pretokeniser hangs onto the wrapped model.
+            preprocessor = Preprocessor(splitter=HuggingFacePretokeniser(wrapped_tokeniser))
+        else:  # Do that, but add additional components that ensure that all input is interpreted as a word, regardless of spacing.
+            preprocessor = HuggingFacePreprocessorForWords(wrapped_tokeniser)
+        super().__init__(preprocessor)
+
+        # Disable the wrapped tokeniser's pretokeniser. This means that calling .tokenize() now ignores the pretokeniser.
+        wrapped_tokeniser = deepcopy(wrapped_tokeniser)
+        wrapped_tokeniser.backend_tokenizer.pre_tokenizer = tp.Sequence([])
+        self.backend = wrapped_tokeniser
+
+    def tokenise(self, pretoken: str) -> List[str]:
+        """
+        Tokenises without pretokenisation.
+
+        Note that for HuggingFace tokenisers that had a byte-based pretokeniser originally, it is still aware of the
+        byte alphabet (possibly due to what's in the vocab) and DELETES every character it doesn't recognise.
+        No UNKs, just delete. For such tokenisers, you have to ensure manually that you don't use out-of-alphabet characters.
+        """
+        return self.backend.tokenize(pretoken)
