@@ -28,7 +28,8 @@ CommonsensePretokeniser = PretokeniserSequence([
     PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED),
     WhitespacePretokeniser(destructive=True),
     MapperAsPretokeniser(PseudoByteMapping()),
-    AddSpaceMarker(RobertaSpaceMarker),
+    AddWordBoundary(RobertaSpaceMarker),
+    IsolateDigits(),
     PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY)
 ])
 CommonsensePreprocessor = Preprocessor(Normaliser(tn.NFKC()), IdentityMapper(), CommonsensePretokeniser)

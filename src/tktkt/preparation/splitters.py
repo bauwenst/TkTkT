@@ -11,6 +11,7 @@ from tokenizers import decoders as td
 from transformers import PreTrainedTokenizerFast
 from string import punctuation as BASIC_PUNCTUATION
 import re
+import regex  # Has \p{} classes
 
 from .mappers import InvertibleTextMapper
 from ..preparation.spacemarking import SpaceMarker, SpaceMarkerLocation
@@ -234,7 +235,24 @@ class WhitespacePretokeniser(Pretokeniser):
         return token
 
 
-class AddSpaceMarker(Pretokeniser):
+class IsolateDigits(Pretokeniser):
+    """
+    Isolate all digits into single-character tokens. If you don't know why we need this, read
+    https://www.beren.io/2023-02-04-Integer-tokenization-is-insane/
+
+    Works for any language and any numerical character. Try e.g. ૪ (4 in Gujarati) or ௲ (1000 in Tamil) or ½.
+    Reference: https://character.construction/numbers
+    """
+
+    def __init__(self):
+        self.pattern = regex.compile(r"(\p{N})")
+
+    def split(self, text: str) -> List[str]:
+        pretokens = self.pattern.split(text)
+        return [t for t in pretokens if t]
+
+
+class AddWordBoundary(Pretokeniser):
     """
     Does not split text, but only adds a space marker, assuming the text in its entirety needs only one.
 
