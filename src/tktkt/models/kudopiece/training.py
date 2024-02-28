@@ -118,8 +118,9 @@ class KudoPieceTrainer:
         self.boundary_style = word_boundary_location
 
     def train_from_iterator(self, string_iterator: Iterable[str], is_wordfile: bool=False,
-                            strings_need_space_splitting: bool=False):
-        output_path = DataPaths.append(DataPaths.pathToModels(), self.stem)
+                            strings_need_space_splitting: bool=False) -> Path:
+        output_folder = DataPaths.append(DataPaths.pathToModels(), self.stem)
+        output_prefix = output_folder / (self.stem + time.strftime("_%F_%X").replace(":", "-"))
 
         sentencepiece.SentencePieceTrainer.Train(
             model_type="unigram",
@@ -129,7 +130,7 @@ class KudoPieceTrainer:
             input_format="tsv" if is_wordfile else "",
             max_sentence_length=MAXIMUM_SENTENCE_LENGTH,
             train_extremely_large_corpus=True,  # Why not, right?
-            model_prefix=(output_path / (self.stem + time.strftime("_%F_%X").replace(":", "-"))).as_posix(),
+            model_prefix=output_prefix.as_posix(),
 
             # Alphabet
             required_chars=self.alphabet.required_chars,
@@ -163,7 +164,9 @@ class KudoPieceTrainer:
             allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
         )
 
-    def train_from_wordfile(self, wordfile: Path):
+        return output_prefix.with_suffix(".model")
+
+    def train_from_wordfile(self, wordfile: Path) -> Path:
         """
         FIXME: Currently suffers from https://github.com/google/sentencepiece/issues/967
         """
@@ -187,4 +190,4 @@ class KudoPieceTrainer:
                     word = " "*(self.boundary_style == SpaceMarkerLocation.START) + word + " "*(self.boundary_style == SpaceMarkerLocation.END)
                     yield f"{word}\t{count}"
 
-        self.train_from_iterator(tsvGenerator(), is_wordfile=True, strings_need_space_splitting=False)
+        return self.train_from_iterator(tsvGenerator(), is_wordfile=True, strings_need_space_splitting=False)

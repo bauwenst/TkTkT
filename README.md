@@ -5,7 +5,76 @@ A collection of Pythonic subword tokenisers.
 The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast and with beatbox hi-hats
 (kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.
 
+## Installation
+Because this project relies on the `bpe_knockout` package, follow its installation instructions first. After that, 
+install [fiject](https://github.com/bauwenst/fiject#installation).
+
+After that, follow the exact same instructions as for `fiject` but for this package.
+
+## Architecture
+The goal of TkTkT is to provide a straightforward Pythonic interface for everything-tokenisation, and to be as object-oriented
+as possible. The main interfaces are found under `tktkt.interfaces`. 
+
+Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
+
+- The `Tokeniser` class has two important methods: 
+  - `.tokenise(pretoken: str) -> List[str]`: segments a string as-is into parts.
+  - `.prepareAndTokenise(text: str) -> List[str]`: applies the tokeniser's preprocessor and then tokenises each pre-token separately.
+
+- The `Preprocessor` class is a pipeline of three components: a non-invertible text mapping, an invertible text mapping, 
+  and a pretokeniser that splits strings into smaller strings.
+
+## Examples
+### KudoPiece (ULM)
+Let's say you want to train and load an English ULM tokeniser, which is notorious for being a convoluted process. 
+In TkTkT, that would go like this (note that ULM is called "KudoPiece" in TkTkT because it is a less ambiguous name):
+```python
+from tktkt.models.kudopiece.training import *
+from string import ascii_letters
+
+
+sentence_corpus = ...
+
+def train():
+    args_alpha = KudoPieceArguments_Alphabet(
+        required_chars=[l for l in ascii_letters], 
+        byte_fallback=True, 
+        character_coverage=0.9995
+    )
+    args_algo = KudoPieceArguments_Algorithm()
+
+    trainer = KudoPieceTrainer(
+        word_boundary_location=SpaceMarkerLocation.START,
+        final_vocab_size=40_000,
+        alphabet_arguments=args_alpha,
+        algorithm_arguments=args_algo,
+        file_stem="kudopiece_en"
+    )
+    return trainer.train_from_iterator(sentence_corpus, strings_need_space_splitting=True)
+
+
+from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
+from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
+
+def load(model_path: Path):    
+    preprocessor = Preprocessor(
+        IdentityMapper(), 
+        AppendSpace(front_not_back=True), 
+        IdentityPretokeniser()
+    )
+    return KudoPieceTokeniser(preprocessor, model_path)
+
+model_path = train()
+## The location of your model will look like this:
+# from tktkt.files.paths import DataPaths
+# model_path = DataPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_xxxx-yy-zz_aa-bb-cc.model"
+tk = load(model_path)
+```
+
 ## Why does this exist if we have HuggingFace `tokenizers`?
+First of all, note that *TkTkT* has backwards compatibility with HuggingFace `tokenizers`. There are wrapper classes for
+tokenisers and pretokenisers under `tktkt.models.huggingface`.
+
 Here's a non-exhaustive list of reasons:
 - The HuggingFace `tokenizers` library has horrifically un(der)documented Python interfaces, so programming with it is
   a nightmare. 
@@ -22,9 +91,11 @@ Here's a non-exhaustive list of reasons:
       because this deteriorates downstream performance for e.g. Germanic languages, where a compound has its head at the
       end and hence it should be allowed to tokenise the head with the exact same tokens as it would be if it was isolated. 
 - Weird holdovers like the `Precompiled` normaliser that allow even less insight into what's happening.
-- In the little documentation that does exist (e.g. for WordPiece and ULM), there are so many 
+- In the little documentation that does exist (e.g. for WordPiece and KudoPiece), there are so many 
   theoretical inaccuracies that we shouldn't even have confidence in anything that isn't a BPE tokeniser implemented by them. 
-  Their explanation for ULM, which was already poorly explained originally, is so wrong it is actually painful.
-- They offer very few core models (basically only BPE and KudoPiece, which [`sentencepiece`](github.com/google/sentencepiece) already offers)
+  Their [explanation for KudoPiece](https://huggingface.co/learn/nlp-course/chapter6/7), an algorithm which itself was 
+  already poorly explained originally, is so wrong it is actually painful.
+- They offer very few core models (basically only BPE and KudoPiece, which [`sentencepiece`](github.com/google/sentencepiece) already offers
+  and keeps much more updated)
   whilst there exist many more in the literature, and the likelihood that someone who knows the literature comes along to
   implement all of them in C++ is rather low.

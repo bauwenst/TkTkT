@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from transformers import PreTrainedTokenizer
 
 
-class HuggingfaceTokeniser(ABC, PreTrainedTokenizer):
+class HuggingFaceTokeniserProtocol(ABC, PreTrainedTokenizer):
 
     @abstractmethod
     def _tokenize(self, text, **kwargs):

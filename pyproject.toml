@@ -4,11 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tktkt"
-version = "2024.02.01"
+version = "2024.03.01"
 dependencies = [
-  "transformers",
-  "tokenizers",
-  "bpe_knockout"
+    "bpe_knockout",
+    "fiject",
+
+    "transformers",
+    "tokenizers",
+    "datasets",
+    "evaluate",
+
+    "sentencepiece",
+
+    "regex"
 ]
 requires-python = ">= 3.9"
 authors = [
