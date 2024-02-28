@@ -9,7 +9,7 @@ from bpe_knockout.datahandlers.holdout import Holdout
 from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 
 from ..util.printing import wprint
-from ..files.paths import getTkTkToutputPath
+from ..files.paths import DataPaths
 from ..interfaces.tokeniser import Tokeniser
 
 
@@ -125,8 +125,7 @@ def morphologyVersusTokenisation(morphological_generator: Iterable[LemmaMorpholo
     # Optional stuff
     weighted = weights is not None
     if do_write_fusions:
-        output_dir = getTkTkToutputPath() / "evaluation"
-        output_dir.mkdir(exist_ok=True)
+        output_dir = DataPaths.pathToEvaluations()
         log = open(output_dir / f"{log_name}_morpheme-fusions_{morphology_method.__name__}.txt", "w", encoding="utf-8")
 
     # Result storage

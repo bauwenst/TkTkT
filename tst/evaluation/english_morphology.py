@@ -67,7 +67,7 @@ from tktkt.preparation.instances import HuggingFacePreprocessorForWords
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.instances import HFModelViterbi, LeastTokenViterbi
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
-from tktkt.files.paths import relativeToCwd
+from tktkt.files.paths import relativeToCwd, DataPaths
 
 from tst.preamble import *
 
@@ -89,7 +89,7 @@ canine_viterbi = HFModelViterbi(
     HuggingFacePreprocessorForWords(english_bpe),
     vocab=english_bpe.get_vocab(),
     max_step=20,
-    huggingface_checkpoint=relativeToCwd(checkpoints_path / "CANINE-C_2024-02-12_19-35-28").as_posix(),
+    huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
     tokeniser_class=CanineTokenizer,
     model_class=CanineForTokenClassification,
 

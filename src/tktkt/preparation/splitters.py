@@ -251,6 +251,9 @@ class IsolateDigits(Pretokeniser):
         pretokens = self.pattern.split(text)
         return [t for t in pretokens if t]
 
+    def invertToken(self, token: str) -> str:
+        return token
+
 
 class AddWordBoundary(Pretokeniser):
     """

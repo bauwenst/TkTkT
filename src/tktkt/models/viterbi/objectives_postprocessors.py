@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 
 from ...interfaces.tokeniser import Vocab
@@ -21,6 +23,20 @@ class ConstrainVocabulary(ViterbiStepScoreGenerator):
                 if string[n:n+(k+1)] not in self.vocab:
                     grid.set(n,k, self.default)
         return grid
+
+    def getAllPossibleSegmentations(self, string: str, max_k: int) -> List[List[str]]:
+        N = len(string)
+        segmentations_to_here = [[] for _ in range(N+1)]
+        segmentations_to_here[0].append("")
+        for n in range(N):
+            for segmentation_so_far in segmentations_to_here[n]:
+                K = min(max_k, N-n)  # K is the amount of steps. When you're in front of character n == N-1, i.e. the last character, there is N-n == 1 more step.
+                for k in range(K):
+                    step = string[n:n+(k+1)]
+                    if step in self.vocab:
+                        segmentations_to_here[n+k+1].append(segmentation_so_far + " "*(segmentation_so_far != "") + step)
+
+        return [segmentation.split(" ") for segmentation in segmentations_to_here[N]]
 
 
 class ConvertToProbabilities(ViterbiStepScoreGenerator):

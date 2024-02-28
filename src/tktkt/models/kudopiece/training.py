@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import List, Iterable
 from dataclasses import dataclass
 
+import time
 import sentencepiece
-from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter
+from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter, iterateWordsFile
 
 from ...preparation.spacemarking import SpaceMarkerLocation
+from ...files.paths import DataPaths
 
 MAXIMUM_SENTENCE_LENGTH = 4192
 
@@ -67,6 +69,7 @@ class KudoPieceTrainer:
         I/O
             --input_sentence_size (maximum amount of sentences the trainer loads)  type: std::uint64_t default: 0
             --max_sentence_length (maximum length of sentence in byte; longer are just ignored)  type: int32 default: 4192
+            --input_format (Input format. Supported format is `text` or `tsv` (string-tab-count iteration.)  type: std::string default: ""
             --train_extremely_large_corpus (Increase bit depth for unigram tokenization.)  type: bool default: false
 
             --model_prefix (output model prefix)  type: std::string default: ""
@@ -114,15 +117,19 @@ class KudoPieceTrainer:
 
         self.boundary_style = word_boundary_location
 
-    def train_from_iterator(self, string_iterator: Iterable[str], needs_space_splitting: bool=False):
+    def train_from_iterator(self, string_iterator: Iterable[str], is_wordfile: bool=False,
+                            strings_need_space_splitting: bool=False):
+        output_path = DataPaths.append(DataPaths.pathToModels(), self.stem)
+
         sentencepiece.SentencePieceTrainer.Train(
             model_type="unigram",
 
             #  I/O
             sentence_iterator=string_iterator,
+            input_format="tsv" if is_wordfile else "",
             max_sentence_length=MAXIMUM_SENTENCE_LENGTH,
             train_extremely_large_corpus=True,  # Why not, right?
-            model_prefix=self.stem,
+            model_prefix=(output_path / (self.stem + time.strftime("_%F_%X").replace(":", "-"))).as_posix(),
 
             # Alphabet
             required_chars=self.alphabet.required_chars,
@@ -151,18 +158,33 @@ class KudoPieceTrainer:
             remove_extra_whitespaces=False,
             split_by_unicode_script=False,
             split_by_number=False,
-            split_by_whitespace=needs_space_splitting,
+            split_by_whitespace=strings_need_space_splitting,
             split_digits=False,
             allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
         )
 
     def train_from_wordfile(self, wordfile: Path):
-        def wordGenerator():
-            for word, count in wordsFileToCounter(wordfile).items():
-                word = " " + word
-                words_per_sentence = MAXIMUM_SENTENCE_LENGTH // len(word)
-                n_sentences = (count*len(word) - 1) // MAXIMUM_SENTENCE_LENGTH + 1
-                for _ in range(n_sentences):
-                    yield word*words_per_sentence
+        """
+        FIXME: Currently suffers from https://github.com/google/sentencepiece/issues/967
+        """
+        # def corpusGenerator():
+        #     for word, count in wordsFileToCounter(wordfile).items():
+        #         word = " " + word
+        #         words_per_sentence = MAXIMUM_SENTENCE_LENGTH // len(word)
+        #         characters_per_sentence = words_per_sentence*len(word)
+        #         if characters_per_sentence == 0:  # Can't make progress by iterating
+        #             continue
+        #
+        #         n_sentences = (count*len(word) - 1) // characters_per_sentence + 1
+        #         for _ in range(n_sentences):
+        #             yield word*words_per_sentence
+        def tsvGenerator():
+            """
+            SentencePiece supports word files!
+            """
+            with open(wordfile, "r", encoding="utf-8") as handle:
+                for word, count in iterateWordsFile(handle):
+                    word = " "*(self.boundary_style == SpaceMarkerLocation.START) + word + " "*(self.boundary_style == SpaceMarkerLocation.END)
+                    yield f"{word}\t{count}"
 
-        self.train_from_iterator(wordGenerator(), needs_space_splitting=True)
+        self.train_from_iterator(tsvGenerator(), is_wordfile=True, strings_need_space_splitting=False)

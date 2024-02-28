@@ -28,20 +28,16 @@ import torch
 import evaluate
 
 from bpe_knockout.project.config import morphologyGenerator, setupEnglish, TemporaryContext
-
-from ...files.paths import setTkTkToutputRoot, getTkTkToutputPath, PATH_ROOT
 from fiject.hooks.transformers import FijectCallback, EvaluateBeforeTrainingCallback
-PATH_DATA_OUT = PATH_ROOT / "data" / "out"  ### TODO: Should use CWD since the package should be installable without -e
 
-from fiject import setFijectOutputFolder
-setFijectOutputFolder(PATH_DATA_OUT)  # TODO: You should centralise this, but you should NOT put this in paths.py because then other libraries that use TkTkT will have their Fiject setting be altered.
+from ...files.paths import DataPaths
 
 
 ##################################
 MAX_TRAINING_EPOCHS = 20
 BATCH_SIZE = 32
 EVALS_PER_EPOCH = 9
-EVALS_OF_PATIENCE = 3
+EVALS_OF_PATIENCE = 9
 
 BATCHES_WARMUP = 1000  # The RoBERTa paper's finetuning does warmup for the first 6% of all batches. Since this script converges after like 10k, 1k batches is conservative.
 LEARNING_RATE = 2e-5
@@ -98,10 +94,7 @@ def train():
     global_model_identifier = CHECKPOINT.split("/")[-1].upper() + "_" + time.strftime("%F_%X").replace(":", "-")
 
     # Set up paths for checkpointing
-    setTkTkToutputRoot(PATH_DATA_OUT)
-    output_goes_under_here = getTkTkToutputPath()  # runs a mkdir
-    PATH_CHECKPOINTS = output_goes_under_here / "checkpoints" / global_model_identifier
-    PATH_CHECKPOINTS.mkdir(exist_ok=True, parents=True)
+    PATH_CHECKPOINTS = DataPaths.append(DataPaths.pathToCheckpoints(), global_model_identifier)
 
     # Get dataset
     datasetdict = dataloaderFromIterable(datasetOutOfContext())
