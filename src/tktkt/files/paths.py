@@ -18,14 +18,19 @@ def setTkTkToutputRoot(path: Path):
 def relativePath(path1: Path, path2: Path):
     """
     How do I get from path1 to path2?
-    Note: definitely won't work for all path pairs. Just works here.
+    TODO: Doesn't work if you have different disks.
     """
     result = ""
-    for i in range(min(len(path1.parts), len(path2.parts))):
+    L = min(len(path1.parts), len(path2.parts))
+    for i in range(L):
         if path1.parts[i] != path2.parts[i]:
             result += "../"*len(path1.parts[i:])
             result += "/".join(path2.parts[i:])
             break
+    else:  # One path is a prefix of the other. Below, the slice [L:] will be empty for one or both of them.
+        result += "../"*len(path1.parts[L:])
+        result += "/".join(path2.parts[L:])
+
     return Path(result)
 
 

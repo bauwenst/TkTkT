@@ -85,12 +85,15 @@ class BoundaryLogProbability(ScoreGeneratorUsingCharacterClassifier):
 
 class SymmetricBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
     """
-    For Viterbi paths that maximise the score on the character boundaries they hit.
+    For Viterbi paths that maximise the score on the character boundaries they hit, but with symmetric rewards for
+    the decision to put a boundary somewhere or not.
 
-    Uses transformed probabilities that are supposed to be summed, where making the wrong decision can be balanced out
-    by making the right decision in a comparable situation.
-    For example: two points have 70% and 30% probability of being a boundary. You say both are boundaries, then the
-                 reward is ( 2*0.7-1 ) + ( 2*(0.3)-1 ) = 0.4 + (-0.4) = 0.
+    Making the wrong decision can be balanced out by making the right decision in a comparable situation: e.g., take two
+    points have 70% and 30% probability of being a boundary. You say both are boundaries, then the
+    reward is ( 2*0.7-1 ) + ( 2*(0.3)-1 ) = 0.4 + (-0.4) = 0.
+
+    I stress again: the scores have been converted OUT OF the log domain into the probability domain, but they should
+    STILL be summed, not multiplied.
     """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
