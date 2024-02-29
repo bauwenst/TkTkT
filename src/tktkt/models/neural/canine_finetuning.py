@@ -94,7 +94,7 @@ def train():
     global_model_identifier = CHECKPOINT.split("/")[-1].upper() + "_" + time.strftime("%F_%X").replace(":", "-")
 
     # Set up paths for checkpointing
-    PATH_CHECKPOINTS = DataPaths.append(DataPaths.pathToCheckpoints(), global_model_identifier)
+    canine_output_directory = DataPaths.append(DataPaths.pathToCheckpoints(), global_model_identifier)
 
     # Get dataset
     datasetdict = dataloaderFromIterable(datasetOutOfContext())
@@ -114,7 +114,7 @@ def train():
     # Training arguments
     interval = (len(datasetdict["train"]) // BATCH_SIZE) // EVALS_PER_EPOCH
     training_args = TrainingArguments(
-        output_dir=PATH_CHECKPOINTS.as_posix(),
+        output_dir=canine_output_directory.as_posix(),
 
         # Training
         num_train_epochs=MAX_TRAINING_EPOCHS,
@@ -175,6 +175,10 @@ def train():
     trainer.train()
     trainer.save_model()
     print(trainer.evaluate())
+
+    # Also save the tokeniser, which will be loaded with the same checkpoint identifier afterwards.
+    # This is done automatically if you give the tokeniser to the Trainer, but then a bunch of side-effects are applied.
+    tokenizer.save_pretrained(save_directory=canine_output_directory.as_posix())
 
 
 metrics = evaluate.combine([

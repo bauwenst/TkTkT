@@ -3,9 +3,6 @@ Guided score functions. These are informed by knowledge of the language, e.g. mo
 token appearing at all (with or without considering context), or models that estimate the probability of a split point.
 
 TODO: Two more ideas:
-    - Does the amount of steps you take influence the average score you get? I'm guessing yes, because for example, you
-      get equal reward for making one wrong split to get to the end as for making a wrong split, a right split and a
-      wrong split. BUT WHAT IF YOU MAKE NO SPLIT? What's the score of using the subword that captures an entire string?
     - Also note that there is still quite a big difference between a StringClassifier and the idea of turning a CharacterClassifier
       into a StringClassifier, which is that a StringClassifier normalises across all possible steps from length 1 to K
       that you can take (e.g. a softmax over the vocab, although you lose mass due to the indicator function) whilst if

@@ -59,7 +59,7 @@ class HFPointViterbi(ViterbiTokeniser):
         )
 
         # The thing that uses probabilities to create Viterbi scores
-        if symmetric_scores:
+        if not symmetric_scores:
             if cumulative_objective:
                 generator_class = BoundaryAndNonBoundaryLogProbability
             else:
