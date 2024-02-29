@@ -20,13 +20,13 @@ class LeastTokenViterbi(ViterbiTokeniser):
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=0,
-                score_generator=ConstrainVocabulary(MinimiseTokenAmount(), vocab, reset_value=-INFTY),
-                score_combiner=Plus()
+                score_generator=ConstrainVocabulary(ConstantScore(), vocab, reset_value=+INFTY),
+                score_combiner=ScoreSubtract()
             ),
             ViterbiObjective(
                 initial_score=0,
-                score_generator=ConstrainVocabulary(MaximiseTokenLength(), vocab, reset_value=-INFTY),
-                score_combiner=Max()
+                score_generator=ConstrainVocabulary(TokenLength(), vocab, reset_value=-INFTY),
+                score_combiner=ScoreMax()
             )
         ])
 
@@ -38,15 +38,15 @@ class ProductViterbi(ViterbiTokeniser):
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=1,
-                score_generator=ConstrainVocabulary(MaximiseTokenLength(), vocab, reset_value=0),
-                score_combiner=Times()
+                score_generator=ConstrainVocabulary(TokenLength(), vocab, reset_value=0),
+                score_combiner=ScoreProduct()
             )
         ])
 
 
-class HFModelViterbi(ViterbiTokeniser):
+class HFPointViterbi(ViterbiTokeniser):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int], simple_objective: bool,
                  huggingface_checkpoint: str, tokeniser_class: Type[PreTrainedTokenizer], model_class: Type[PreTrainedModel], tokeniser_kwargs: dict=None):
         max_step = max_step or max(len(t) for t in vocab)
         probability_model = HuggingFaceCharacterModelForTokenClassification(
@@ -58,7 +58,9 @@ class HFModelViterbi(ViterbiTokeniser):
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=0,
-                score_generator=ConstrainVocabulary(MaximiseSplitsOnBoundaries(probability_model), vocab, reset_value=-INFTY),
-                score_combiner=Plus()
+                score_generator=ConstrainVocabulary(
+                    BoundaryLikelihood(probability_model) if simple_objective else BoundaryAndNonBoundaryLikelihood(probability_model),
+                    vocab, reset_value=-INFTY),
+                score_combiner=ScoreSum()
             )
         ])

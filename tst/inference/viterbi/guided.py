@@ -2,7 +2,7 @@ from transformers import RobertaTokenizer
 
 from src.tktkt.preparation.splitters import RobertaPretokeniser
 from src.tktkt.models.viterbi.objectives_guided import *
-from src.tktkt.models.viterbi.instances import HFModelViterbi
+from src.tktkt.models.viterbi.instances import HFPointViterbi
 
 baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
 vocab = baseline.get_vocab()
@@ -10,7 +10,7 @@ vocab = baseline.get_vocab()
 checkpoint = "google/canine-c"  # By using a checkpoint that wasn't trained on tokenisation, you'll get random boundary probabilities, so all this doesn't say much.
 
 
-tk = HFModelViterbi(
+tk = HFPointViterbi(
     RobertaPretokeniser,
     vocab,
     15,

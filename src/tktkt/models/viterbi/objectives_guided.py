@@ -2,20 +2,20 @@
 Guided score functions. These are informed by knowledge of the language, e.g. models that estimate the probability of a
 token appearing at all (with or without considering context), or models that estimate the probability of a split point.
 
-TODO: Now make these compatible with a subword vocabulary... I have a feeling that I should implement this as a
-      general post-processing step, e.g. in a superclass between ViterbiStepScoreGenerator and the classes below.
-      It's not really that difficult: any step that isn't in a given vocab, gets zero probability or -INFTY likelihood.
-      |
-      Actually, for the segment classifier class, it's likely that the class itself will handle this, because it just
-      doesn't even have a vague suggestion for the probability of a non-existing subword, and they don't normalise over
-      the domain of all strings but only the existing subwords.
-      |
-      For the point classifiers, it likely also isn't a problem, because there the probabilities are all in the binary
-      domain. A split point has a baseline probability that is collected by any step that reaches it, UNLESS that step
-      doesn't exist in the subword vocab. Indeed, the same split point now has two probabilities associated with it
-      rather than one: its actual probability, and 0, depending on the step. Works out fine!
+TODO: Two more ideas:
+    - Does the amount of steps you take influence the average score you get? I'm guessing yes, because for example, you
+      get equal reward for making one wrong split to get to the end as for making a wrong split, a right split and a
+      wrong split. BUT WHAT IF YOU MAKE NO SPLIT? What's the score of using the subword that captures an entire string?
+    - Could/should you not do 2*P-1 for the BoundaryAndNonBoundary scores?
+    - Also note that there is still quite a big difference between a StringClassifier and the idea of turning a CharacterClassifier
+      into a StringClassifier, which is that a StringClassifier normalises across all possible steps from length 1 to K
+      that you can take (e.g. a softmax over the vocab, although you lose mass due to the indicator function) whilst if
+      you use boundary probabilities, you're only going to be normalised for each of the 2^k boundary configurations of
+      a fixed length k.
 
-TODO: Why the fuck did you make such a high-key dogshit naming convention bro
+FIXME: There is something really wacky going on with both of my score grids.
+    - The one that "works", possibly isn't stepping to the end of the string, but might be off by 1.
+    - The one that doesn't work clearly needs a limit on k.
 """
 from typing import List, MutableSequence
 from abc import abstractmethod
@@ -60,7 +60,7 @@ class StringClassifier:
 #############################################################################################
 
 
-class MaximiseSplitsOnBoundaries(ViterbiStepScoreGenerator):
+class BoundaryLikelihood(ViterbiStepScoreGenerator):
     """
     For Viterbi paths that maximise the score on the character boundaries they hit.
     Should be used with sum.
@@ -86,6 +86,8 @@ class MaximiseSplitsOnBoundaries(ViterbiStepScoreGenerator):
         is invisible.
         """
         boundary_scores = [2*np.exp(ln)-1 for ln in self.model.getPointLogProbabilities(string)]  # one entry for each character
+        # boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
+
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
@@ -96,10 +98,13 @@ class MaximiseSplitsOnBoundaries(ViterbiStepScoreGenerator):
         return scores
 
 
-class MaximiseSplitsEverywhere(ViterbiStepScoreGenerator):
+class BoundaryAndNonBoundaryLikelihood(ViterbiStepScoreGenerator):
     """
     Uses point boundaries, assumed to be independent, to compute segment probabilities.
-    Should be used with product, or be ln'd and be used with sum.
+    Should be used with sum accumulation since scores are in log space.
+
+    FIXME: It's actually not obvious if summing is appropriate, because it could be that in log space, being 40% sure
+           of a boundary results in a much bigger punishment than the reward of being 60% sure of a boundary.
     """
 
     def __init__(self, point_model: CharacterClassifier):
@@ -113,6 +118,9 @@ class MaximiseSplitsEverywhere(ViterbiStepScoreGenerator):
             P(boundary after char 2 | abcdef)*P(no boundary after char 1 | abcdef)*P(no boundary after char 0 | abcdef)
 
         Computations are done in log space and with addition, to keep numerical stability.
+
+        There's a funky equivalence here: you could convert the CharacterClassifier into a StringClassifier first, and
+        then use that StringClassifier with its usual grid generator.
         """
         boundary_log_probabilities = self.model.getPointLogProbabilities(string)  # one entry for each character
         N = len(string)

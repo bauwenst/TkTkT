@@ -65,7 +65,7 @@ from bpe_knockout.project.config import TemporaryContext, setupEnglish, Pℛ𝒪
 
 from tktkt.preparation.instances import HuggingFacePreprocessorForWords
 from tktkt.evaluation.morphological import intrinsicEvaluation
-from tktkt.models.viterbi.instances import HFModelViterbi, LeastTokenViterbi
+from tktkt.models.viterbi.instances import HFPointViterbi, LeastTokenViterbi
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 from tktkt.files.paths import relativeToCwd, DataPaths
 
@@ -83,22 +83,24 @@ compressive_viterbi = LeastTokenViterbi(
     max_step=20
 )
 
-canine_viterbi = HFModelViterbi(
+canine_viterbi = HFPointViterbi(
     # HuggingFacePreprocessorForWords(robbert_tokenizer),  # The preprocessor that maps any string into the space of the vocabulary used.
     # vocab=robbert_tokenizer.get_vocab(),                 # The vocabulary that limits Viterbi steps.
-    HuggingFacePreprocessorForWords(english_bpe),
+    preprocessor=HuggingFacePreprocessorForWords(english_bpe),
+
     vocab=english_bpe.get_vocab(),
     max_step=20,
+    simple_objective=False,  # TODO Hasn't been tested yet.
+
     huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
     tokeniser_class=CanineTokenizer,
     model_class=CanineForTokenClassification,
-
     tokeniser_kwargs={"padding": "max_length", "max_length": 4}  # This is necessary for CANINE because it needs an input of size at least 4. This isn't a problem in fine-tuning because there we're not sending in single examples but 32 at once and collating.
 )
 
 tokenisers_to_evaluate = [
     # english_bpe_interface,
-    compressive_viterbi,
+    # compressive_viterbi,
     canine_viterbi,
 ]
 
