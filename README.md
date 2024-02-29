@@ -6,10 +6,9 @@ The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast a
 (kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.
 
 ## Installation
-Because this project relies on the `bpe_knockout` package, follow its installation instructions first. After that, 
-install [fiject](https://github.com/bauwenst/fiject#installation).
-
-After that, follow the exact same instructions as for `fiject` but for this package.
+1. Create an editable install for [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout) using the instructions given in its repo.
+2. Install [`fiject`](https://github.com/bauwenst/fiject#installation).
+3. Follow the exact same instructions as for `fiject`, but for this repo.
 
 ## Architecture
 The goal of TkTkT is to provide a straightforward Pythonic interface for everything-tokenisation, and to be as object-oriented
@@ -29,13 +28,22 @@ Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
 Let's say you want to train and load an English ULM tokeniser, which is notorious for being a convoluted process. 
 In TkTkT, that would go like this (note that ULM is called "KudoPiece" in TkTkT because it is a less ambiguous name):
 ```python
+from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
+from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
+
+def load(model_path: Path):    
+    preprocessor = Preprocessor(
+        IdentityMapper(), 
+        AppendSpace(front_not_back=True), 
+        IdentityPretokeniser()
+    )
+    return KudoPieceTokeniser(preprocessor, model_path)
+
+
 from tktkt.models.kudopiece.training import *
 from string import ascii_letters
 
-
-sentence_corpus = ...
-
-def train():
+def train(sentence_corpus: Iterable[str]):
     args_alpha = KudoPieceArguments_Alphabet(
         required_chars=[l for l in ascii_letters], 
         byte_fallback=True, 
@@ -53,22 +61,16 @@ def train():
     return trainer.train_from_iterator(sentence_corpus, strings_need_space_splitting=True)
 
 
-from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
-from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
+if __name__ == "__main__":
+    your_corpus = ...
 
-def load(model_path: Path):    
-    preprocessor = Preprocessor(
-        IdentityMapper(), 
-        AppendSpace(front_not_back=True), 
-        IdentityPretokeniser()
-    )
-    return KudoPieceTokeniser(preprocessor, model_path)
+    model_path = train(your_corpus)
+    ## The location of your model will look like this:
+    # from tktkt.files.paths import DataPaths
+    # model_path = DataPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_xxxx-yy-zz_aa-bb-cc.model"
+    tk = load(model_path)
 
-model_path = train()
-## The location of your model will look like this:
-# from tktkt.files.paths import DataPaths
-# model_path = DataPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_xxxx-yy-zz_aa-bb-cc.model"
-tk = load(model_path)
+    print(tk.prepareAndTokenise("Hello there, my good friend!"))
 ```
 
 ## Why does this exist if we have HuggingFace `tokenizers`?
