@@ -26,6 +26,12 @@ Evaluate any tokeniser on English morphology.
 		F1:        0.6673861579167247
     which is respectively +4%, +5%, +4% on BPE-knockout. Still oversegmenting, but the precision and F1 are better!
 
+    The F1 goes up ever-so-slightly by using log likelihood for boundaries AND non-boundaries:
+		Precision: 0.5703759458067583
+		Recall:    0.8045822855546242
+		F1:        0.6675321062636191
+
+
     TODO: Does this outperform BPE-knockout-reify?
     TODO: Now do it with ULM vocab.
 
@@ -38,6 +44,7 @@ Evaluate any tokeniser on English morphology.
 		WW-Precision: 0.1464619594132401
 		WW-Recall:    0.8368558193398957
 		WW-F1:        0.249293861445913
+
 
 TODO: There are two issues with our CANINE evaluation.
     1. I'm not sure if it got special tokens during pretraining, and it is likely not a good idea to leave them out in
@@ -90,7 +97,8 @@ canine_viterbi = HFPointViterbi(
 
     vocab=english_bpe.get_vocab(),
     max_step=20,
-    simple_objective=False,  # TODO Hasn't been tested yet.
+    cumulative_objective=False,
+    symmetric_scores=True,
 
     huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
     tokeniser_class=CanineTokenizer,

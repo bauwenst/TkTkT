@@ -6,16 +6,11 @@ TODO: Two more ideas:
     - Does the amount of steps you take influence the average score you get? I'm guessing yes, because for example, you
       get equal reward for making one wrong split to get to the end as for making a wrong split, a right split and a
       wrong split. BUT WHAT IF YOU MAKE NO SPLIT? What's the score of using the subword that captures an entire string?
-    - Could/should you not do 2*P-1 for the BoundaryAndNonBoundary scores?
     - Also note that there is still quite a big difference between a StringClassifier and the idea of turning a CharacterClassifier
       into a StringClassifier, which is that a StringClassifier normalises across all possible steps from length 1 to K
       that you can take (e.g. a softmax over the vocab, although you lose mass due to the indicator function) whilst if
       you use boundary probabilities, you're only going to be normalised for each of the 2^k boundary configurations of
       a fixed length k.
-
-FIXME: There is something really wacky going on with both of my score grids.
-    - The one that "works", possibly isn't stepping to the end of the string, but might be off by 1.
-    - The one that doesn't work clearly needs a limit on k.
 """
 from typing import List, MutableSequence
 from abc import abstractmethod
@@ -60,23 +55,51 @@ class StringClassifier:
 #############################################################################################
 
 
-class BoundaryLikelihood(ViterbiStepScoreGenerator):
+class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
+    
+    def __init__(self, point_model: CharacterClassifier):
+        self.model = point_model
+
+
+class BoundaryLogProbability(ScoreGeneratorUsingCharacterClassifier):
     """
     For Viterbi paths that maximise the score on the character boundaries they hit.
+
+    Uses log probabilities, so hitting low probabilities is disproportionately punished.
     Should be used with sum.
     """
 
-    def __init__(self, point_model: CharacterClassifier):
-        self.model = point_model
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        boundary_scores = self.model.getPointLogProbabilities(string)  # one entry for each character
+        boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
+
+        N = len(string)
+        scores = ViterbiStepScores(N, max_k, default=0)
+        for n in range(N):
+            K = min(max_k, N-n)  # Explained elsewhere.
+            for k in range(K):
+                scores.set(n,k, boundary_scores[n+k])  # Explained elsewhere
+
+        return scores
+
+
+class SymmetricBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
+    """
+    For Viterbi paths that maximise the score on the character boundaries they hit.
+
+    Uses transformed probabilities that are supposed to be summed, where making the wrong decision can be balanced out
+    by making the right decision in a comparable situation.
+    For example: two points have 70% and 30% probability of being a boundary. You say both are boundaries, then the
+                 reward is ( 2*0.7-1 ) + ( 2*(0.3)-1 ) = 0.4 + (-0.4) = 0.
+    """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
         """
         Point models give a probability of each character having a split point after it or not.
 
         Here we want a Viterbi path to accumulate as much of this probability mass as possible (hit all the predicted
-        boundaries), but disincentivise cheating by oversegmenting (which would, indeed, collect all boundary
-        probability, without being punished for collecting 0s).
-
+        boundaries), but disincentivise cheating by oversegmenting. If you would sum probabilities of just the boundaries,
+        oversegmenting would cause you to collect all boundary probability, without being punished for collecting 0s.
         Hence, the probabilities are rescaled by 2*P - 1: you are rewarded for stepping on a boundary and you are
         punished for stepping on a non-boundary. I suspect this will need a tiebreaker objective.
 
@@ -86,29 +109,26 @@ class BoundaryLikelihood(ViterbiStepScoreGenerator):
         is invisible.
         """
         boundary_scores = [2*np.exp(ln)-1 for ln in self.model.getPointLogProbabilities(string)]  # one entry for each character
-        # boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
+        boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
 
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
-            K = min(max_k, N-n-1)  # Example: you are at n == 5 and there are N == 7 characters, meaning only n == 6 remains to walk to. Hence, there is K == 1 step available.
+            K = min(max_k, N-n)  # Example: you are at n == 5 and there are N == 7 characters. This means you still need to include character 5 and 6 in the segmentation, using the probabilities at n+0 and n+1. Hence, there are K == N-n steps available.
             for k in range(K):
                 scores.set(n,k, boundary_scores[n+k])  # Example: you are at n == 0. For k == 1, you take the second-smallest step, to 2. The probability of hitting a boundary by doing so is the probability of a boundary being after 1 == n+k.
 
         return scores
 
 
-class BoundaryAndNonBoundaryLikelihood(ViterbiStepScoreGenerator):
+class BoundaryAndNonBoundaryLogProbability(ScoreGeneratorUsingCharacterClassifier):
     """
     Uses point boundaries, assumed to be independent, to compute segment probabilities.
     Should be used with sum accumulation since scores are in log space.
 
-    FIXME: It's actually not obvious if summing is appropriate, because it could be that in log space, being 40% sure
-           of a boundary results in a much bigger punishment than the reward of being 60% sure of a boundary.
+    Mathematically speaking, this should be the most accurate, since maximising this objective maximises the joint
+    distribution across all possible split points.
     """
-
-    def __init__(self, point_model: CharacterClassifier):
-        self.model = point_model
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
         """
@@ -123,15 +143,48 @@ class BoundaryAndNonBoundaryLikelihood(ViterbiStepScoreGenerator):
         then use that StringClassifier with its usual grid generator.
         """
         boundary_log_probabilities = self.model.getPointLogProbabilities(string)  # one entry for each character
+        boundary_log_probabilities[-1] = 0
+
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
-            for k in range(max_k):
-                log_probability = boundary_log_probabilities[n+k]  # This is like in the previous class.
+            K = min(max_k, N-n)  # Like above.
+            for k in range(K):
+                log_probability = boundary_log_probabilities[n+k]  # Like above.
                 for i in range(k):
                     logp = boundary_log_probabilities[n+i]
                     log_probability += np.log(1-np.exp(logp))  # ln(1-p) == ln(1 - e^(ln p))
                 scores.set(n, k, log_probability)
+
+        return scores
+
+
+class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
+    """
+    Equivalent to BoundaryAndNonBoundaryLogProbability with the 2*P-1 transform applied before accumulating across points.
+    Still for summing.
+    """
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        """
+        Note that accumulation happens differently here because you need a different formula for getting the score of a
+        complement. For a probability P, the complement is 1-P, the log probability of its complement is ln(1 - e^(ln p)),
+        whilst the symmetric probability of its complement is a negation: 2*(1-P)-1 = 2-2*P-1 = 1-2*P = -(2*P-1).
+        """
+        boundary_scores = [2*np.exp(ln)-1 for ln in self.model.getPointLogProbabilities(string)]  # one entry for each character
+        boundary_scores[-1] = 0
+
+        N = len(string)
+        scores = ViterbiStepScores(N, max_k, default=0)
+        for n in range(N):
+            K = min(max_k, N-n)  # Like above.
+            for k in range(K):
+                cumulative_score = boundary_scores[n+k]  # Like above.
+                for i in range(k):
+                    sp_i = boundary_scores[n+i]
+                    sp_i_comp = -sp_i
+                    cumulative_score += sp_i_comp
+                scores.set(n, k, cumulative_score)
 
         return scores
 
