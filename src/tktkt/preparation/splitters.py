@@ -18,6 +18,25 @@ from ..preparation.spacemarking import SpaceMarker, SpaceMarkerLocation
 
 
 class Pretokeniser(ABC):
+    """
+    A note on the design of pretokenisers: you want pretokenisers to be invertible to get back to a single string, but
+    especially with sequentially applied pretokenisers, this is ill-defined (because fundamentally, list.extend isn't
+    invertible). There are three ways you can implement un-splitting:
+
+            1. "".join(map(invertOne, tokens)) or
+            2. "".join(invertMany(tokens)) or
+            3. invertString("".join(tokens))
+
+    This matters because for example, the ALBERT ULM decoder is something like "".join(tokens).replace("_", " ").strip(),
+    which means that inverting single tokens can never produce spaces. Spaces are only protected when they appear
+    in tokens that are surrounded by other tokens during decoding. This is an example of an invertMany, like all HuggingFace pretokenisers.
+
+    1 and 3 are special cases of 2, where respectively
+        invertMany(tokens) == map(invertOne, tokens)
+        invertMany(tokens) == [invertString("".join(tokens))]
+    A class may elect to use such implementations.
+    """
+
     @abstractmethod
     def split(self, text: str) -> List[str]:
         """
@@ -27,24 +46,30 @@ class Pretokeniser(ABC):
         pass
 
     @abstractmethod
-    def invertToken(self, token: str) -> str:
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        """
+        Invert any string transformations applied in the process of splitting a string into pretokens.
+        May also apply a merging operation into a smaller list if that is appropriate.
+        """
+        pass  # For example, [invertToken(t) for t in tokens], but you should make this explicit because it's not necessarily the case.
+
+    def invertToken(self, pretoken: str) -> str:
         """
         Takes (part of) a pretoken and undoes any character transformations that were applied during pretokenisation.
         Tricky, because this isn't necessarily possible: for example, if you mapped from 1 Unicode charactere to >1 bytes,
         and the tokeniser separated those bytes into separate tokens, converting one token at a time will not work.
-
-        TODO: You should probably have a flag that decides whether you should join inverted tokens or invert joined tokens.
         """
-        pass
+        return "".join(self.invertTokens([pretoken]))
 
     def unsplit(self, tokens: List[str]) -> str:
         """
         Inverts the splitting operation.
         """
-        return "".join(map(self.invertToken, tokens))
+        return "".join(self.invertTokens(tokens))
 
 
 class PretokeniserSequence(Pretokeniser):
+
     def __init__(self, sub_pretokenisers: List[Pretokeniser]):
         self.sequence = sub_pretokenisers
 
@@ -59,13 +84,10 @@ class PretokeniserSequence(Pretokeniser):
 
         return current_pretokens
 
-    def invertToken(self, token: str) -> str:
-        """
-        TODO: Clearly this isn't how you should invert a sequence of split-then-map transformations.
-        """
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
         for pretokeniser in reversed(self.sequence):
-            token = pretokeniser.invertToken(token)
-        return token
+            pretokens = pretokeniser.invertTokens(pretokens)
+        return pretokens
 
 
 class IdentityPretokeniser(Pretokeniser):
@@ -73,8 +95,8 @@ class IdentityPretokeniser(Pretokeniser):
     def split(self, text: str) -> List[str]:
         return [text]
 
-    def invertToken(self, token: str) -> str:
-        return token
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return pretokens
 
 
 class PunctuationPretokeniser(Pretokeniser):
@@ -117,8 +139,8 @@ class PunctuationPretokeniser(Pretokeniser):
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.core.pre_tokenize_str(text)]
 
-    def invertToken(self, token: str) -> str:
-        return token
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return pretokens
 
 
 class WhitespaceAndMarkerPretokeniser(Pretokeniser):
@@ -203,8 +225,11 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
 
         return root, marker
 
-    def invertToken(self, token: str) -> str:
-        return token.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
+    def invertToken(self, pretoken: str) -> str:
+        return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return [self.invertToken(p) for p in pretokens]
 
     @staticmethod
     def intercalate(lst: list, new_element):
@@ -231,8 +256,8 @@ class WhitespacePretokeniser(Pretokeniser):
         pretokens = self.pattern.split(text)
         return [t for t in pretokens if t]
 
-    def invertToken(self, token: str) -> str:
-        return token
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return pretokens
 
 
 class IsolateDigits(Pretokeniser):
@@ -251,8 +276,8 @@ class IsolateDigits(Pretokeniser):
         pretokens = self.pattern.split(text)
         return [t for t in pretokens if t]
 
-    def invertToken(self, token: str) -> str:
-        return token
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return pretokens
 
 
 class AddWordBoundary(Pretokeniser):
@@ -277,8 +302,11 @@ class AddWordBoundary(Pretokeniser):
         else:
             return [text]
 
-    def invertToken(self, token: str) -> str:
-        return token.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
+    def invertToken(self, pretoken: str) -> str:
+        return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return [self.invertToken(p) for p in pretokens]
 
 
 class MapperAsPretokeniser(Pretokeniser):
@@ -293,8 +321,11 @@ class MapperAsPretokeniser(Pretokeniser):
     def split(self, text: str) -> List[str]:
         return [self.core.convert(text)]
 
-    def invertToken(self, token: str) -> str:
-        return self.core.invert(token)
+    def invertToken(self, pretoken: str) -> str:
+        return self.core.invert(pretoken)
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return [self.invertToken(p) for p in pretokens]
 
 
 class HuggingFacePretokeniser(Pretokeniser):
@@ -311,8 +342,8 @@ class HuggingFacePretokeniser(Pretokeniser):
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.encode.pre_tokenize_str(text)]
 
-    def invertToken(self, token: str) -> str:
-        return self.decode.decode([token])
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return self.decode.decode(pretokens)
 
     @staticmethod
     def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFacePretokeniser":

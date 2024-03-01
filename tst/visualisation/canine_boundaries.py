@@ -1,11 +1,13 @@
 from tktkt.evaluation.morphological import tokeniseAndDecode, morphologyGenerator
-from tst.evaluation.english_morphology import canine_viterbi, TemporaryContext, setupEnglish
+from tst.evaluation.english_morphology import make_CanineViterbiBPE, TemporaryContext, setupEnglish
 
 from tktkt.visualisation.neural.splitpoints_probabilities import *
 
 # Path setup
 from tktkt.files.paths import from_pretrained_absolutePath, DataPaths
 from tst.preamble import *
+
+canine_viterbi = make_CanineViterbiBPE()
 
 # Classifier setup
 from tktkt.models.viterbi.objectives_guided import HuggingFaceCharacterModelForTokenClassification, CanineTokenizer, CanineForTokenClassification
@@ -24,7 +26,7 @@ def some_examples():
 
 
 def celex_errors():
-    classifier = canine_viterbi.objectives[0].score_generator.nested_generator.model  # Is set up for small inputs, unlike the above classifier.
+    classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier  # Is set up for small inputs, unlike the above classifier.
 
     with TemporaryContext(setupEnglish()):
         for obj in morphologyGenerator(verbose=False):

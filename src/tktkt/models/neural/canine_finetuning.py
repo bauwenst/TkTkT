@@ -13,7 +13,7 @@ About model choice, according to J.H. Clark via personal correspondence:
 #                 the characters part of the word of interest. Much richer data. Would be loaded completely differently
 #                 though (OSCAR but filtered by checking if any word is in the lemma set, and with labels constructed
 #                 by padding the given labels with long sequences of -100).
-#
+
 # TODO: There's something to be said for having a split point before the first character and after the last character.
 #       This way, the model will better learn compound boundaries.
 import re
@@ -45,6 +45,7 @@ L2_REGULARISATION = 0.01
 MAX_INPUT_LENGTH_CANINE = 2048
 
 CHECKPOINT = "google/canine-c"
+DATASET_CONFIG = setupEnglish()
 ##################################
 
 
@@ -54,7 +55,7 @@ def datasetOutOfContext():
     BAR = "|"
     FIND_BAR = re.compile(re.escape(BAR))
 
-    with TemporaryContext(setupEnglish()):
+    with TemporaryContext(DATASET_CONFIG):
         for obj in morphologyGenerator():
             splitstring = obj.morphSplit()
             split_indices = [match.start() // 2 for match in FIND_BAR.finditer(" ".join(splitstring).replace("   ", BAR))]
@@ -91,7 +92,7 @@ def dataloaderFromIterable(iterable):
 
 
 def train():
-    global_model_identifier = CHECKPOINT.split("/")[-1].upper() + "_" + time.strftime("%F_%X").replace(":", "-")
+    global_model_identifier = CHECKPOINT.split("/")[-1].upper() + "_morph-" + DATASET_CONFIG.langTag() + "_" + time.strftime("%F_%X").replace(":", "-")
 
     # Set up paths for checkpointing
     canine_output_directory = DataPaths.append(DataPaths.pathToCheckpoints(), global_model_identifier)
@@ -173,7 +174,7 @@ def train():
     print("======================")
 
     trainer.train()
-    trainer.save_model()
+    trainer.save_model()  # FIXME: We don't actually know IF this saves (it might not due to file existing), WHAT it saves (might be the last i.o. best checkpoint) or WHERE it saves (is it the top-level folder or the checkpoint-1234 folder?).
     print(trainer.evaluate())
 
     # Also save the tokeniser, which will be loaded with the same checkpoint identifier afterwards.

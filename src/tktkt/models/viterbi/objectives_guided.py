@@ -55,7 +55,7 @@ class StringClassifier:
 class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
     
     def __init__(self, point_model: CharacterClassifier):
-        self.model = point_model
+        self.logprob_classifier = point_model
 
 
 class BoundaryLogProbability(ScoreGeneratorUsingCharacterClassifier):
@@ -67,7 +67,7 @@ class BoundaryLogProbability(ScoreGeneratorUsingCharacterClassifier):
     """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_scores = self.model.getPointLogProbabilities(string)  # one entry for each character
+        boundary_scores = self.logprob_classifier.getPointLogProbabilities(string)  # one entry for each character
         boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
 
         N = len(string)
@@ -108,7 +108,7 @@ class SymmetricBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
         easy to see when you take the ln, where you are now punished by -INFTY if you get it wrong but getting it right
         is invisible.
         """
-        boundary_scores = [2*np.exp(ln)-1 for ln in self.model.getPointLogProbabilities(string)]  # one entry for each character
+        boundary_scores = [2*np.exp(ln) - 1 for ln in self.logprob_classifier.getPointLogProbabilities(string)]  # one entry for each character
         boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
 
         N = len(string)
@@ -142,7 +142,7 @@ class BoundaryAndNonBoundaryLogProbability(ScoreGeneratorUsingCharacterClassifie
         There's a funky equivalence here: you could convert the CharacterClassifier into a StringClassifier first, and
         then use that StringClassifier with its usual grid generator.
         """
-        boundary_log_probabilities = self.model.getPointLogProbabilities(string)  # one entry for each character
+        boundary_log_probabilities = self.logprob_classifier.getPointLogProbabilities(string)  # one entry for each character
         boundary_log_probabilities[-1] = 0
 
         N = len(string)
@@ -173,7 +173,7 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
         complement. For a probability P, the complement is 1-P, the log probability of its complement is ln(1 - e^(ln p)),
         whilst the symmetric probability of its complement is a negation: 2*(1-P)-1 = 2-2*P-1 = 1-2*P = -(2*P-1).
         """
-        boundary_scores = [2*np.exp(ln)-1 for ln in self.model.getPointLogProbabilities(string)]  # one entry for each character
+        boundary_scores = [2*np.exp(ln) - 1 for ln in self.logprob_classifier.getPointLogProbabilities(string)]  # one entry for each character
         boundary_scores[-1] = 0
 
         N = len(string)
@@ -235,6 +235,8 @@ class HuggingFaceCharacterModelForTokenClassification(CharacterClassifier):
         self.input_generator = characters_to_modelinput
         self.model           = for_token_classification
         self.generator_args = input_kwargs or dict()
+
+        # FIXME: Wait, shouldn't we run model.to("cuda") at some point? Have we been inferencing on the CPU this whole time?!
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         input_to_model = self.input_generator(pretoken, add_special_tokens=False, return_tensors="pt", **self.generator_args)
