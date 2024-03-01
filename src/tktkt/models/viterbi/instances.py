@@ -59,16 +59,16 @@ class HFPointViterbi(ViterbiTokeniser):
         )
 
         # The thing that uses probabilities to create Viterbi scores
-        if not symmetric_scores:
-            if cumulative_objective:
-                generator_class = BoundaryAndNonBoundaryLogProbability
-            else:
-                generator_class = BoundaryLogProbability
-        else:
+        if symmetric_scores:
             if cumulative_objective:
                 generator_class = SymmetricBoundaryAndNonBoundaryProbability
             else:
                 generator_class = SymmetricBoundaryProbability
+        else:
+            if cumulative_objective:
+                generator_class = BoundaryAndNonBoundaryLogProbability
+            else:
+                generator_class = BoundaryLogProbability
 
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(

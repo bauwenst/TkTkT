@@ -53,7 +53,7 @@ def steps():
 
 def roberttest():
     mine = RobertaPreprocessor
-    hf   = Preprocessor(splitter=HuggingFacePretokeniser(robbert_tokenizer))
+    hf   = Preprocessor(splitter=HuggingFacePretokeniser.fromFullTokeniser(robbert_tokenizer))
 
     s = "hello (this is an) ex-ample...! Hawai'i, I've missed "
     print(mine.do(s))
@@ -63,7 +63,7 @@ def roberttest():
 def backendcall():
     s = " Hello supercalifragilistic (this is an) ëx-ample...! Hawai'i, I've missed 的 a lot "
 
-    old_pre = HuggingFacePretokeniser(robbert_tokenizer)
+    old_pre = HuggingFacePretokeniser.fromFullTokeniser(robbert_tokenizer)
     print("Pretokens original:", old_pre.split(s))
     print("->", robbert_tokenizer.tokenize(s))
 

@@ -299,17 +299,21 @@ class MapperAsPretokeniser(Pretokeniser):
 
 class HuggingFacePretokeniser(Pretokeniser):
 
-    def __init__(self, hf_model: PreTrainedTokenizerFast):
+    def __init__(self, encoder: tp.PreTokenizer, decoder: td.Decoder):
         """
         Steals the pretokeniser from a HuggingFace tokeniser.
         Only possible for the "Fast" variants because some people don't know how to design a software system.
         https://github.com/huggingface/transformers/issues/26254
         """
-        self.encode: tp.PreTokenizer = hf_model.backend_tokenizer.pre_tokenizer
-        self.decode: td.Decoder      = hf_model.backend_tokenizer.decoder
+        self.encode: tp.PreTokenizer = encoder
+        self.decode: td.Decoder      = decoder
 
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.encode.pre_tokenize_str(text)]
 
     def invertToken(self, token: str) -> str:
         return self.decode.decode([token])
+
+    @staticmethod
+    def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFacePretokeniser":
+        return HuggingFacePretokeniser(hf_model.backend_tokenizer.pre_tokenizer, hf_model.backend_tokenizer.decoder)

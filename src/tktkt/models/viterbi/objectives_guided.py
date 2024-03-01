@@ -163,6 +163,8 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
     """
     Equivalent to BoundaryAndNonBoundaryLogProbability with the 2*P-1 transform applied before accumulating across points.
     Still for summing.
+
+    TODO: Is this mathematically equivalent to only considering boundaries with SymmetricBoundaryProbability?!
     """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
@@ -181,7 +183,7 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
             for k in range(K):
                 cumulative_score = boundary_scores[n+k]  # Like above.
                 for i in range(k):
-                    sp_i = boundary_scores[n+i]
+                    sp_i      = boundary_scores[n+i]
                     sp_i_comp = -sp_i
                     cumulative_score += sp_i_comp
                 scores.set(n, k, cumulative_score)

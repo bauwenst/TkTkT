@@ -3,9 +3,12 @@ from copy import deepcopy
 
 from transformers import PreTrainedTokenizerFast
 import tokenizers.pre_tokenizers as tp
+import tokenizers.normalizers as tn
+
 from ...interfaces.tokeniser import Tokeniser, Preprocessor
 from ...preparation.splitters import HuggingFacePretokeniser
-from ...preparation.instances import HuggingFacePreprocessorForWords
+from ...preparation.instances import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
+from ...preparation.mappers import HuggingFaceNormaliser
 
 
 class HuggingFaceTokeniser(Tokeniser):
@@ -16,13 +19,14 @@ class HuggingFaceTokeniser(Tokeniser):
 
     def __init__(self, wrapped_tokeniser: PreTrainedTokenizerFast, for_single_words: bool=False):
         if not for_single_words:  # Copy whatever pretokeniser hangs onto the wrapped model.
-            preprocessor = Preprocessor(splitter=HuggingFacePretokeniser(wrapped_tokeniser))
+            preprocessor = HuggingFacePreprocessor(wrapped_tokeniser)
         else:  # Do that, but add additional components that ensure that all input is interpreted as a word, regardless of spacing.
             preprocessor = HuggingFacePreprocessorForWords(wrapped_tokeniser)
         super().__init__(preprocessor)
 
-        # Disable the wrapped tokeniser's pretokeniser. This means that calling .tokenize() now ignores the pretokeniser.
+        # Disable the wrapped tokeniser's preprocessing steps. This means that calling .tokenize() now ignores the pretokeniser.
         wrapped_tokeniser = deepcopy(wrapped_tokeniser)
+        wrapped_tokeniser.backend_tokenizer.normalizer    = tn.Sequence([])
         wrapped_tokeniser.backend_tokenizer.pre_tokenizer = tp.Sequence([])
         self.backend = wrapped_tokeniser
 

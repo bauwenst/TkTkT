@@ -35,7 +35,16 @@ CommonsensePretokeniser = PretokeniserSequence([
     IsolateDigits(),
     PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY)
 ])
-CommonsensePreprocessor = Preprocessor(Normaliser(tn.NFKC()), IdentityMapper(), CommonsensePretokeniser)
+CommonsensePreprocessor = Preprocessor(HuggingFaceNormaliser(tn.NFKC()), IdentityMapper(), CommonsensePretokeniser)
+
+
+class HuggingFacePreprocessor(Preprocessor):
+
+    def __init__(self, hf_model: PreTrainedTokenizerFast):
+        super().__init__(
+            uninvertible_mapping=HuggingFaceNormaliser.fromFullTokeniser(hf_model),
+            splitter=HuggingFacePretokeniser.fromFullTokeniser(hf_model)
+        )
 
 
 class HuggingFacePreprocessorForWords(Preprocessor):
@@ -56,9 +65,12 @@ class HuggingFacePreprocessorForWords(Preprocessor):
 
     def __init__(self, hf_model: PreTrainedTokenizerFast):
         super().__init__(
-            uninvertible_mapping=Stripper(),
+            uninvertible_mapping=SequenceMapper([
+                HuggingFaceNormaliser.fromFullTokeniser(hf_model),
+                Stripper()  # Whatever the HF normaliser does, we want to control all space.
+            ]),
             splitter=PretokeniserSequence([
-                MapperAsPretokeniser(AppendSpace(front_not_back=True)),
-                HuggingFacePretokeniser(hf_model)
+                MapperAsPretokeniser(AppendSpace(front_not_back=True)),  # We know the HF pretokeniser uses spaces as word boundary, so we add it first.
+                HuggingFacePretokeniser.fromFullTokeniser(hf_model)
             ])
         )

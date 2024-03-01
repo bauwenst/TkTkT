@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List
 
 import tokenizers.normalizers as tn
+from transformers import PreTrainedTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import bytes_to_unicode
 
 
@@ -22,7 +23,7 @@ class SequenceMapper(TextMapper):
         return text
 
 
-class Normaliser(TextMapper):
+class HuggingFaceNormaliser(TextMapper):
 
     def __init__(self, core: tn.Normalizer):
         self.hf = core
@@ -30,11 +31,21 @@ class Normaliser(TextMapper):
     def convert(self, text: str) -> str:
         return self.hf.normalize_str(text)
 
+    @staticmethod
+    def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFaceNormaliser":
+        return HuggingFaceNormaliser(hf_model.backend_tokenizer.normalizer)
+
 
 class Stripper(TextMapper):
 
     def convert(self, text: str) -> str:
         return text.strip()
+
+
+class Lowercaser(TextMapper):
+
+    def convert(self, text: str) -> str:
+        return text.lower()
 
 
 #####################################################################
