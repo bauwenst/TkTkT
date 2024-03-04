@@ -1,6 +1,5 @@
 import numpy as np
-from pathlib import Path
-import os
+
 
 from ...models.viterbi.objectives_guided import CharacterClassifier
 
@@ -22,9 +21,12 @@ def floatToUnicode(f: float) -> str:
         return "▉"
 
 
+def getPredictionProbabilities(classifier: CharacterClassifier, word: str):
+    return np.exp(classifier.getPointLogProbabilities(word))
+
+
 def visualisePredictedBoundaries(classifier: CharacterClassifier, word: str):
-    logprobs = classifier.getPointLogProbabilities(word)
-    probs = np.exp(logprobs)
+    probs = getPredictionProbabilities(classifier, word)
 
     result = ""
     separators = list(map(floatToUnicode, probs))

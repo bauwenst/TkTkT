@@ -3,7 +3,10 @@ Guided score functions. These are informed by knowledge of the language, e.g. mo
 token appearing at all (with or without considering context), or models that estimate the probability of a split point.
 
 TODO: Two more ideas:
-    - Also note that there is still quite a big difference between a StringClassifier and the idea of turning a CharacterClassifier
+    - Can you make "symmetric probabilities" asymmetric by stretching the positive and negative halves by a different
+      factor (or, as an easier alternative, by moving the min and max)? This way, you could tune precision vs. recall
+      by giving a split such a high reward that two bad splits are tolerable to get there (would be a [-1,+3] range).
+    - There is still quite a big difference between a StringClassifier and the idea of turning a CharacterClassifier
       into a StringClassifier, which is that a StringClassifier normalises across all possible steps from length 1 to K
       that you can take (e.g. a softmax over the vocab, although you lose mass due to the indicator function) whilst if
       you use boundary probabilities, you're only going to be normalised for each of the 2^k boundary configurations of
@@ -224,6 +227,8 @@ class GoldSplits(CharacterClassifier):
 
 from transformers.models.canine.modeling_canine import CanineForTokenClassification, TokenClassifierOutput
 from transformers.models.canine.tokenization_canine import CanineTokenizer
+from ...util.environment import DEVICE
+
 
 class HuggingFaceCharacterModelForTokenClassification(CharacterClassifier):
     """
@@ -236,15 +241,16 @@ class HuggingFaceCharacterModelForTokenClassification(CharacterClassifier):
         self.model           = for_token_classification
         self.generator_args = input_kwargs or dict()
 
-        # FIXME: Wait, shouldn't we run model.to("cuda") at some point? Have we been inferencing on the CPU this whole time?!
+        self.model.to(DEVICE)  # Speeds up inference about 2x to 4x on VSC. This call is in-place, unlike for tensors. https://stackoverflow.com/a/59560101/9352077
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         input_to_model = self.input_generator(pretoken, add_special_tokens=False, return_tensors="pt", **self.generator_args)
         with torch.no_grad():  # no_grad means all tensors returned don't have their gradient tracked, so you don't need to .detach() them before going to numpy.
+            input_to_model = {k: v.to(DEVICE) for k,v in input_to_model.items()}
             prediction: TokenClassifierOutput = self.model(**input_to_model)
 
         chars_by_classes = prediction.logits.squeeze()  # Remove batch dimension (because it has size 1).
         normalisation_constants = torch.logsumexp(chars_by_classes, dim=1)  # Note that normalisation happens not OVER characters, but PER character. It happens over two binary classes, N times.
         positive_logits = chars_by_classes[:,1]
         logprobabilities = positive_logits - normalisation_constants
-        return logprobabilities.numpy()
+        return logprobabilities.cpu().numpy()  # Always need to go to CPU to cast down to numpy.

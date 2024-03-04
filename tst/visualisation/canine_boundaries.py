@@ -1,21 +1,21 @@
-from tktkt.evaluation.morphological import tokeniseAndDecode, morphologyGenerator
-from tst.evaluation.english_morphology import make_CanineViterbiBPE, TemporaryContext, setupEnglish
+from tst.preamble import *
+from tst.evaluation.english_morphology import make_CanineViterbiBPE, TemporaryContext, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
+from tktkt.evaluation.morphological import tokeniseAndDecode, morphologyGenerator
 from tktkt.visualisation.neural.splitpoints_probabilities import *
 
-# Path setup
-from tktkt.files.paths import from_pretrained_absolutePath, DataPaths
-from tst.preamble import *
+from fiject import MultiHistogram, CacheMode
 
-canine_viterbi = make_CanineViterbiBPE()
-
-# Classifier setup
-from tktkt.models.viterbi.objectives_guided import HuggingFaceCharacterModelForTokenClassification, CanineTokenizer, CanineForTokenClassification
-tk   = CanineTokenizer.from_pretrained("google/canine-c")
-core = from_pretrained_absolutePath(CanineForTokenClassification, DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28")
-classifier = HuggingFaceCharacterModelForTokenClassification(tk, core)
 
 def some_examples():
+    # Classifier setup
+    from tktkt.files.paths import from_pretrained_absolutePath, DataPaths
+    from tktkt.models.viterbi.objectives_guided import HuggingFaceCharacterModelForTokenClassification, CanineTokenizer, CanineForTokenClassification
+    tk = CanineTokenizer.from_pretrained("google/canine-c")
+    core = from_pretrained_absolutePath(CanineForTokenClassification,
+                                        DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28")
+    classifier = HuggingFaceCharacterModelForTokenClassification(tk, core)
+
     words = [" establishmentarianism", " rainbow-coloured", " superbizarre", " algebraically", " ascertainably",
              " barelegged", " behaviourism", " chauvinistically", " maladministration",
              " ethnographically", " good-neighbourliness", " heavy-handedness",
@@ -26,7 +26,9 @@ def some_examples():
 
 
 def celex_errors():
-    classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier  # Is set up for small inputs, unlike the above classifier.
+    # Easier way of getting the classifier, which is also set up for inputs of length < 4, unlike the above.
+    canine_viterbi = make_CanineViterbiBPE()
+    classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
     with TemporaryContext(setupEnglish()):
         for obj in morphologyGenerator(verbose=False):
@@ -56,5 +58,23 @@ def celex_errors():
                 ))
 
 
+def celex_probabilityDistribution():
+    """
+    Produces a histogram of all the predictions made by the character classifier.
+    This way, we can visually verify whether most decisions are certain or whether most decisions are ambiguous.
+    """
+    canine_viterbi = make_CanineViterbiBPE()
+    classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
+
+    histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
+    if histo.needs_computation:
+        for obj in morphologyGenerator():
+            histo.addMany("predictions", getPredictionProbabilities(classifier, obj.lemma()))
+
+    histo.commit_histplot(binwidth=0.05, relative_counts=True, x_lims=(-0.25,1.025), x_tickspacing=0.1,
+                          x_label="Predicted boundary probability", y_label="Proportion of words")
+
+
 if __name__ == "__main__":
-    celex_errors()
+    # celex_errors()
+    celex_probabilityDistribution()

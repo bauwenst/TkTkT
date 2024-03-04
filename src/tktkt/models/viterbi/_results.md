@@ -59,3 +59,25 @@ in whole-word boundary recall by 5%:
     WW-Recall:    0.8368558193398957
     WW-F1:        0.249293861445913
 
+
+Using symmetric probability (joint or not) and a ULM vocabulary:
+    Precision: 0.583957433992571
+    Recall:    0.8126292260407936
+    F1:        0.6795724049301947
+
+    WW-Precision: 0.13169360505973296
+    WW-Recall:    0.9494788650839606
+    WW-F1:        0.2313049918008217
+
+...which is even better than anything BPE had, confirming that the vocab is the bottleneck.
+
+The joint log probability has a lower precision and F1 this time:
+    Precision: 0.5824413277045277
+    Recall:    0.8133836267113719
+    F1:        0.6788075223560411
+
+And again, scores are worst for boundary-only log probabilities:
+    Precision: 0.5452460090819718
+    Recall:    0.6508521933500978
+    F1:        0.5933869981658856
+	

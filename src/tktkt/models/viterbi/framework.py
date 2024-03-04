@@ -127,7 +127,7 @@ class ViterbiTokeniser(Tokeniser):
         # 2. Walk forwards through the graphs.
         t = ViterbiTrellis(N+1, self.objectives)  # N+1 because there is a node (node index N) after the whole string.
         for n in range(N):
-            clipped_K = min(K, N-n)  # There are K jumps by default, but when you're at e.g. node n == N-1, there is only 1 jump to do.
+            clipped_K = min(K, N-n)  # There are K jumps by default, but when you're at e.g. node n == N-1 (i.e. in front of the last character), there is only 1 jump to do.
             for k in range(clipped_K):
                 offered_objective_values = tuple([o.score_combiner.combine(t.best_objectives[n][i], graphs[i].get(n, k))
                                                   for i,o in enumerate(self.objectives)])

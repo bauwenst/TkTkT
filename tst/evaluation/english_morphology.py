@@ -1,9 +1,8 @@
 """
 Evaluate any tokeniser on English morphology.
 
-TODO: Do we need model.to("cuda")?
 TODO: We don't have numbers for English BPE-knockout-reify yet.
-TODO: Viterbi with ULM vocab (of ALBERT, which is English).
+TODO: How are you going to test lossy segmentation?
 
 TODO: There are two issues with our CANINE evaluation.
     1. I'm not sure if it got special tokens during pretraining, and it is likely not a good idea to leave them out in
