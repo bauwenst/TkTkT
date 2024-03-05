@@ -1,30 +1,22 @@
 # Evaluation results
 
 ## English morphology
-CANINE with boundary-only symmetric probabilities (2*P-1) performs as follows:
-		Precision: 0.20260564287554753
-		Recall:    0.46133255106156723
-		F1:        0.2815580695334967
-That can't be right... Something buggy is happening. There is too much intelligence in this model for it to do so poorly
-given that BPE does it much better and is dumb.
+To beat is BPE-knockout, which does Pr=53%, Re=75%, F1=62% on morphs and .
 
-Yup. The bug is that although the Viterbi is doing everything properly, the pretokeniser undo() is stripping characters off of tokens.
-It's AppendSpace that's doing this.
-We predicted that this would happen, because this was originally applied to pretokens (append 1 space to a pretoken that
-will be split in the future) whilst now it is applied to EVERY token. Indeed, there are pretokenisation steps that
-should only be applied after re-concatenating the tokens (except you don't know how much to concatenate them... messy!).
-
-After a quick fix, it's now
-    Precision: 0.43320889909887733
-    Recall:    0.8851913942442023
-    F1:        0.5817243690381102
-which is respectively -10%, +13% and -4% over English BPE-knockout (53%, 75%, 62%). Clearly oversegmenting...
-Aha, but we were using RobBERT's vocabulary for Viterbi steps, which is a Dutch vocabulary, not English!
-With English BPE vocabulary:
+### BPE vocabulary
+**CANINE with boundary-only symmetric probabilities** (2*P-1) and English BPE vocabulary as constraint:
     Precision: 0.5707395498392283
     Recall:    0.8034367141659682
     F1:        0.6673861579167247
 which is respectively +4%, +5%, +4% on BPE-knockout.
+
+The vocabulary does matter a lot. The character model by itself does 92% on all metrics, and if you switch to a Dutch
+vocabulary (RobBERT's) with the same objective, you get
+    Precision: 0.43320889909887733
+    Recall:    0.8851913942442023
+    F1:        0.5817243690381102
+which is respectively -10%, +13% and -4% over English BPE-knockout, clearly oversegmenting into small tokens because the
+bigger meaningful tokens are unknown to it.
 
 We have three model alternatives:
     - Symmetric probabilities but using the joint (i.e. also counting the non-boundaries);
@@ -49,7 +41,7 @@ Using joint log probabilities, which is probabilistically the most sound, actual
     WW-Recall:    0.9428199189345686
     WW-F1:        0.22695752169216296
 
-Token-minimising Viterbi performs markedly worse, with (no surprise) way worse recall:
+**Token-minimising Viterbi** performs markedly worse, with (no surprise) way worse recall:
     Precision: 0.4559803399964531
     Recall:    0.5028778988544286
     F1:        0.47828224445595985
@@ -59,8 +51,8 @@ in whole-word boundary recall by 5%:
     WW-Recall:    0.8368558193398957
     WW-F1:        0.249293861445913
 
-
-Using symmetric probability (joint or not) and a ULM vocabulary:
+### ULM vocabulary
+Using **CANINE with symmetric probability** (joint or not) and a ULM vocabulary:
     Precision: 0.583957433992571
     Recall:    0.8126292260407936
     F1:        0.6795724049301947
@@ -81,3 +73,14 @@ And again, scores are worst for boundary-only log probabilities:
     Recall:    0.6508521933500978
     F1:        0.5933869981658856
 	
+Using **prefix rewards** causes even worse performance, with particularly the recall being absolutely terrible.
+    Precision: 0.43075429390415865
+    Recall:    0.5206482257613858
+    F1:        0.47145441435059265
+Possibly a tiebreaker objective is needed, or perhaps there is too much reward given to matching the largest prefix
+and nothing else.
+
+In fact, just using **least-token** Viterbi with ULM vocabulary does better:
+    Precision: 0.5097098186675902
+    Recall:    0.5756915339480302
+    F1:        0.5406951569942136

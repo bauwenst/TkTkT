@@ -1,8 +1,8 @@
-from tktkt.models.viterbi.objectives_postprocessors import ConstrainVocabulary
+from tktkt.models.viterbi.objectives_postprocessors import VocabularyConstraintExact
 from tst.evaluation.english_morphology import make_CanineViterbiBPE
 
 canine_viterbi = make_CanineViterbiBPE()
-vocab_manager: ConstrainVocabulary = canine_viterbi.objectives[0].score_generator
+vocab_manager: VocabularyConstraintExact = canine_viterbi.objectives[0].score_generator
 s = "accumulatively"
 
 print("Enumerating...")

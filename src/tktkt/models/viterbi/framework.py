@@ -35,11 +35,15 @@ from abc import abstractmethod
 import numpy as np
 
 from ...interfaces.tokeniser import Tokeniser, Preprocessor
+from ...util.printing import gridify, transpose
 
 INFTY = float("inf")
 
 
 class ViterbiStepScores:
+    """
+    Stores, at index (n,k), the score gained from stepping k+1 characters starting BEFORE character n.
+    """
 
     def __init__(self, N: int, K: int, default=0):
         self.grid = np.full(shape=(N,K), fill_value=default, dtype=np.float32)
@@ -51,13 +55,43 @@ class ViterbiStepScores:
         self.grid[n,k] = value
 
     def __repr__(self):
-        return self.grid.T.__repr__()
+        with np.printoptions(linewidth=200):
+            return self.grid.T.__repr__()
+
+
+class ViterbiStepScoresWithTokens(ViterbiStepScores):
+    """
+    Optional subclass that allows storing a token alongside a step. This way, you can replace the Viterbi path by custom
+    strings that cannot be concatenated to invert the tokenisation into the original string.
+
+    One obvious example of such degenerate tokenisation is the CELEX dataset itself.
+    """
+
+    def __init__(self, N: int, K: int, default=0):
+        super().__init__(N, K, default)
+        self.tokens = [["---" for _ in range(K)] for _ in range(N)]  # If you see the default anywhere, something is really wrong.
+
+    def getToken(self, n: int, k: int) -> str:
+        return self.tokens[n][k]
+
+    def setToken(self, n: int, k: int, step: str):
+        self.tokens[n][k] = step
+
+    def __repr__(self):
+        return gridify(transpose(self.tokens)) + "\n" + super().__repr__()
 
 
 class ViterbiStepScoreGenerator:
 
     @abstractmethod
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        pass
+
+
+class ViterbiStepScoreGeneratorWithTokens(ViterbiStepScoreGenerator):
+
+    @abstractmethod
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScoresWithTokens:
         pass
 
 
@@ -112,10 +146,14 @@ class ViterbiTokeniser(Tokeniser):
     """
 
     def __init__(self, preprocessor: Preprocessor, max_stepsize: int,
-                 objectives: ViterbiObjectives):
+                 objectives: ViterbiObjectives, degenerate: bool=False):
         super().__init__(preprocessor)
         self.objectives = objectives
         self.K = max_stepsize
+        self.degenerate_output = degenerate
+
+        if degenerate and (len(objectives) == 0 or not isinstance(objectives[0].score_generator, ViterbiStepScoreGeneratorWithTokens)):
+            raise ValueError("To support degenerate tokenisation, the first objective must generate a token grid too.")
 
     def tokenise(self, string: str):
         N = len(string)
@@ -142,7 +180,8 @@ class ViterbiTokeniser(Tokeniser):
         prev_index    = N
         current_index = t.backpointers[prev_index]
         while current_index != -1:
-            tokens.insert(0, string[current_index:prev_index])
+            token = string[current_index:prev_index] if not self.degenerate_output else graphs[0].getToken(current_index, prev_index-current_index-1)
+            tokens.insert(0, token)
 
             prev_index    = current_index
             current_index = t.backpointers[prev_index]

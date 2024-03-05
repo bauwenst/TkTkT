@@ -3,7 +3,7 @@ TODO: Two operations to support. I know the string that follows at the point I'm
     x For concatenable Viterbi: for each prefix in that string, I need to get it if it exists in the vocabulary.
     - For non-concatenable Viterbi: for each prefix in that string, I need to get all subwords that start with that prefix.
 """
-from typing import Dict
+from typing import Dict, List, Optional
 
 
 class TrieNode:
@@ -18,6 +18,8 @@ class TrieNode:
         self.root = root
         self.count = 0
         self.branches: Dict[str, TrieNode] = dict()
+
+        self.lexicographic_branch_keys: List[str] = []
 
     def add(self, word: str, count: int=1):
         """
@@ -60,8 +62,16 @@ class TrieNode:
                     grandchild.root = child.root + grandchild.root
                     self.branches[grandchild.root] = grandchild
 
+        self.lexicographic_branch_keys = sorted(self.branches, key=lambda key: (len(key), key))
+
         self.compiled = True
         self._assertBidirectionalAssociation()
+
+    def compileRoots(self):
+        for child in self.branches.values():
+            child.root = self.root + child.root
+            child.compileRoots()
+        self.compiledroots = True
 
     def _assertBidirectionalAssociation(self):
         for stored_root, child in self.branches.items():
@@ -73,7 +83,7 @@ class TrieNode:
             result += prefixLines(self.branches[char].__repr__(), "|\t")
         return result
 
-    def get(self, prefix: str) -> "TrieNode":
+    def get(self, prefix: str) -> Optional["TrieNode"]:
         """
         Get the node corresponding to the given child path.
         """
@@ -81,12 +91,15 @@ class TrieNode:
             return self
 
         for key in self.branches:
-            if prefix.startswith(key):
+            if prefix.startswith(key):  # Can only be true for exactly one branch, because if the given word startswith two different keys, one of those keys is a prefix for the other, and would be a child of that one.
                 return self.branches[key].get(prefix[len(key):])
 
         return None
 
     def getNodesOfPrefices(self, word: str):
+        """
+        Get the list of existing trie nodes that correspond to a prefix of the given word.
+        """
         nodes = []
         for i in range(len(word)):
             node = self.get(word[:i+1])
@@ -94,11 +107,39 @@ class TrieNode:
                 nodes.append(node)
         return nodes
 
-    def compileRoots(self):
-        for child in self.branches.values():
-            child.root = self.root + child.root
-            child.compileRoots()
-        self.compiledroots = True
+    def getNodesWithPrefix(self, word: str, only_first: bool=False) -> List["TrieNode"]:
+        """
+        In the compiled trie, it's possible that a word abc isn't included, but a word abcde for which it is a prefix is.
+        Let's find those words.
+        """
+        nodes = []
+        if not word:  # The word is exactly in the trie.
+            nodes.append(self)
+            if only_first:
+                return nodes
+            nodes.extend(self.getDescendantNodes())
+            return nodes
+
+        for key in self.lexicographic_branch_keys:
+            node = self.branches[key]
+            if len(key) <= len(word):  # Then you have to match all the characters in the key and continue going deeper.
+                if word.startswith(key):  # Can only happen once, see above.
+                    return node.getNodesWithPrefix(word[len(key):], only_first=only_first)
+            else:
+                if key.startswith(word):  # Not possible when there is another key the word starts with, because then that key would also be a prefix for the current key.
+                    nodes.append(node)
+                    if only_first:
+                        return nodes
+                    nodes.extend(node.getDescendantNodes())
+
+        return nodes
+
+    def getDescendantNodes(self) -> List["TrieNode"]:
+        descendants = []
+        for node in self.branches.values():
+            descendants.append(node)
+            descendants.extend(node.getDescendantNodes())
+        return descendants
 
 
 def prefixLines(s: str, prefix: str="\t") -> str:
@@ -124,4 +165,5 @@ if __name__ == "__main__":
 
     print([node.root for node in trie.getNodesOfPrefices("abc")])
     trie.compileRoots()
-    print([node.root for node in trie.getNodesOfPrefices("abc")])
+    print([node.root for node in trie.getNodesOfPrefices("abcefgh")])
+    print([node.root for node in trie.getNodesWithPrefix("a", only_first=True)])

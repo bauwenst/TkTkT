@@ -194,6 +194,43 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
         return scores
 
 
+class SuggestedTokensPrefixLength(ScoreGeneratorUsingCharacterClassifier):
+    """
+    Takes the argmax segmentation as suggested by the classifier (which we know scores 92% in all metrics)
+    and attributes a score of S to every step of length S that starts on a suggested segmentation boundary and ends on
+    or before the next segmentation boundary.
+
+    For example, for the suggested segmentation
+        re|anim|atie|techn|iek
+    the path scores for
+        re|ani|mat|i|e|tec|hniek
+    would be
+        2 +3  +0  +0+0+3  +0
+    """
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        # To reiterate how indexing works in the Viterbi framework:
+        #   - The step score at [n,k] is the score you get when you are at the split position BEFORE character n and take a step of k+1 characters.
+        #   - The boundary probability at n is the probability of there being a split position AFTER character n.
+
+        # If the proposed segmentation is "w|or|d", you get a mask [1, 0, 1, 0].
+        # We turn it into "|w|or|d|" with mask [1,   1, 0, 1,   1].
+        # Position i now says whether there is a boundary BEFORE character i,
+        # with an extra position at the end for a boundary behind the last character.
+        boundary_after_asmask = [1*(np.exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
+        boundary_before_asmask = [1] + boundary_after_asmask
+        boundary_before_asmask[-1] = 1
+        boundary_before = np.nonzero(boundary_before_asmask)
+
+        N = len(string)
+        scores = ViterbiStepScores(N, max_k, default=0)
+        for start,end in zip(boundary_before[:-1], boundary_before[1:]):
+            for k in range(end-start):
+                scores.set(start, k, k+1)
+
+        return scores
+
+
 ###########################################################################################
 
 

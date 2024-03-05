@@ -1,5 +1,5 @@
 import time
-from typing import Iterable
+from typing import Iterable, List
 
 def dprint(d: dict):
     for e in d.items():
@@ -28,6 +28,41 @@ def wprint(*args, **kwargs):
     time.sleep(0.05)
     print(*args, **kwargs)
     time.sleep(0.05)
+
+
+def gridify(matrix: Iterable[Iterable]) -> str:
+    # Render elements and get column widths
+    reprs = []
+    column_widths = []
+    for row in matrix:
+        reprs.append([])
+        for i,e in enumerate(row):
+            r = str(e)
+            reprs[-1].append(r)
+            if i >= len(column_widths):
+                column_widths.append(0)
+            column_widths[i] = max(column_widths[i], len(r))
+
+    # Format
+    result = ""
+    for row in reprs:
+        result += "["
+        L = len(row)
+        for i, (repr, width) in enumerate(zip(row, column_widths)):
+            result += repr + (", ")*(i != L-1) + " "*(width-len(repr))
+        result += "],\n"
+    return result[:-2]
+
+
+def transpose(matrix: Iterable[Iterable]) -> List[List]:
+    new_matrix = []
+    for row in matrix:
+        for y,e in enumerate(row):
+            if y >= len(new_matrix):
+                new_matrix.append([])
+            new_matrix[y].append(e)
+
+    return new_matrix
 
 
 def iprint(integer: int, sep=" "):

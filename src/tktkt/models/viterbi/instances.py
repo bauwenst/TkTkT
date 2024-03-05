@@ -20,12 +20,12 @@ class LeastTokenViterbi(ViterbiTokeniser):
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=0,
-                score_generator=ConstrainVocabulary(ConstantScore(), vocab, reset_value=+INFTY),
+                score_generator=VocabularyConstraintExact(ConstantScore(), vocab, reset_value=+INFTY),
                 score_combiner=ScoreSubtract()
             ),
             ViterbiObjective(
                 initial_score=0,
-                score_generator=ConstrainVocabulary(TokenLength(), vocab, reset_value=-INFTY),
+                score_generator=VocabularyConstraintExact(TokenLength(), vocab, reset_value=-INFTY),
                 score_combiner=ScoreMax()
             )
         ])
@@ -38,7 +38,7 @@ class ProductViterbi(ViterbiTokeniser):
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=1,
-                score_generator=ConstrainVocabulary(TokenLength(), vocab, reset_value=0),
+                score_generator=VocabularyConstraintExact(TokenLength(), vocab, reset_value=0),
                 score_combiner=ScoreProduct()
             )
         ])
@@ -47,7 +47,7 @@ class ProductViterbi(ViterbiTokeniser):
 class HFPointViterbi(ViterbiTokeniser):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
-                 cumulative_objective: bool, symmetric_scores: bool,
+                 score_generator_class: Type[ScoreGeneratorUsingCharacterClassifier],
                  huggingface_checkpoint: str, tokeniser_class: Type[PreTrainedTokenizer], model_class: Type[PreTrainedModel], tokeniser_kwargs: dict=None):
         max_step = max_step or max(len(t) for t in vocab)
 
@@ -58,22 +58,10 @@ class HFPointViterbi(ViterbiTokeniser):
             tokeniser_kwargs
         )
 
-        # The thing that uses probabilities to create Viterbi scores
-        if symmetric_scores:
-            if cumulative_objective:
-                generator_class = SymmetricBoundaryAndNonBoundaryProbability
-            else:
-                generator_class = SymmetricBoundaryProbability
-        else:
-            if cumulative_objective:
-                generator_class = BoundaryAndNonBoundaryLogProbability
-            else:
-                generator_class = BoundaryLogProbability
-
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=0,
-                score_generator=ConstrainVocabulary(generator_class(probability_model), vocab, reset_value=-INFTY),
+                score_generator=VocabularyConstraintExact(score_generator_class(probability_model), vocab, reset_value=-INFTY),
                 score_combiner=ScoreSum()
             )
         ])

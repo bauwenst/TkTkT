@@ -1,8 +1,9 @@
 """
 Evaluate any tokeniser on English morphology.
 
-TODO: We don't have numbers for English BPE-knockout-reify yet.
-TODO: How are you going to test lossy segmentation?
+TODO: To be tested:
+    - English BPE-knockout-reify
+    - CANINE+Viterbi not with exact constraint, but atleastall.
 
 TODO: There are two issues with our CANINE evaluation.
     1. I'm not sure if it got special tokens during pretraining, and it is likely not a good idea to leave them out in
@@ -32,6 +33,7 @@ from bpe_knockout.project.config import TemporaryContext, setupEnglish, Pℛ𝒪
 from tktkt.preparation.instances import HuggingFacePreprocessorForWords
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.instances import HFPointViterbi, LeastTokenViterbi
+from tktkt.models.viterbi.objectives_guided import *
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 from tktkt.files.paths import relativeToCwd, DataPaths
 
@@ -46,10 +48,20 @@ def make_EnglishBPE():
     return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
-def make_CompressiveViterbi():
+def make_CompressiveViterbiBPE():
     return LeastTokenViterbi(
         HuggingFacePreprocessorForWords(english_bpe),
         vocab=english_bpe.get_vocab(),
+        max_step=20
+    )
+
+
+def make_CompressiveViterbiULM():
+    english_ulm: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
+
+    return LeastTokenViterbi(
+        HuggingFacePreprocessorForWords(english_ulm),
+        vocab=english_ulm.get_vocab(),
         max_step=20
     )
 
@@ -62,8 +74,7 @@ def make_CanineViterbiBPE():
 
         vocab=english_bpe.get_vocab(),
         max_step=20,
-        cumulative_objective=False,
-        symmetric_scores=True,
+        score_generator_class=BoundaryAndNonBoundaryLogProbability,
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
         tokeniser_class=CanineTokenizer,
@@ -82,8 +93,8 @@ def make_CanineViterbiULM():
 
         vocab=english_ulm.get_vocab(),
         max_step=20,
-        cumulative_objective=False,
-        symmetric_scores=True,
+        score_generator_class=SuggestedTokensPrefixLength,
+        # score_generator_class=SymmetricBoundaryAndNonBoundaryProbability,
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
         tokeniser_class=CanineTokenizer,
@@ -99,9 +110,9 @@ def make_EnglishKudoPiece():
 
 tokenisers_to_evaluate = [
     # make_EnglishBPE(),
-    # make_CompressiveViterbi(),
+    make_CompressiveViterbiULM(),
     # make_CanineViterbiBPE(),
-    make_CanineViterbiULM(),
+    # make_CanineViterbiULM(),
     # make_EnglishKudoPiece()
 ]
 

@@ -7,14 +7,14 @@ from tst.preamble import *
 from tst.evaluation.english_morphology import make_CanineViterbiBPE
 
 from tktkt.models.neural.canine_finetuning import datasetOutOfContext, dataloaderFromIterable, compute_metrics, MAX_INPUT_LENGTH_CANINE, tokenizer
-from tktkt.models.viterbi.instances import HuggingFaceCharacterModelForTokenClassification, ConstrainVocabulary, ScoreGeneratorUsingCharacterClassifier
+from tktkt.models.viterbi.instances import HuggingFaceCharacterModelForTokenClassification, VocabularyConstraintExact, ScoreGeneratorUsingCharacterClassifier
 
 from datasets import concatenate_datasets
 from transformers import DataCollatorForTokenClassification, Trainer, TrainingArguments
 
 # Get model from another test script.
 canine_viterbi = make_CanineViterbiBPE()
-generator: ConstrainVocabulary = canine_viterbi.objectives[0].score_generator
+generator: VocabularyConstraintExact = canine_viterbi.objectives[0].score_generator
 nested_generator: ScoreGeneratorUsingCharacterClassifier = generator.nested_generator
 classifier: HuggingFaceCharacterModelForTokenClassification = nested_generator.logprob_classifier
 model = classifier.model

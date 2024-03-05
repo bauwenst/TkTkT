@@ -66,13 +66,14 @@ def celex_probabilityDistribution():
     canine_viterbi = make_CanineViterbiBPE()
     classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
-    histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
-    if histo.needs_computation:
-        for obj in morphologyGenerator():
-            histo.addMany("predictions", getPredictionProbabilities(classifier, obj.lemma()))
+    with TemporaryContext(setupEnglish()):
+        histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
+        if histo.needs_computation:
+            for obj in morphologyGenerator():
+                histo.addMany("predictions", getPredictionProbabilities(classifier, obj.lemma()).tolist())
 
-    histo.commit_histplot(binwidth=0.05, relative_counts=True, x_lims=(-0.25,1.025), x_tickspacing=0.1,
-                          x_label="Predicted boundary probability", y_label="Proportion of words")
+        histo.commit_histplot(binwidth=0.05, relative_counts=True, x_lims=(-0.025,1.025), x_tickspacing=0.1,
+                              x_label="Predicted boundary probability", y_label="Proportion of words")
 
 
 if __name__ == "__main__":
