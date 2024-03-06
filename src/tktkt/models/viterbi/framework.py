@@ -147,6 +147,13 @@ class ViterbiTokeniser(Tokeniser):
 
     def __init__(self, preprocessor: Preprocessor, max_stepsize: int,
                  objectives: ViterbiObjectives, degenerate: bool=False):
+        """
+        :param degenerate: Whether or not the first objective has a generator that produces its own tokens AND you want
+                           to use those when tokenising.
+                           When true, you hence likely cannot concatenate the produced tokens to reconstruct the input.
+                           When false, you can still use a degenerate objective, but its suggestions will not be used.
+                           That might mean you cannot convert the produced tokens to IDs, but you can concatenate them.
+        """
         super().__init__(preprocessor)
         self.objectives = objectives
         self.K = max_stepsize

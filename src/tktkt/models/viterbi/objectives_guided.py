@@ -194,7 +194,7 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
         return scores
 
 
-class SuggestedTokensPrefixLength(ScoreGeneratorUsingCharacterClassifier):
+class HardBoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifier):
     """
     Takes the argmax segmentation as suggested by the classifier (which we know scores 92% in all metrics)
     and attributes a score of S to every step of length S that starts on a suggested segmentation boundary and ends on
@@ -225,8 +225,87 @@ class SuggestedTokensPrefixLength(ScoreGeneratorUsingCharacterClassifier):
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for start,end in zip(boundary_before[:-1], boundary_before[1:]):
-            for k in range(end-start):
+            for k in range(min(end-start, max_k)):  # You should read this without the min(..., max_k) because realistically, boundaries will be pretty close together.
                 scores.set(start, k, k+1)
+
+        return scores
+
+
+class HardBoundaryAndNonBoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifier):
+    """
+    Same as the other one, except you get punished for making unnecessarily many steps when you do not start on a
+    proposed boundary, to incentivise bridging the gap ASAP.
+
+    TODO: Although having a punishment of -1 per step is sufficient to incentivise choosing the path with least tokens
+          to get to the next boundary, it may also help in being a counterweight to very large tokens being preferred
+          and prioritised if it means ruining the rest of the segmentation.
+          So, try increasing it to -2 and see what happens.
+    """
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        boundary_after_asmask = [1*(np.exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
+        boundary_before_asmask = [1] + boundary_after_asmask
+        boundary_before_asmask[-1] = 1
+        boundary_before = np.nonzero(boundary_before_asmask)
+
+        N = len(string)
+        scores = ViterbiStepScores(N, max_k, default=-1)  # Default is -1, i.e.: every step that is NOT a prefix is discouraged, and more such steps are more discouraged.
+        for start,end in zip(boundary_before[:-1], boundary_before[1:]):
+            for k in range(min(end-start, max_k)):  # You should read this without the min(..., max_k) because realistically, boundaries will be pretty close together.
+                scores.set(start, k, k+1)
+
+        return scores
+
+
+class HardBoundaryPrefixLengthExtended(ScoreGeneratorUsingCharacterClassifier):
+    """
+    The same as HardBoundaryPrefixLength except you are also rewarded if you start on a boundary and end AFTER the next
+    boundary, with the reward stagnating at that boundary.
+
+    In HardBoundaryPrefixLength, the reward drops to 0 after that boundary, which doesn't really allow making the
+    trade-off of "I can capture this boundary if I jump over the next one".
+    """
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        boundary_after_asmask = [1*(np.exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
+        boundary_before_asmask = [1] + boundary_after_asmask
+        boundary_before_asmask[-1] = 1
+        boundary_before = np.nonzero(boundary_before_asmask)
+
+        N = len(string)
+        scores = ViterbiStepScores(N, max_k, default=0)
+
+        for n, n_where_reward_stagnates in zip(boundary_before[:-1], boundary_before[1:]):
+            K = min(max_k, N-n)  # Same expression as for the probabilistic objectives, because despite the boundaries being indexed differently here, the index n in the outer loop has always been in grid coordinates (n == 0 meaning "when you are standing before the first character").
+            for k in range(K):
+                steps_with_increasing_reward = n_where_reward_stagnates - n
+                if k < steps_with_increasing_reward:  # E.g.: if you have |wo|rd|, the top loop will produce (n,end) == (0,2), so taking a step of k+1 == 1 will get you reward k+1 == 1, a step of k+1 == 2 will get k+1 == 2, but a step of k+1 == 3 will still give reward end-n == 2. You hence got 2 iterations of increasing reward.
+                    scores.set(n, k, k+1)
+                else:
+                    scores.set(n, k, steps_with_increasing_reward)
+
+        return scores
+
+
+class HardBoundaryAndNonBoundaryPrefixLengthExtended(ScoreGeneratorUsingCharacterClassifier):
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        boundary_after_asmask = [1*(np.exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
+        boundary_before_asmask = [1] + boundary_after_asmask
+        boundary_before_asmask[-1] = 1
+        boundary_before = np.nonzero(boundary_before_asmask)
+
+        N = len(string)
+        scores = ViterbiStepScores(N, max_k, default=-1)  # The only difference with the previous class
+
+        for n, n_where_reward_stagnates in zip(boundary_before[:-1], boundary_before[1:]):
+            K = min(max_k, N-n)  # Same expression as for the probabilistic objectives, because despite the boundaries being indexed differently here, the index n in the outer loop has always been in grid coordinates (n == 0 meaning "when you are standing before the first character").
+            for k in range(K):
+                steps_with_increasing_reward = n_where_reward_stagnates - n
+                if k < steps_with_increasing_reward:  # E.g.: if you have |wo|rd|, the top loop will produce (n,end) == (0,2), so taking a step of k+1 == 1 will get you reward k+1 == 1, a step of k+1 == 2 will get k+1 == 2, but a step of k+1 == 3 will still give reward end-n == 2. You hence got 2 iterations of increasing reward.
+                    scores.set(n, k, k+1)
+                else:
+                    scores.set(n, k, steps_with_increasing_reward)
 
         return scores
 

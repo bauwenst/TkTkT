@@ -3,7 +3,13 @@ Evaluate any tokeniser on English morphology.
 
 TODO: To be tested:
     - English BPE-knockout-reify
-    - CANINE+Viterbi not with exact constraint, but atleastall.
+    - CANINE+Viterbi variations:
+        x Symmetric probability objective (the best for ULM vocab) not with exact constraint, but AtLeastAll.
+        x Hard prefix objective with AtLeastAll constraint.
+        - Hard prefix objective with punishment for bad splits.
+            - What we HAVE is an incentive to not use short tokens when starting on a boundary.
+            - What we DON'T HAVE is an incentive to not use many tokens when not starting on a boundary. You have to bridge the gap to the next boundary ASAP!
+            - Also, another explanation for why the prefix score performs worse than boundary matching is that you give NO REWARD when Viterbi wants to use a step that starts on a boundary but jumps over the next boundary, which would still count as >0 score when boundary matching.
 
 TODO: There are two issues with our CANINE evaluation.
     1. I'm not sure if it got special tokens during pretraining, and it is likely not a good idea to leave them out in
@@ -34,6 +40,7 @@ from tktkt.preparation.instances import HuggingFacePreprocessorForWords
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.instances import HFPointViterbi, LeastTokenViterbi
 from tktkt.models.viterbi.objectives_guided import *
+from tktkt.models.viterbi.objectives_postprocessors import *
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 from tktkt.files.paths import relativeToCwd, DataPaths
 
@@ -46,6 +53,11 @@ with TemporaryContext(setupEnglish()):
 
 def make_EnglishBPE():
     return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
+
+
+def make_EnglishKudoPiece():
+    tk: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
+    return HuggingFaceTokeniser(tk, for_single_words=True)
 
 
 def make_CompressiveViterbiBPE():
@@ -74,6 +86,7 @@ def make_CanineViterbiBPE():
 
         vocab=english_bpe.get_vocab(),
         max_step=20,
+        vocabulary_constraint_class=VocabularyConstraintExact,
         score_generator_class=BoundaryAndNonBoundaryLogProbability,
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
@@ -93,8 +106,9 @@ def make_CanineViterbiULM():
 
         vocab=english_ulm.get_vocab(),
         max_step=20,
-        score_generator_class=SuggestedTokensPrefixLength,
-        # score_generator_class=SymmetricBoundaryAndNonBoundaryProbability,
+        vocabulary_constraint_class=VocabularyConstraintAtLeastAll,
+        score_generator_class=HardBoundaryAndNonBoundaryPrefixLength,
+        # score_generator_class=SymmetricBoundaryProbability,
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
         tokeniser_class=CanineTokenizer,
@@ -103,17 +117,12 @@ def make_CanineViterbiULM():
     )
 
 
-def make_EnglishKudoPiece():
-    tk: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
-    return HuggingFaceTokeniser(tk, for_single_words=True)
-
-
 tokenisers_to_evaluate = [
     # make_EnglishBPE(),
-    make_CompressiveViterbiULM(),
-    # make_CanineViterbiBPE(),
-    # make_CanineViterbiULM(),
     # make_EnglishKudoPiece()
+    # make_CompressiveViterbiULM(),
+    # make_CanineViterbiBPE(),
+    make_CanineViterbiULM(),
 ]
 
 
