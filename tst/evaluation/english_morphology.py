@@ -34,6 +34,10 @@ TODO: There are two issues with our CANINE evaluation.
             result to the Viterbi tokeniser. Now you have segmentations into strings that include spaces and ë etc.
          2. Apply the byte mapping of the LM to map these tokens into the LM vocabulary.
 """
+import itertools
+from tktkt.util.timing import timeit
+from typing import Type
+
 from transformers import CanineTokenizer, CanineForTokenClassification, AutoTokenizer
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
 
@@ -99,7 +103,7 @@ def make_CanineViterbiBPE():
     )
 
 
-def make_CanineViterbiULM():
+def make_CanineViterbiULM(generator: Type[ScoreGeneratorUsingCharacterClassifier]=SymmetricBoundaryProbability, constraint: Type[VocabularyConstraint]=VocabularyConstraintExact):
     english_ulm: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
 
     return HFPointViterbi(
@@ -109,8 +113,8 @@ def make_CanineViterbiULM():
 
         vocab=english_ulm.get_vocab(),
         max_step=20,
-        vocabulary_constraint_class=VocabularyConstraintAtLeastAll,
-        score_generator_class=HardBoundaryAndNonBoundaryPrefixLength,
+        score_generator_class=generator,
+        vocabulary_constraint_class=constraint,
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
         tokeniser_class=CanineTokenizer,
@@ -119,15 +123,25 @@ def make_CanineViterbiULM():
     )
 
 
-tokenisers_to_evaluate = [
-    # make_EnglishBPE(),
-    # make_EnglishKudoPiece()
-    # make_CompressiveViterbiULM(),
-    # make_CanineViterbiBPE(),
-    make_CanineViterbiULM(),
-]
+@timeit
+def constructTokenisers():
+    return [
+        # make_EnglishBPE(),
+        # make_EnglishKudoPiece()
+        # make_CompressiveViterbiULM(),
+        # make_CanineViterbiBPE(),
+        make_CanineViterbiULM(g, v) for g,v in itertools.product([
+            HardBoundaryPrefixLength,
+            HardBoundaryPrefixLengthExtended,
+            HardBoundaryAndNonBoundaryPrefixLength,
+            HardBoundaryAndNonBoundaryPrefixLengthExtended
+        ], [
+            VocabularyConstraintExact,
+            VocabularyConstraintAtLeastAll
+        ])
+    ]
 
 
 if __name__ == "__main__":
     with TemporaryContext(setupEnglish()):
-        intrinsicEvaluation(tokenisers_to_evaluate, do_whole_word=True, verbose=True)
+        intrinsicEvaluation(constructTokenisers(), do_whole_word=True, verbose=True)
