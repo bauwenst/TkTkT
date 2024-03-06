@@ -1,26 +1,96 @@
-from transformers import RobertaTokenizer
+from tst.preamble import *
 
-from src.tktkt.preparation.splitters import RobertaPretokeniser
-from src.tktkt.models.viterbi.objectives_guided import *
-from src.tktkt.models.viterbi.instances import HFPointViterbi
+from typing import Optional
 
-baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
-vocab = baseline.get_vocab()
+from tktkt.interfaces.tokeniser import Vocab
+from tktkt.preparation.instances import RobertaPreprocessor, Preprocessor, IdentityPreprocessor
 
-checkpoint = "google/canine-c"  # By using a checkpoint that wasn't trained on tokenisation, you'll get random boundary probabilities, so all this doesn't say much.
+from tktkt.models.viterbi import *
+from tst.evaluation.english_morphology import make_CanineViterbiBPE, english_bpe
+
+canine_viterbi = make_CanineViterbiBPE()
+classifier: CharacterClassifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
+
+vocab = english_bpe.get_vocab()  # Determines how you should format the below example.
+word = "Ġhorseshoe"
+# word = "Ġsupercalifragilistic"
 
 
-tk = HFPointViterbi(
-    RobertaPretokeniser,
-    vocab,
-    15,
-    checkpoint,
-    CanineTokenizer,
-    CanineForTokenClassification
-)
+class TestDegenerateViterbi(ViterbiTokeniser):
+    """
+    Quick testing class that I can change objectives in to check several score grids and vocab constraints.
+    """
 
-words = [" flatscreentelevisie"]
-for word in words:
-    print(word)
-    print("\tRobBERT BPE:", baseline.tokenize(word))
-    print("\tSame vocab, new inference:", tk.prepareAndTokenise(word))
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int]):
+        max_step = max_step or max(len(t) for t in vocab)
+        super().__init__(preprocessor, max_step, objectives=[
+            ViterbiObjective(
+                initial_score=0,
+                score_generator=VocabularyConstraintExact(HardBoundaryAndNonBoundaryPrefixLengthExtended(classifier),
+                                                          vocab, reset_value=-INFTY),
+                score_combiner=ScoreSum()
+            ),
+            ViterbiObjective(
+                initial_score=0,
+                score_generator=VocabularyConstraintExact(ConstantScore(), vocab, reset_value=-INFTY),
+                score_combiner=ScoreSubtract()
+            )
+        ], degenerate=False)
+
+
+def tst_verify_scoregrid():
+    # Tokenise
+    tk = TestDegenerateViterbi(IdentityPreprocessor, english_bpe.get_vocab(), max_step=None)
+    print(tk.prepareAndTokenise(word))
+
+    # Show score grid
+    constraint = tk.objectives[0].score_generator
+    print(constraint.generateGrid(word, max_k=len(word)))
+
+    # Show probabilities the score grid came from
+    from tst.visualisation.canine_boundaries import visualisePredictedBoundaries
+    print(np.exp(classifier.getPointLogProbabilities(word)))
+    print(visualisePredictedBoundaries(classifier, word))
+
+    # Show mask that turned the probabilities into the grid
+    boundary_after_asmask = [1 * (np.exp(ln) > 0.5) for ln in classifier.getPointLogProbabilities(word)]
+    boundary_before_asmask = [1] + boundary_after_asmask
+    boundary_before_asmask[-1] = 1
+    boundary_before = np.nonzero(boundary_before_asmask)
+    print(boundary_before)
+    print(list(zip(boundary_before[:-1], boundary_before[1:])))
+    print(list(zip(boundary_before[0][:-1], boundary_before[0][1:])))
+
+
+def tst_verify_that_nonboundary_does_something():
+    """
+    Is the score grid different for the below two classes?
+    If yes, it explained why they look mathematically equivalent.
+
+    TODO: They're actually functioning exactly as designed, RIP xD
+    """
+    g1 = VocabularyConstraintExact(SymmetricBoundaryProbability(classifier), vocab, reset_value=-INFTY)
+    g2 = VocabularyConstraintExact(SymmetricBoundaryAndNonBoundaryProbability(classifier), vocab, reset_value=-INFTY)
+
+    with np.printoptions(suppress=True):  # https://numpy.org/devdocs/reference/generated/numpy.set_printoptions.html
+        print(np.exp(classifier.getPointLogProbabilities(word)))
+        print(g1.generateGrid(word, max_k=len(word)))
+        print(g2.generateGrid(word, max_k=len(word)))
+
+
+def tst_compare_to_robbert():
+    from transformers import RobertaTokenizer
+
+    baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
+    tk = TestDegenerateViterbi(RobertaPreprocessor, vocab, max_step=None)
+
+    words = [" flatscreentelevisie"]
+    for word in words:
+        print(word)
+        print("\tRobBERT BPE:",               baseline.tokenize(word))
+        print("\tSame vocab, new inference:", tk.prepareAndTokenise(word))
+
+
+if __name__ == "__main__":
+    # tst_verify_scoregrid()
+    tst_verify_that_nonboundary_does_something()

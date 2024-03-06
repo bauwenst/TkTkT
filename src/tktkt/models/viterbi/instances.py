@@ -6,11 +6,7 @@ from typing import Type, Optional
 from transformers import PreTrainedTokenizer, PreTrainedModel
 
 from ...interfaces.tokeniser import Preprocessor, Vocab
-from .framework import *
-from .accumulators import *
-from .objectives_unguided import *
-from .objectives_guided import *
-from .objectives_postprocessors import *
+from ..viterbi import *
 
 
 class LeastTokenViterbi(ViterbiTokeniser):

@@ -47,6 +47,12 @@ class VocabularyConstraint(ViterbiStepScoreGenerator):
         self.default = reset_value
 
 
+class VocabularyConstraintNone(VocabularyConstraint):
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        return self.nested_generator.generateGrid(string, max_k)
+
+
 class VocabularyConstraintExact(VocabularyConstraint):
     """
     Post-processor for a score grid that resets all steps that aren't allowed by the given subword vocabulary.

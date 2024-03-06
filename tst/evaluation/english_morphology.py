@@ -3,6 +3,9 @@ Evaluate any tokeniser on English morphology.
 
 TODO: To be tested:
     - English BPE-knockout-reify
+    - Re-test all my prefix objectives: with punishment, extended, with AtLeastAll constraint...
+        - That's going to be a good 2*2*2 = 8 tokenisers. Better set up a VSC loop for that.
+
     - CANINE+Viterbi variations:
         x Symmetric probability objective (the best for ULM vocab) not with exact constraint, but AtLeastAll.
         x Hard prefix objective with AtLeastAll constraint.
@@ -108,7 +111,6 @@ def make_CanineViterbiULM():
         max_step=20,
         vocabulary_constraint_class=VocabularyConstraintAtLeastAll,
         score_generator_class=HardBoundaryAndNonBoundaryPrefixLength,
-        # score_generator_class=SymmetricBoundaryProbability,
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
         tokeniser_class=CanineTokenizer,
