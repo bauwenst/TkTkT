@@ -7,6 +7,11 @@ from .mappers import *
 
 IdentityPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), IdentityPretokeniser())
 
+TraditionalPretokeniser = PretokeniserSequence([
+    WhitespacePretokeniser(destructive=True),
+    PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED)
+])
+
 # Most common space markers
 SennrichSpaceMarker = SpaceMarker("</w>",    detached=False, location=SpaceMarkerLocation.END)    # Sennrich 2016
 RobertaSpaceMarker  = SpaceMarker("Ġ",       detached=True,  location=SpaceMarkerLocation.START)  # Radford 2019

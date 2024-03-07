@@ -156,4 +156,4 @@ def constructTokenisers2():
 
 if __name__ == "__main__":
     with TemporaryContext(setupEnglish()):
-        intrinsicEvaluation(constructTokenisers2(), do_whole_word=True, verbose=True)
+        intrinsicEvaluation(constructTokenisers2(), do_whole_word=False, verbose=True)

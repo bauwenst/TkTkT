@@ -69,13 +69,16 @@ def tst_verify_that_nonboundary_does_something():
 
     TODO: They're actually functioning exactly as designed, RIP xD
     """
-    g1 = VocabularyConstraintExact(SymmetricBoundaryProbability(classifier), vocab, reset_value=-INFTY)
-    g2 = VocabularyConstraintExact(SymmetricBoundaryAndNonBoundaryProbability(classifier), vocab, reset_value=-INFTY)
+    symmetric_transform = LinearPT(-1, +1, negate_as_complement=False)
+    g1 = VocabularyConstraintExact(BoundaryScoresChosen(classifier, symmetric_transform), vocab, reset_value=-INFTY)
+    g2 = VocabularyConstraintExact(BoundaryScoresAll(classifier, symmetric_transform), vocab, reset_value=-INFTY)
 
     with np.printoptions(suppress=True):  # https://numpy.org/devdocs/reference/generated/numpy.set_printoptions.html
         print(np.exp(classifier.getPointLogProbabilities(word)))
         print(g1.generateGrid(word, max_k=len(word)))
         print(g2.generateGrid(word, max_k=len(word)))
+
+        print(g1.nested_generator.getBoundaryScores(word))
 
 
 def tst_compare_to_robbert():

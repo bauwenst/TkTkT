@@ -247,6 +247,9 @@ class WhitespacePretokeniser(Pretokeniser):
     """
 
     def __init__(self, destructive: bool=True):
+        """
+        :param destructive: If false, whitespace is not removed, but just separated from other characters.
+        """
         if destructive:
             self.pattern = re.compile(r"[\s​]+")
         else:

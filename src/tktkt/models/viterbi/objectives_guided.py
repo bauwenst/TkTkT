@@ -184,7 +184,7 @@ class ScoreGeneratorUsingCharacterClassifierAndTransform(ScoreGeneratorUsingChar
         self.T = transform
 
     def getBoundaryScores(self, string: str):
-        boundary_scores = list(map(self.T.probabilityToScore, self.logprob_classifier.getPointLogProbabilities(string)))  # one entry for each character
+        boundary_scores = list(map(self.T.probabilityToScore, map(np.exp, self.logprob_classifier.getPointLogProbabilities(string))))  # one entry for each character
         boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
         return boundary_scores
 
