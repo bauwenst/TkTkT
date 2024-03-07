@@ -107,8 +107,6 @@ def make_CanineViterbiULM(generator: Type[ScoreGeneratorUsingCharacterClassifier
     english_ulm: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
 
     return HFPointViterbi(
-        # HuggingFacePreprocessorForWords(robbert_tokenizer),  # The preprocessor that maps any string into the space of the vocabulary used.
-        # vocab=robbert_tokenizer.get_vocab(),                 # The vocabulary that limits Viterbi steps.
         preprocessor=HuggingFacePreprocessorForWords(english_ulm),
 
         vocab=english_ulm.get_vocab(),
@@ -142,6 +140,18 @@ def constructTokenisers():
     ]
 
 
+def constructTokenisers2():
+    viterbi_tokeniser = make_CanineViterbiULM(SymmetricBoundaryAndNonBoundaryProbability, VocabularyConstraintExact)
+
+    a = -2
+    b = +1
+    transforms = [LinearPT_TrueComp(a, b), LinearPT_NegComp(a, b), PiecewisePT_TrueComp(a, b), PiecewisePT_NegComp(a, b)]
+    for t in transforms:
+        print("SWITCHING TO TRANSFORM:", t)
+        viterbi_tokeniser.objectives[0].score_generator.nested_generator.T = t
+        yield viterbi_tokeniser
+
+
 if __name__ == "__main__":
     with TemporaryContext(setupEnglish()):
-        intrinsicEvaluation(constructTokenisers(), do_whole_word=True, verbose=True)
+        intrinsicEvaluation(constructTokenisers2(), do_whole_word=True, verbose=True)

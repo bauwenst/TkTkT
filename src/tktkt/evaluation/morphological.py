@@ -184,7 +184,7 @@ class TokeniserEvaluation:
 
 
 # @timeit
-def intrinsicEvaluation(tokenisers: List[Tokeniser],
+def intrinsicEvaluation(tokenisers: Iterable[Tokeniser],
                         reweighting_function: Callable[[float], float]=None, holdout: Holdout=None, do_whole_word=False,
                         verbose=False) -> List[TokeniserEvaluation]:
     """
@@ -199,7 +199,7 @@ def intrinsicEvaluation(tokenisers: List[Tokeniser],
                                  used in the config is used in BTE training and nobody says that it needs to be equal here.
     """
     if verbose:
-        wprint(f"Batch evaluation of {len(tokenisers)} tokenisers...")
+        wprint(f"Batch evaluation of {len(tokenisers) if isinstance(tokenisers, (list, tuple)) else 'generated'} tokenisers...")
 
     # Load weights
     lemma_weights = lexiconWeights(reweighting_function) if reweighting_function is not None else None  # If it is None, this is used as a signal to say "I don't want weighting".

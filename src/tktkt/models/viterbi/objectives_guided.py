@@ -177,13 +177,113 @@ class BoundaryAndNonBoundaryLogProbability(ScoreGeneratorUsingCharacterClassifie
         return scores
 
 
+class ProbabilityTransform:
+
+    @abstractmethod
+    def probabilityToScore(self, p: float):
+        pass
+
+    @abstractmethod
+    def negateScore(self, score_p: float):
+        """
+        Map the score S(p) to the score S(1-p).
+        """
+        pass
+
+
+class LinearPT(ProbabilityTransform):
+
+    def __init__(self, a: int, b: int):
+        self.a = a
+        self.b = b
+
+    def probabilityToScore(self, p: float):
+        return self.a + p*(self.b-self.a)
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"({self.a},{self.b})"
+
+class LinearPT_NegComp(LinearPT):
+    def negateScore(self, score_p: float):
+        return -score_p
+
+class LinearPT_TrueComp(LinearPT):
+    def negateScore(self, score_p: float):
+        p = (score_p - self.a)/(self.b - self.a)
+        return self.probabilityToScore(1-p)
+
+class PiecewisePT(ProbabilityTransform):
+
+    def __init__(self, a: int, b: int):
+        self.a = a
+        self.b = b
+
+    def probabilityToScore(self, p: float):
+        return 2*(p-0.5)*self.b if p > 0.5 else 2*(0.5 - p)*self.a
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"({self.a},{self.b})"
+
+class PiecewisePT_NegComp(LinearPT):
+    def negateScore(self, score_p: float):
+        return -score_p
+
+class PiecewisePT_TrueComp(LinearPT):
+    def negateScore(self, score_p: float):
+        p = 0.5 + score_p/(2*self.b) if score_p > 0 else 0.5 - score_p/(2*self.a)
+        return self.probabilityToScore(1-p)
+
+
 class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
     """
     Equivalent to BoundaryAndNonBoundaryLogProbability with the 2*P-1 transform applied before accumulating across points.
     Still for summing.
 
-    TODO: Is this mathematically equivalent to only considering boundaries with SymmetricBoundaryProbability?!
+    TODO: As it turns out, this is mathematically equivalent to only considering boundaries. Given the preferred score
+          at position i, you can either choose to split there or not. You get the score at that position when you do.
+            - If it's not a split and you do split, you receive a score, but it's negative.
+            - If it's not a split and you don't split, you don't receive a score, which is +1 over the alternative decision.
+            - If it's a split and you don't split, you don't receive a score.
+            - If it's a split and you do split, you receive a score and it's positive, which is +1 over the alternative decision.
+         In other words, when you DON'T SPLIT somewhere, the net reward of that decision doesn't have to be accounted for
+         explicitly because it already was.
+         The reason why this is different in the LogProbability class is because the ln(1-p) is not -ln(p) and hence if
+         you add ln(1-p) as extra "negative reward", this is NOT equivalent to missing ln(p), unlike subtracting ln(p) would be.
+         |
+         I wonder what happens when you have asymmetric rewards. We want to incentivise precision (because you need smaller
+         gains in precision to get bigger gains in F1), which means disencentivising (bad) splitting as much as possible.
+         Right now, for the same word, it is equally scored to have
+            - 2 good splits + 2 bad splits == 1 good + 1 bad.
+            - 2 good splits + 1 bad splits == 1 good + 0 bad.
+        In the second case, even though the net score is the same, the second one has better precision (and worse recall).
+        It's not obvious that you want to lower recall, but in any case, either use a tiebreaker objective or punish bad
+        splits more: with weight -2, you would get
+            - +2 + -4 != +1 -2
+            - +2 + -2 != +1 +0
+        The obvious danger is of course that you won't go get a reachable split if it requires one bad split.
+        |
+        One more thing to prove: if you have this kind of negative reward, is it useful to count untaken splits, or is
+        it again mathematically equivalent?
+            - If it's not a split (carried score -2) and you do split, you receive -2.
+            - If it's not a split (carried score -2) and you don't split, you receive +0 (boundary-only) or +2 (joint), so joint gives twice the benefit for being correct. Net +2 vs. net +4.
+            - If it's a split (carried score +1) and you don't split, you receive +0 (boundary-only) or -1 (joint).
+            - If it's a split (carried score +1) and you do split, you receive +1, so again joint just gives twice the benefit for being correct. Net +1 vs. net +2.
+        There is also an alternative, keeping the positive and negative ranges fixed:
+            - If it's not a split (carried score -2) and you do split, you receive -2.
+            - If it's not a split (carried score -2) and you don't split, you receive +0 (boundary-only) or +1 (joint). Net +2 vs. net +3.
+            - If it's a split (carried score +1) and you don't split, you receive +0 (boundary-only) or -2 (joint).
+            - If it's a split (carried score +1) and you do split, you receive +1. Net +1 vs. net +3.
+        In one, the net reward for being correct is doubled from boundary-only to joint.
+        In the other, the net reward for a correct positive versus a correct negative is different (boundary-only) or the same (joint).
+        |
+        To figure out which of these two effects results in an equivalence between boundary-only and joint, you should
+        implement both strategies and run all 4 variants. There are two ways to implement these asymmetric ranges:
+            - Linear: min + P*(max-min)
+            - Piecewise: (2*P-1)*max if P > 0.5 else (1-2*P)*min
+        So actually, there are 8 variants that test 4 functions.
     """
+
+    T = LinearPT_NegComp(-1, +1)
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
         """
@@ -191,7 +291,7 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
         complement. For a probability P, the complement is 1-P, the log probability of its complement is ln(1 - e^(ln p)),
         whilst the symmetric probability of its complement is a negation: 2*(1-P)-1 = 2-2*P-1 = 1-2*P = -(2*P-1).
         """
-        boundary_scores = [2*np.exp(ln) - 1 for ln in self.logprob_classifier.getPointLogProbabilities(string)]  # one entry for each character
+        boundary_scores = [self.T.probabilityToScore(np.exp(ln)) for ln in self.logprob_classifier.getPointLogProbabilities(string)]  # one entry for each character
         boundary_scores[-1] = 0
 
         N = len(string)
@@ -201,12 +301,13 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
             for k in range(K):
                 cumulative_score = boundary_scores[n+k]  # Like above.
                 for i in range(k):
-                    sp_i      = boundary_scores[n+i]
-                    sp_i_comp = -sp_i
-                    cumulative_score += sp_i_comp
+                    cumulative_score += self.T.negateScore(boundary_scores[n+i])
                 scores.set(n, k, cumulative_score)
 
         return scores
+
+
+###########################################################################################
 
 
 class HardBoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifier):

@@ -4,6 +4,7 @@
 To beat is BPE-knockout, which does Pr=53%, Re=75%, F1=62% on morphs and .
 
 ### BPE vocabulary
+#### Probability-based
 **CANINE with boundary-only symmetric probabilities** (2*P-1) and English BPE vocabulary as constraint:
 ```
     Precision: 0.5707395498392283
@@ -51,6 +52,7 @@ Using joint log probabilities, which is probabilistically the most sound, actual
     WW-F1:        0.22695752169216296
 ```
 
+#### Unguided
 **Token-minimising Viterbi** performs markedly worse, with (no surprise) way worse recall:
 ```
     Precision: 0.4559803399964531
@@ -109,40 +111,123 @@ Precision could be better though; seems to be oversegmenting (finds 84% of real 
 
 
 #### Hard-boundary-based
-Using **prefix rewards** causes even worse performance, with particularly the recall being absolutely terrible.
+~~Using **prefix rewards** causes even worse performance, with particularly the recall being absolutely terrible.~~
 ```
     Precision: 0.43075429390415865
     Recall:    0.5206482257613858
     F1:        0.47145441435059265
 ```
-Possibly a tiebreaker objective is needed, or perhaps there is too much reward given to matching the largest prefix
-and nothing else.
+~~Possibly a tiebreaker objective is needed, or perhaps there is too much reward given to matching the largest prefix
+and nothing else. Using the same rewards except **extended** past the next boundary, rather than dropping to 0 after it, gives the same
+exact scores. Weird.~~
 
-Using the same rewards except **extended** past the next boundary, rather than dropping to 0 after it, gives the same
-exact scores. Weird.
-
-Using **prefix rewards with punishment for bad steps** increases all metrics.
+~~Using **prefix rewards with punishment for bad steps** increases all metrics.~~
 ```
 		Precision: 0.49686264822134385
 		Recall:    0.5619726180497345
 		F1:        0.5274157598007081
 ```
-The **extended** version is the same again!
+~~The **extended** version is the same again!~~
 
-Using **prefix rewards without punishment** and with an **AtLeastAll vocabulary constraint** boosts the precision but 
-drops recall:
+~~Using **prefix rewards without punishment** and with an **AtLeastAll vocabulary constraint** boosts the precision but 
+drops recall:~~
 ```
 		Precision: 0.503370786516854
 		Recall:    0.5006985191394244
 		F1:        0.5020310967922678
 ```
-Using the version **with punishment**, **extended** (although apparently that doesn't matter), and with 
+~~Using the version **with punishment**, **extended** (although apparently that doesn't matter), and with 
 **AtLeastAll constraint**, we get... the same thing?! How does this keep happening to these objectives?!
 Even if you take out the "extended" part, it performs the exact same. So, weirdly, when you give it too much freedom,
-it doesn't matter that you have punishment nor the ability to jump over the next boundary.
+it doesn't matter that you have punishment nor the ability to jump over the next boundary.~~
 
-**TODO: Yeah so I just printed the prefix score grid and it is filled with 0s... So what the fuck have we been
-testing this whole time???**
+~~**TODO: Yeah so I just printed the prefix score grid and it is filled with 0s... So what the fuck have we been
+testing this whole time???**~~
+
+Here are the new results. For exact vocabulary constraint, we are looking to beat 58%, 81%, 68%:
+```
+HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintExact)
+        Morph split accuracy:
+                Precision: 0.5290765557743583
+                Recall:    0.8482816429170159
+                F1:        0.6516909405085165
+        Lemmatic split accuracy:
+                Precision: 0.11468553404318352
+                Recall:    0.9526635784597568
+                F1:        0.2047253892457731
+
+HFPointViterbi(HardBoundaryPrefixLengthExtended + VocabularyConstraintExact)
+        Morph split accuracy:
+                Precision: 0.5411118078866797
+                Recall:    0.8197261804973456
+                F1:        0.6518976091014131
+        Lemmatic split accuracy:
+                Precision: 0.12114058061898263
+                Recall:    0.950781702374059
+                F1:        0.2149003697281026
+
+HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLength + VocabularyConstraintExact)
+        Morph split accuracy:
+                Precision: 0.5359700205844579
+                Recall:    0.8511874825370215
+                F1:        0.6577637672867028
+        Lemmatic split accuracy:
+                Precision: 0.11627579654814477
+                Recall:    0.9567168500289519
+                F1:        0.2073509341616076
+
+HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstraintExact)
+        Morph split accuracy:
+                Precision: 0.5541110599785243
+                Recall:    0.8074322436434759
+                F1:        0.6572058856973915
+        Lemmatic split accuracy:
+                Precision: 0.1262080073630925
+                Recall:    0.9528083381586566
+                F1:        0.22289197426346088
+```
+For at-least constraint, we are looking to beat 66%, 85%, 74%:
+```
+HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintAtLeastAll)
+        Morph split accuracy:
+                Precision: 0.6116584912043301
+                Recall:    0.8082984073763622
+                F1:        0.6963628048046602
+        Lemmatic split accuracy:
+                Precision: 0.1357620094722598
+                Recall:    0.9295020266357846
+                F1:        0.23691978451774773
+
+HFPointViterbi(HardBoundaryPrefixLengthExtended + VocabularyConstraintAtLeastAll)
+        Morph split accuracy:
+                Precision: 0.6116584912043301
+                Recall:    0.8082984073763622
+                F1:        0.6963628048046602
+        Lemmatic split accuracy:
+                Precision: 0.1357620094722598
+                Recall:    0.9295020266357846
+                F1:        0.23691978451774773
+
+HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLength + VocabularyConstraintAtLeastAll)
+        Morph split accuracy:
+                Precision: 0.6199262778854964
+                Recall:    0.8129365744621403
+                F1:        0.7034319354955697
+        Lemmatic split accuracy:
+                Precision: 0.13787739969744103
+                Recall:    0.9367400115807759
+                F1:        0.24037443583885884
+
+HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstraintAtLeastAll)
+        Morph split accuracy:
+                Precision: 0.620031118784236
+                Recall:    0.8127968706342554
+                F1:        0.7034471084672398
+        Lemmatic split accuracy:
+                Precision: 0.1378604770125967
+                Recall:    0.9363057324840764
+                F1:        0.24033441709242917
+```
 
 #### Unguided
 Just using **least-token** Viterbi with ULM vocabulary does better:
