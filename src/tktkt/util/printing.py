@@ -76,6 +76,10 @@ def intsep(integer: int, sep=" "):
     return f"{integer:,}".replace(",", sep)
 
 
+def sgnprint(number: float):
+    return f"+"*(number >= 0) + number.__repr__()
+
+
 def logger(msg: str):
     print("[" + time.strftime('%H:%M:%S') + "]", msg)
 

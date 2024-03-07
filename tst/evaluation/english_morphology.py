@@ -3,16 +3,13 @@ Evaluate any tokeniser on English morphology.
 
 TODO: To be tested:
     - English BPE-knockout-reify
-    - Re-test all my prefix objectives: with punishment, extended, with AtLeastAll constraint...
-        - That's going to be a good 2*2*2 = 8 tokenisers. Better set up a VSC loop for that.
+    - You have run the 4 joint versions of (-2,+1) "symmetric" probability on VSC.
+      Now implement and run the 4 boundary-only versions, and see which ones are equivalent and which are not.
+    - We have prefix objectives. What about suffix objectives? I.e.: if you have splits |abcde|fghi| then you get a
+      score of 3 for a token [CDE] because it ENDS on a boundary, not starts on it.
+      And could you do prefix and suffix combined? Giving score for starting and ending on a boundary, proportional to
+      the distance travelled to/from that point and capped by the distance to the nearest boundary in that direction?
 
-    - CANINE+Viterbi variations:
-        x Symmetric probability objective (the best for ULM vocab) not with exact constraint, but AtLeastAll.
-        x Hard prefix objective with AtLeastAll constraint.
-        - Hard prefix objective with punishment for bad splits.
-            - What we HAVE is an incentive to not use short tokens when starting on a boundary.
-            - What we DON'T HAVE is an incentive to not use many tokens when not starting on a boundary. You have to bridge the gap to the next boundary ASAP!
-            - Also, another explanation for why the prefix score performs worse than boundary matching is that you give NO REWARD when Viterbi wants to use a step that starts on a boundary but jumps over the next boundary, which would still count as >0 score when boundary matching.
 
 TODO: There are two issues with our CANINE evaluation.
     1. I'm not sure if it got special tokens during pretraining, and it is likely not a good idea to leave them out in
@@ -36,7 +33,7 @@ TODO: There are two issues with our CANINE evaluation.
 """
 import itertools
 from tktkt.util.timing import timeit
-from typing import Type
+from typing import Type, Optional
 
 from transformers import CanineTokenizer, CanineForTokenClassification, AutoTokenizer
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
@@ -94,7 +91,8 @@ def make_CanineViterbiBPE():
         vocab=english_bpe.get_vocab(),
         max_step=20,
         vocabulary_constraint_class=VocabularyConstraintExact,
-        score_generator_class=BoundaryAndNonBoundaryLogProbability,
+        score_generator_class=BoundaryScoresChosen,
+        score_transform=LinearPT(-1, +1, negate_as_complement=True),
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
         tokeniser_class=CanineTokenizer,
@@ -103,7 +101,11 @@ def make_CanineViterbiBPE():
     )
 
 
-def make_CanineViterbiULM(generator: Type[ScoreGeneratorUsingCharacterClassifier]=SymmetricBoundaryProbability, constraint: Type[VocabularyConstraint]=VocabularyConstraintExact):
+def make_CanineViterbiULM(
+        generator: Type[ScoreGeneratorUsingCharacterClassifier]=BoundaryScoresChosen,
+        score_transform: Optional[ProbabilityTransform]=LinearPT(-1, +1, negate_as_complement=True),
+        constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
+    ):
     english_ulm: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
 
     return HFPointViterbi(
@@ -112,6 +114,7 @@ def make_CanineViterbiULM(generator: Type[ScoreGeneratorUsingCharacterClassifier
         vocab=english_ulm.get_vocab(),
         max_step=20,
         score_generator_class=generator,
+        score_transform=score_transform,
         vocabulary_constraint_class=constraint,
 
         huggingface_checkpoint=relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28").as_posix(),
@@ -128,7 +131,7 @@ def constructTokenisers():
         # make_EnglishKudoPiece()
         # make_CompressiveViterbiULM(),
         # make_CanineViterbiBPE(),
-        make_CanineViterbiULM(g, v) for g,v in itertools.product([
+        make_CanineViterbiULM(g, None, v) for g,v in itertools.product([
             HardBoundaryPrefixLength,
             HardBoundaryPrefixLengthExtended,
             HardBoundaryAndNonBoundaryPrefixLength,
@@ -141,15 +144,14 @@ def constructTokenisers():
 
 
 def constructTokenisers2():
-    viterbi_tokeniser = make_CanineViterbiULM(SymmetricBoundaryAndNonBoundaryProbability, VocabularyConstraintExact)
-
     a = -2
     b = +1
-    transforms = [LinearPT_TrueComp(a, b), LinearPT_NegComp(a, b), PiecewisePT_TrueComp(a, b), PiecewisePT_NegComp(a, b)]
-    for t in transforms:
-        print("SWITCHING TO TRANSFORM:", t)
-        viterbi_tokeniser.objectives[0].score_generator.nested_generator.T = t
-        yield viterbi_tokeniser
+    generators = [BoundaryScoresChosen, BoundaryScoresAll]
+    transforms = [LinearPT(a, b, False), LinearPT(a, b, True), PiecewisePT(a, b, False), PiecewisePT(a, b, True)]
+
+    for g in generators:
+        for t in transforms:
+            yield make_CanineViterbiULM(g, t, VocabularyConstraintExact)
 
 
 if __name__ == "__main__":

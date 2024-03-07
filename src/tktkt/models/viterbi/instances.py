@@ -43,7 +43,9 @@ class ProductViterbi(ViterbiTokeniser):
 class HFPointViterbi(ViterbiTokeniser):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
-                 score_generator_class: Type[ScoreGeneratorUsingCharacterClassifier], vocabulary_constraint_class: Type[VocabularyConstraint],
+                 # Grid generator
+                 score_generator_class: Type[ScoreGeneratorUsingCharacterClassifier], score_transform: Optional[ProbabilityTransform], vocabulary_constraint_class: Type[VocabularyConstraint],
+                 # Probability generator
                  huggingface_checkpoint: str, tokeniser_class: Type[PreTrainedTokenizer], model_class: Type[PreTrainedModel], tokeniser_kwargs: dict=None):
         max_step = max_step or max(len(t) for t in vocab)
 
@@ -57,11 +59,11 @@ class HFPointViterbi(ViterbiTokeniser):
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=0,
-                score_generator=vocabulary_constraint_class(score_generator_class(probability_model), vocab, reset_value=-INFTY),
+                score_generator=vocabulary_constraint_class(score_generator_class(probability_model, transform=score_transform), vocab, reset_value=-INFTY),
                 score_combiner=ScoreSum()
             )
         ])
 
     def getName(self):
         constraint: VocabularyConstraint = self.objectives[0].score_generator
-        return self.__class__.__name__ + "(" + constraint.nested_generator.__class__.__name__ + " + " + constraint.__class__.__name__ + ")"
+        return self.__class__.__name__ + "(" + constraint.nested_generator.__repr__() + " + " + constraint.__class__.__name__ + ")"

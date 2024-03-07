@@ -23,6 +23,7 @@ from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
 from ...preparation.spacemarking import SpaceMarkerLocation
 from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
+from ...util.printing import sgnprint
 
 
 class CharacterClassifier:
@@ -55,9 +56,109 @@ class StringClassifier:
 #############################################################################################
 
 
+class ProbabilityTransform:
+
+    def __init__(self, negate_as_complement: bool=False):
+        self.negate_as_complement = negate_as_complement
+
+    @abstractmethod
+    def probabilityToScore(self, p: float) -> float:
+        pass
+
+    @abstractmethod
+    def scoreToProbability(self, s: float) -> float:
+        pass
+
+    def scoreToScoreOfComplement(self, score_p: float) -> float:
+        """
+        Map the score S(p) to the score S(1-p).
+        """
+        return self.probabilityToScore(1 - self.scoreToProbability(score_p))
+
+    def complementOfScore(self, s: float) -> float:
+        return -s
+
+    def complement(self, s: float):
+        if self.negate_as_complement:
+            return self.complementOfScore(s)
+        else:
+            return self.scoreToScoreOfComplement(s)
+
+
+class IdentityPT(ProbabilityTransform):
+
+    def probabilityToScore(self, p: float) -> float:
+        return p
+
+    def scoreToProbability(self, s: float) -> float:
+        return s
+
+
+class LogPT(ProbabilityTransform):
+    """
+    You may wonder if it makes sense from the POV of numerical stability to let a classifier generate log probabilities,
+    transform them to probability with exp(), and then convert back to the original space with log(). Isn't it safer to
+    use the original predictions, then?
+
+    Well, if you test numpy's answer to np.log(np.exp(L)), you'll find that it only breaks down around L == -729, which
+    represents a probability of 10^{-317}. At that point, some rounding error doesn't matter.
+
+    The reason for using log probabilities could be to pile many predictions on top of each other, at which point the
+    conversion would start to matter: you won't find a prediction of 10^{-300}, but you might find 20 predictions of 10^{-15}.
+    The transform is only applied to individual predictions, and it is transformed values that are combined, so the transform
+    never interacts with those accumulated values either.
+    """
+    def probabilityToScore(self, p: float) -> float:
+        return np.log(p)
+
+    def scoreToProbability(self, s: float) -> float:  # This leads to a complement that looks like ln(1-p) == ln(1 - e^(ln p)) != -ln p
+        return np.exp(s)
+
+
+class LinearPT(ProbabilityTransform):
+    """
+    In the log domain, you have disproportional punishment for wrong decisions.
+
+    If you use a linear transform instead with symmetric reward -1 and +1, making the wrong decision can be balanced out
+    by making the right decision in a comparable situation: e.g., take two points have 70% and 30% probability of being
+    a boundary. You say both are boundaries, then the reward is ( 2*0.7-1 ) + ( 2*(0.3)-1 ) = 0.4 + (-0.4) = 0.
+    """
+
+    def __init__(self, a: int, b: int, negate_as_complement: bool=False):
+        super().__init__(negate_as_complement)
+        self.a = a
+        self.b = b
+
+    def probabilityToScore(self, p: float):
+        return self.a + p*(self.b-self.a)
+
+    def scoreToProbability(self, s: float) -> float:
+        return (s - self.a)/(self.b - self.a)
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"({sgnprint(self.a)},{sgnprint(self.b)})" + ("_NegComp")*self.negate_as_complement
+
+
+class PiecewisePT(ProbabilityTransform):
+
+    def __init__(self, a: int, b: int, negate_as_complement: bool=False):
+        super().__init__(negate_as_complement)
+        self.a = a
+        self.b = b
+
+    def probabilityToScore(self, p: float):
+        return 2*(p-0.5)*self.b if p > 0.5 else 2*(0.5 - p)*self.a
+
+    def scoreToProbability(self, s: float) -> float:
+        return 0.5 + s/(2*self.b) if s > 0 else 0.5 - s/(2*self.a)
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"({sgnprint(self.a)},{sgnprint(self.b)})" + ("_NegComp")*self.negate_as_complement
+
+
 class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
     
-    def __init__(self, point_model: CharacterClassifier):
+    def __init__(self, point_model: CharacterClassifier, **kwargs):
         self.logprob_classifier = point_model
 
     def getHardBoundaries(self, string: str) -> List[int]:
@@ -76,59 +177,45 @@ class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
         return boundary_before.tolist()
 
 
-class BoundaryLogProbability(ScoreGeneratorUsingCharacterClassifier):
+class ScoreGeneratorUsingCharacterClassifierAndTransform(ScoreGeneratorUsingCharacterClassifier):
+
+    def __init__(self, point_model: CharacterClassifier, transform: ProbabilityTransform):
+        super().__init__(point_model)
+        self.T = transform
+
+    def getBoundaryScores(self, string: str):
+        boundary_scores = list(map(self.T.probabilityToScore, self.logprob_classifier.getPointLogProbabilities(string)))  # one entry for each character
+        boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
+        return boundary_scores
+
+    def __repr__(self):
+        return self.__class__.__name__ + "(" + self.T.__repr__() + ")"
+
+
+class BoundaryScoresChosen(ScoreGeneratorUsingCharacterClassifierAndTransform):
     """
     For Viterbi paths that maximise the score on the character boundaries they hit.
 
-    Uses log probabilities, so hitting low probabilities is disproportionately punished.
-    Should be used with sum.
+    If using log probabilities, hitting low probabilities is disproportionately punished. This is not the case for
+    symmetric linear transforms, like [0,1] -> [-1,+1]. Note that even though such scores might resemble probabilities
+    a lot, they should STILL be summed, not multiplied (as if they're still logarithms) when accumulated.
+
+    Now, point models give a probability of each character having a split point after it or not.
+    So why not use probabilities?
+
+    We want a Viterbi path to accumulate as much of the probability mass as possible (hit all the predicted
+    boundaries), but disincentivise cheating by oversegmenting. Let's say you sum across the boundaries you hit.
+    Oversegmenting would then cause you to collect all boundary probability, without being punished for collecting 0s.
+    Hence, it is better to use a linear transform like -1 + P*(1 - (-1)) = 2P-1: you are rewarded for stepping on a
+    boundary and you are punished for stepping on a non-boundary.
+    The alternative is to use multiplication, or equivalently to use logarithms, but beware that this gives outsized
+    punishment to stepping on a non-boundary (a single non-boundary can make 20 boundary hits evaporate by multiplying
+    by a very small number). This is also easy to see when you take the ln, where you are punished by -100 if you
+    get it wrong but getting it right is an invisible +0.
     """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_scores = self.logprob_classifier.getPointLogProbabilities(string)  # one entry for each character
-        boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
-
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=0)
-        for n in range(N):
-            K = min(max_k, N-n)  # Explained elsewhere.
-            for k in range(K):
-                scores.set(n,k, boundary_scores[n+k])  # Explained elsewhere
-
-        return scores
-
-
-class SymmetricBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
-    """
-    For Viterbi paths that maximise the score on the character boundaries they hit, but with symmetric rewards for
-    the decision to put a boundary somewhere or not.
-
-    Making the wrong decision can be balanced out by making the right decision in a comparable situation: e.g., take two
-    points have 70% and 30% probability of being a boundary. You say both are boundaries, then the
-    reward is ( 2*0.7-1 ) + ( 2*(0.3)-1 ) = 0.4 + (-0.4) = 0.
-
-    I stress again: the scores have been converted OUT OF the log domain into the probability domain, but they should
-    STILL be summed, not multiplied.
-    """
-
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        """
-        Point models give a probability of each character having a split point after it or not.
-
-        Here we want a Viterbi path to accumulate as much of this probability mass as possible (hit all the predicted
-        boundaries), but disincentivise cheating by oversegmenting. If you would sum probabilities of just the boundaries,
-        oversegmenting would cause you to collect all boundary probability, without being punished for collecting 0s.
-        Hence, the probabilities are rescaled by 2*P - 1: you are rewarded for stepping on a boundary and you are
-        punished for stepping on a non-boundary. I suspect this will need a tiebreaker objective.
-
-        The alternative is to use multiplication, but this gives outsized punishment to stepping on a non-boundary (a
-        single non-boundary can make 20 boundary hits evaporate by multiplying by a very small number). This is also
-        easy to see when you take the ln, where you are now punished by -INFTY if you get it wrong but getting it right
-        is invisible.
-        """
-        boundary_scores = [2*np.exp(ln) - 1 for ln in self.logprob_classifier.getPointLogProbabilities(string)]  # one entry for each character
-        boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
-
+        boundary_scores = self.getBoundaryScores(string)
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
@@ -139,107 +226,25 @@ class SymmetricBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
         return scores
 
 
-class BoundaryAndNonBoundaryLogProbability(ScoreGeneratorUsingCharacterClassifier):
+class BoundaryScoresAll(ScoreGeneratorUsingCharacterClassifierAndTransform):
     """
     Uses point boundaries, assumed to be independent, to compute segment probabilities.
-    Should be used with sum accumulation since scores are in log space.
+    Should still be used with sum accumulation.
 
-    Mathematically speaking, this should be the most accurate, since maximising this objective maximises the joint
-    distribution across all possible split points.
-    """
+    Let's say you have suggested splits abc|de|f. The probability of the segment "abc" is computed now not as
+        P(boundary after char 2 | abcdef)
+    but instead as
+        P(boundary after char 2 | abcdef)*P(no boundary after char 1 | abcdef)*P(no boundary after char 0 | abcdef)
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        """
-        Let's say you have suggested splits abc|de|f. The probability of the segment "abc" is computed now not as
-            P(boundary after char 2 | abcdef)
-        but instead as
-            P(boundary after char 2 | abcdef)*P(no boundary after char 1 | abcdef)*P(no boundary after char 0 | abcdef)
+    This is exactly what is calculated when you use log scores (because the sum of the logs is the log of the product of
+    the probabilities, and you get numerical stability as a bonus), so mathematically speaking, this should be the most
+    accurate type of score, since maximising this objective maximises the joint distribution across all possible split points.
+    Of course, when constraints are involved, this is no longer true.
 
-        Computations are done in log space and with addition, to keep numerical stability.
+    There's a funky equivalence here: you could convert the CharacterClassifier into a StringClassifier first, and
+    then use that StringClassifier with its usual grid generator.
 
-        There's a funky equivalence here: you could convert the CharacterClassifier into a StringClassifier first, and
-        then use that StringClassifier with its usual grid generator.
-        """
-        boundary_log_probabilities = self.logprob_classifier.getPointLogProbabilities(string)  # one entry for each character
-        boundary_log_probabilities[-1] = 0
-
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=0)
-        for n in range(N):
-            K = min(max_k, N-n)  # Like above.
-            for k in range(K):
-                log_probability = boundary_log_probabilities[n+k]  # Like above.
-                for i in range(k):
-                    logp = boundary_log_probabilities[n+i]
-                    log_probability += np.log(1-np.exp(logp))  # ln(1-p) == ln(1 - e^(ln p))
-                scores.set(n, k, log_probability)
-
-        return scores
-
-
-class ProbabilityTransform:
-
-    @abstractmethod
-    def probabilityToScore(self, p: float):
-        pass
-
-    @abstractmethod
-    def negateScore(self, score_p: float):
-        """
-        Map the score S(p) to the score S(1-p).
-        """
-        pass
-
-
-class LinearPT(ProbabilityTransform):
-
-    def __init__(self, a: int, b: int):
-        self.a = a
-        self.b = b
-
-    def probabilityToScore(self, p: float):
-        return self.a + p*(self.b-self.a)
-
-    def __repr__(self):
-        return self.__class__.__name__ + f"({self.a},{self.b})"
-
-class LinearPT_NegComp(LinearPT):
-    def negateScore(self, score_p: float):
-        return -score_p
-
-class LinearPT_TrueComp(LinearPT):
-    def negateScore(self, score_p: float):
-        p = (score_p - self.a)/(self.b - self.a)
-        return self.probabilityToScore(1-p)
-
-class PiecewisePT(ProbabilityTransform):
-
-    def __init__(self, a: int, b: int):
-        self.a = a
-        self.b = b
-
-    def probabilityToScore(self, p: float):
-        return 2*(p-0.5)*self.b if p > 0.5 else 2*(0.5 - p)*self.a
-
-    def __repr__(self):
-        return self.__class__.__name__ + f"({self.a},{self.b})"
-
-class PiecewisePT_NegComp(LinearPT):
-    def negateScore(self, score_p: float):
-        return -score_p
-
-class PiecewisePT_TrueComp(LinearPT):
-    def negateScore(self, score_p: float):
-        p = 0.5 + score_p/(2*self.b) if score_p > 0 else 0.5 - score_p/(2*self.a)
-        return self.probabilityToScore(1-p)
-
-
-class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterClassifier):
-    """
-    Equivalent to BoundaryAndNonBoundaryLogProbability with the 2*P-1 transform applied before accumulating across points.
-    Still for summing.
-
-    TODO: As it turns out, this is mathematically equivalent to only considering boundaries. Given the preferred score
+    TODO: As it turns out, for symmetric scores, this is mathematically equivalent to only considering boundaries. Given the preferred score
           at position i, you can either choose to split there or not. You get the score at that position when you do.
             - If it's not a split and you do split, you receive a score, but it's negative.
             - If it's not a split and you don't split, you don't receive a score, which is +1 over the alternative decision.
@@ -283,17 +288,8 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
         So actually, there are 8 variants that test 4 functions.
     """
 
-    T = LinearPT_NegComp(-1, +1)
-
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        """
-        Note that accumulation happens differently here because you need a different formula for getting the score of a
-        complement. For a probability P, the complement is 1-P, the log probability of its complement is ln(1 - e^(ln p)),
-        whilst the symmetric probability of its complement is a negation: 2*(1-P)-1 = 2-2*P-1 = 1-2*P = -(2*P-1).
-        """
-        boundary_scores = [self.T.probabilityToScore(np.exp(ln)) for ln in self.logprob_classifier.getPointLogProbabilities(string)]  # one entry for each character
-        boundary_scores[-1] = 0
-
+        boundary_scores = self.getBoundaryScores(string)
         N = len(string)
         scores = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
@@ -301,7 +297,7 @@ class SymmetricBoundaryAndNonBoundaryProbability(ScoreGeneratorUsingCharacterCla
             for k in range(K):
                 cumulative_score = boundary_scores[n+k]  # Like above.
                 for i in range(k):
-                    cumulative_score += self.T.negateScore(boundary_scores[n+i])
+                    cumulative_score += self.T.complement(boundary_scores[n+i])
                 scores.set(n, k, cumulative_score)
 
         return scores
@@ -337,8 +333,11 @@ class HardBoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifier):
 
 class HardBoundaryAndNonBoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifier):
     """
-    Same as the other one, except you get punished for making unnecessarily many steps when you do not start on a
+    Same as the first one, except you get punished for making unnecessarily many steps when you do not start on a
     proposed boundary, to incentivise bridging the gap ASAP.
+
+    What we HAVE is an incentive to not use short tokens when starting on a boundary.
+    What we DON'T HAVE is an incentive to not use many tokens when not starting on a boundary.
 
     TODO: Although having a punishment of -1 per step is sufficient to incentivise choosing the path with least tokens
           to get to the next boundary, it may also help in being a counterweight to very large tokens being preferred
@@ -364,7 +363,8 @@ class HardBoundaryPrefixLengthExtended(ScoreGeneratorUsingCharacterClassifier):
     boundary, with the reward stagnating at that boundary.
 
     In HardBoundaryPrefixLength, the reward drops to 0 after that boundary, which doesn't really allow making the
-    trade-off of "I can capture this boundary if I jump over the next one".
+    trade-off of "I can capture this boundary if I jump over the next one". With boundary probabilities, you can jump
+    a gap and still harvest the score for the boundary you end up at!
     """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:

@@ -109,6 +109,22 @@ at least as good as with an exact vocabulary:
 Indeed, this blows the above 58%, 81%, 68% of the exact constraint out of the water, at the cost of concatenability. 
 Precision could be better though; seems to be oversegmenting (finds 84% of real splits but only 66% of proposed splits are real).
 
+Now let's switch back to the Exact constraint but use a different probability-to-score transform:
+```
+HFPointViterbi(SymmetricBoundaryAndNonBoundaryProbability + VocabularyConstraintExact)
+LinearPT_TrueComp(-2,1)
+    Precision: 0.5839858651568084
+    Recall:    0.8126851075719475
+    F1:        0.6796111967848965
+
+HFPointViterbi(SymmetricBoundaryAndNonBoundaryProbability + VocabularyConstraintExact)
+LinearPT_NegComp(-2,1)
+    Precision: 0.586417157275021
+    Recall:    0.7792679519418833
+    F1:        0.6692261547690462
+```
+
+
 
 #### Hard-boundary-based
 ~~Using **prefix rewards** causes even worse performance, with particularly the recall being absolutely terrible.~~
