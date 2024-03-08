@@ -111,138 +111,137 @@ Precision could be better though; seems to be oversegmenting (finds 84% of real 
 
 Now let's switch back to the Exact constraint but use a different probability-to-score transform:
 ```
-HFPointViterbi(SymmetricBoundaryAndNonBoundaryProbability + VocabularyConstraintExact)
-LinearPT_TrueComp(-2,1)
+NO EQUIVALENCE:
+
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
+    Precision: 0.586417157275021
+    Recall:    0.7792679519418833
+    F1:        0.6692261547690462
+
+HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)) + VocabularyConstraintExact)
+    Precision: 0.5839858651568084
+    Recall:    0.8126851075719475
+    F1:        0.6796111967848965  ---> NEW BEST!
+
+---------------------------------------
+YES EQUIVALENCE (which implies that with this objective, you can't actually take joint effect into account):
+Also equivalent to the first LinearPT above.
+
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)_NegComp) + VocabularyConstraintExact)
+    Precision: 0.586417157275021
+    Recall:    0.7792679519418833
+    F1:        0.6692261547690462
+
+HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)_NegComp) + VocabularyConstraintExact)
+    Precision: 0.586417157275021
+    Recall:    0.7792679519418833
+    F1:        0.6692261547690462
+
+---------------------------------------
+NO EQUIVALENCE:
+
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+    Precision: 0.5861179889091244
+    Recall:    0.8003073484213468
+    F1:        0.6766675722604802
+
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
     Precision: 0.5839858651568084
     Recall:    0.8126851075719475
     F1:        0.6796111967848965
 
-HFPointViterbi(SymmetricBoundaryAndNonBoundaryProbability + VocabularyConstraintExact)
-LinearPT_NegComp(-2,1)
-    Precision: 0.586417157275021
-    Recall:    0.7792679519418833
-    F1:        0.6692261547690462
+---------------------------------------
+YES EQUIVALENCE:
+(Again equivalent to the first class above.)
+
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)_NegComp) + VocabularyConstraintExact)
+    Precision: 0.5861179889091244
+    Recall:    0.8003073484213468
+    F1:        0.6766675722604802
+
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-2,+1)_NegComp) + VocabularyConstraintExact)
+    Precision: 0.5861179889091244
+    Recall:    0.8003073484213468
+    F1:        0.6766675722604802
 ```
+The conclusion is that
+1. Taking into account the point where you didn't split is useless *if* the reward you get for not splitting at a position
+   is the *opposite* of what you get for splitting there, *either* because you force it to be (like we do above) or when
+   the score of the complement is the opposite by accident (e.g. for all symmetric transforms, which we already knew).
+2. It is useless to test such reward structures *at all*, because apparently, using the negative score in BoundaryScoresChosen
+   and in BoundaryScoresAll is equivalent to using the score of the complement in BoundaryScoresChosen.
 
-
+That means we no longer need to consider NegComp, and we now also know that symmetric transforms don't benefit from
+considering all boundaries.
 
 #### Hard-boundary-based
-~~Using **prefix rewards** causes even worse performance, with particularly the recall being absolutely terrible.~~
-```
-    Precision: 0.43075429390415865
-    Recall:    0.5206482257613858
-    F1:        0.47145441435059265
-```
-~~Possibly a tiebreaker objective is needed, or perhaps there is too much reward given to matching the largest prefix
-and nothing else. Using the same rewards except **extended** past the next boundary, rather than dropping to 0 after it, gives the same
-exact scores. Weird.~~
-
-~~Using **prefix rewards with punishment for bad steps** increases all metrics.~~
-```
-		Precision: 0.49686264822134385
-		Recall:    0.5619726180497345
-		F1:        0.5274157598007081
-```
-~~The **extended** version is the same again!~~
-
-~~Using **prefix rewards without punishment** and with an **AtLeastAll vocabulary constraint** boosts the precision but 
-drops recall:~~
-```
-		Precision: 0.503370786516854
-		Recall:    0.5006985191394244
-		F1:        0.5020310967922678
-```
-~~Using the version **with punishment**, **extended** (although apparently that doesn't matter), and with 
-**AtLeastAll constraint**, we get... the same thing?! How does this keep happening to these objectives?!
-Even if you take out the "extended" part, it performs the exact same. So, weirdly, when you give it too much freedom,
-it doesn't matter that you have punishment nor the ability to jump over the next boundary.~~
-
-~~**TODO: Yeah so I just printed the prefix score grid and it is filled with 0s... So what the fuck have we been
-testing this whole time???**~~
-
-Here are the new results. For exact vocabulary constraint, we are looking to beat 58%, 81%, 68%:
+For exact vocabulary constraint, we are looking to beat 58%, 81%, 68%:
 ```
 HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintExact)
-        Morph split accuracy:
-                Precision: 0.5290765557743583
-                Recall:    0.8482816429170159
-                F1:        0.6516909405085165
-        Lemmatic split accuracy:
-                Precision: 0.11468553404318352
-                Recall:    0.9526635784597568
-                F1:        0.2047253892457731
+    Precision: 0.5290765557743583
+    Recall:    0.8482816429170159
+    F1:        0.6516909405085165
+    WW-Precision: 0.11468553404318352
+    WW-Recall:    0.9526635784597568
+    WW-F1:        0.2047253892457731
 
 HFPointViterbi(HardBoundaryPrefixLengthExtended + VocabularyConstraintExact)
-        Morph split accuracy:
-                Precision: 0.5411118078866797
-                Recall:    0.8197261804973456
-                F1:        0.6518976091014131
-        Lemmatic split accuracy:
-                Precision: 0.12114058061898263
-                Recall:    0.950781702374059
-                F1:        0.2149003697281026
+    Precision: 0.5411118078866797
+    Recall:    0.8197261804973456
+    F1:        0.6518976091014131
+    WW-Precision: 0.12114058061898263
+    WW-Recall:    0.950781702374059
+    WW-F1:        0.2149003697281026
 
 HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLength + VocabularyConstraintExact)
-        Morph split accuracy:
-                Precision: 0.5359700205844579
-                Recall:    0.8511874825370215
-                F1:        0.6577637672867028
-        Lemmatic split accuracy:
-                Precision: 0.11627579654814477
-                Recall:    0.9567168500289519
-                F1:        0.2073509341616076
+    Precision: 0.5359700205844579
+    Recall:    0.8511874825370215
+    F1:        0.6577637672867028
+    WW-Precision: 0.11627579654814477
+    WW-Recall:    0.9567168500289519
+    WW-F1:        0.2073509341616076
 
 HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstraintExact)
-        Morph split accuracy:
-                Precision: 0.5541110599785243
-                Recall:    0.8074322436434759
-                F1:        0.6572058856973915
-        Lemmatic split accuracy:
-                Precision: 0.1262080073630925
-                Recall:    0.9528083381586566
-                F1:        0.22289197426346088
+    Precision: 0.5541110599785243
+    Recall:    0.8074322436434759
+    F1:        0.6572058856973915
+    WW-Precision: 0.1262080073630925
+    WW-Recall:    0.9528083381586566
+    WW-F1:        0.22289197426346088
 ```
 For at-least constraint, we are looking to beat 66%, 85%, 74%:
 ```
 HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintAtLeastAll)
-        Morph split accuracy:
-                Precision: 0.6116584912043301
-                Recall:    0.8082984073763622
-                F1:        0.6963628048046602
-        Lemmatic split accuracy:
-                Precision: 0.1357620094722598
-                Recall:    0.9295020266357846
-                F1:        0.23691978451774773
+    Precision: 0.6116584912043301
+    Recall:    0.8082984073763622
+    F1:        0.6963628048046602
+    WW-Precision: 0.1357620094722598
+    WW-Recall:    0.9295020266357846
+    WW-F1:        0.23691978451774773
 
 HFPointViterbi(HardBoundaryPrefixLengthExtended + VocabularyConstraintAtLeastAll)
-        Morph split accuracy:
-                Precision: 0.6116584912043301
-                Recall:    0.8082984073763622
-                F1:        0.6963628048046602
-        Lemmatic split accuracy:
-                Precision: 0.1357620094722598
-                Recall:    0.9295020266357846
-                F1:        0.23691978451774773
+    Precision: 0.6116584912043301
+    Recall:    0.8082984073763622
+    F1:        0.6963628048046602
+    WW-Precision: 0.1357620094722598
+    WW-Recall:    0.9295020266357846
+    WW-F1:        0.23691978451774773
 
 HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLength + VocabularyConstraintAtLeastAll)
-        Morph split accuracy:
-                Precision: 0.6199262778854964
-                Recall:    0.8129365744621403
-                F1:        0.7034319354955697
-        Lemmatic split accuracy:
-                Precision: 0.13787739969744103
-                Recall:    0.9367400115807759
-                F1:        0.24037443583885884
+    Precision: 0.6199262778854964
+    Recall:    0.8129365744621403
+    F1:        0.7034319354955697
+    WW-Precision: 0.13787739969744103
+    WW-Recall:    0.9367400115807759
+    WW-F1:        0.24037443583885884
 
 HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstraintAtLeastAll)
-        Morph split accuracy:
-                Precision: 0.620031118784236
-                Recall:    0.8127968706342554
-                F1:        0.7034471084672398
-        Lemmatic split accuracy:
-                Precision: 0.1378604770125967
-                Recall:    0.9363057324840764
-                F1:        0.24033441709242917
+    Precision: 0.620031118784236
+    Recall:    0.8127968706342554
+    F1:        0.7034471084672398
+    WW-Precision: 0.1378604770125967
+    WW-Recall:    0.9363057324840764
+    WW-F1:        0.24033441709242917
 ```
 
 #### Unguided

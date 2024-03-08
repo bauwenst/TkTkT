@@ -1,6 +1,10 @@
 import time
 
 
+def datetimeDashed() -> str:
+    return time.strftime("%F_%X").replace(":", "-")
+
+
 def timeit(func):
     """
     Decorator for measuring function's running time.

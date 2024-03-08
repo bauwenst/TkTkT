@@ -32,7 +32,9 @@ TODO: There are two issues with our CANINE evaluation.
          2. Apply the byte mapping of the LM to map these tokens into the LM vocabulary.
 """
 import itertools
-from tktkt.util.timing import timeit
+import json
+
+from tktkt.util.timing import datetimeDashed, timeit
 from typing import Type, Optional
 
 from transformers import CanineTokenizer, CanineForTokenClassification, AutoTokenizer
@@ -154,6 +156,40 @@ def constructTokenisers2():
             yield make_CanineViterbiULM(g, t, VocabularyConstraintExact)
 
 
+def constructTokenisers3():
+    lower_bounds = [-0.25, -0.33, -0.5, -2, -3, -4]
+    transforms = [LinearPT, PiecewisePT]
+    generators = [BoundaryScoresChosen, BoundaryScoresAll]
+
+    for low in lower_bounds:
+        for t in transforms:
+            for g in generators:
+                yield make_CanineViterbiULM(g, t(low, +1), VocabularyConstraintExact)
+
+
 if __name__ == "__main__":
     with TemporaryContext(setupEnglish()):
-        intrinsicEvaluation(constructTokenisers2(), do_whole_word=False, verbose=True)
+        # Do evaluation
+        results = intrinsicEvaluation(constructTokenisers3(), do_whole_word=False, verbose=True)
+
+        # Turn results into a file so that you can check them even if the terminal closes
+        d = dict()
+        for result in results:
+            matrix = result.cm_morph
+            pr, re, f1 = matrix.computePrReF1()
+            tp, fp, tn, fn = matrix.compute()
+
+            d[result.name] = {
+                "morph-types": {
+                    "Pr": pr,
+                    "Re": re,
+                    "F1": f1,
+                    "TP": tp,
+                    "FP": fp,
+                    "TN": tn,
+                    "FN": fn
+                }
+            }
+
+        with open(DataPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
+            json.dump(d, handle)

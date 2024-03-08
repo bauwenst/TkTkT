@@ -194,7 +194,7 @@ def compute_metrics(eval: transformers.EvalPrediction) -> dict:
     predictions, labels = predictions.flatten(), labels.flatten()  # Both are EXAMPLES x TOKENS
     mask = labels != -100  # Only select results where the label isn't padding.
 
-    results = metrics.compute(predictions=predictions[mask].tolist(), references=labels[mask].tolist())
+    results = metrics.computePrReF1(predictions=predictions[mask].tolist(), references=labels[mask].tolist())
     return {  # To this dictionary, the eval loss will be added post-hoc.
         "re": results["recall"],
         "pr": results["precision"],
@@ -226,7 +226,7 @@ def exampleInference():
 
 
 def exampleMetrics():
-    print(metrics.compute(predictions=[0,1,1,1,1,1], references=[0,0,0,0,1,0]))
+    print(metrics.computePrReF1(predictions=[0, 1, 1, 1, 1, 1], references=[0, 0, 0, 0, 1, 0]))
 
 
 def exampleDataset():
