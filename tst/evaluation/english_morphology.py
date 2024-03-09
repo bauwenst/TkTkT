@@ -44,7 +44,7 @@ from bpe_knockout.project.config import TemporaryContext, setupEnglish, Pℛ𝒪
 
 from tktkt.preparation.instances import HuggingFacePreprocessorForWords
 from tktkt.evaluation.morphological import intrinsicEvaluation
-from tktkt.models.viterbi.instances import HFPointViterbi, LeastTokenViterbi
+from tktkt.models.viterbi.instances import HFPointViterbi, LeastTokenViterbi, LeastTokenWithHfTiebreaker
 from tktkt.models.viterbi.objectives_guided import *
 from tktkt.models.viterbi.objectives_postprocessors import *
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
@@ -105,7 +105,7 @@ def make_CanineViterbiBPE():
 
 def make_CanineViterbiULM(
         generator: Type[ScoreGeneratorUsingCharacterClassifier]=BoundaryScoresChosen,
-        score_transform: Optional[ProbabilityTransform]=LinearPT(-1, +1, negate_as_complement=True),
+        score_transform: Optional[ProbabilityTransform]=LinearPT(-1, +1, negate_as_complement=False),
         constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
     ):
     english_ulm: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
@@ -126,6 +126,20 @@ def make_CanineViterbiULM(
     )
 
 
+def make_LeastTokenTiebroken():
+    canine_viterbi = make_CanineViterbiULM()
+    constraint: VocabularyConstraint = canine_viterbi.objectives[0].score_generator
+
+    vocab = constraint.vocab
+    classifier = constraint.nested_generator.logprob_classifier
+    return LeastTokenWithHfTiebreaker(
+        preprocessor=canine_viterbi.preprocessor,
+        vocab=vocab,
+        max_step=20,
+        logprob_classifier=classifier
+    )
+
+
 @timeit
 def constructTokenisers():
     return [
@@ -133,19 +147,28 @@ def constructTokenisers():
         # make_EnglishKudoPiece()
         # make_CompressiveViterbiULM(),
         # make_CanineViterbiBPE(),
-        make_CanineViterbiULM(g, None, v) for g,v in itertools.product([
-            HardBoundaryPrefixLength,
-            HardBoundaryPrefixLengthExtended,
-            HardBoundaryAndNonBoundaryPrefixLength,
-            HardBoundaryAndNonBoundaryPrefixLengthExtended
-        ], [
-            VocabularyConstraintExact,
-            VocabularyConstraintAtLeastAll
-        ])
+        make_LeastTokenTiebroken()
     ]
 
 
-def constructTokenisers2():
+def constructTokenisers_prefixGenerators():
+    generators = [
+        HardBoundaryPrefixLength,
+        HardBoundaryPrefixLengthExtended,
+        HardBoundaryAndNonBoundaryPrefixLength,
+        HardBoundaryAndNonBoundaryPrefixLengthExtended
+    ]
+    constraints = [
+        VocabularyConstraintExact,
+        VocabularyConstraintAtLeastAll
+    ]
+
+    for c in constraints:
+        for g in generators:
+            yield make_CanineViterbiULM(g, None, c)
+
+
+def constructTokenisers_boundaryScores():
     a = -2
     b = +1
     generators = [BoundaryScoresChosen, BoundaryScoresAll]
@@ -156,7 +179,7 @@ def constructTokenisers2():
             yield make_CanineViterbiULM(g, t, VocabularyConstraintExact)
 
 
-def constructTokenisers3():
+def constructTokenisers_boundaryScorePunishments():
     lower_bounds = [-0.25, -0.33, -0.5, -2, -3, -4]
     transforms = [LinearPT, PiecewisePT]
     generators = [BoundaryScoresChosen, BoundaryScoresAll]
@@ -167,10 +190,16 @@ def constructTokenisers3():
                 yield make_CanineViterbiULM(g, t(low, +1), VocabularyConstraintExact)
 
 
+def constructTokenisers_boundaryScoreLog():
+    generators = [BoundaryScoresChosen, BoundaryScoresAll]
+    for g in generators:
+        yield make_CanineViterbiULM(g, LogPT(), VocabularyConstraintExact)
+
+
 if __name__ == "__main__":
     with TemporaryContext(setupEnglish()):
         # Do evaluation
-        results = intrinsicEvaluation(constructTokenisers3(), do_whole_word=False, verbose=True)
+        results = intrinsicEvaluation(constructTokenisers(), do_whole_word=False, verbose=True)
 
         # Turn results into a file so that you can check them even if the terminal closes
         d = dict()

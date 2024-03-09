@@ -174,6 +174,186 @@ The conclusion is that
 That means we no longer need to consider NegComp, and we now also know that symmetric transforms don't benefit from
 considering all boundaries.
 
+Also notice the only two real BoundaryScoresAll results are *the same* regardless of LinearPT or PiecewisePT. What's more:
+they stay equal when varying the punishment, *and are equal across punishments*.
+```
+HFPointViterbi(BoundaryScoresAll(LinearPT(-0.25,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084
+    Re: 0.8126851075719475
+    F1: 0.6796111967848965
+
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-0.25,+1)) + VocabularyConstraintExact):
+    Pr: 0.5839858651568084
+    Re: 0.8126851075719475
+    F1: 0.6796111967848965
+  
+HFPointViterbi(BoundaryScoresAll(LinearPT(-0.33,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084
+    Re: 0.8126851075719475
+    F1: 0.6796111967848965
+  
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-0.33,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084
+    Re: 0.8126851075719475
+    F1: 0.6796111967848965
+
+HFPointViterbi(BoundaryScoresAll(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
+      Pr: 0.5839858651568084
+      Re: 0.8126851075719475
+      F1: 0.6796111967848965
+
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084,
+    Re: 0.8126851075719475,
+    F1: 0.6796111967848965,
+  
+HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084,
+    Re: 0.8126851075719475,
+    F1: 0.6796111967848965,
+
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084,
+    Re: 0.8126851075719475,
+    F1: 0.6796111967848965,
+
+HFPointViterbi(BoundaryScoresAll(LinearPT(-3,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084,
+    Re: 0.8126851075719475,
+    F1: 0.6796111967848965,
+
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-3,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084,
+    Re: 0.8126851075719475,
+    F1: 0.6796111967848965,
+
+HFPointViterbi(BoundaryScoresAll(LinearPT(-4,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084,
+    Re: 0.8126851075719475,
+    F1: 0.6796111967848965,
+
+HFPointViterbi(BoundaryScoresAll(PiecewisePT(-4,+1)) + VocabularyConstraintExact)
+    Pr: 0.5839858651568084,
+    Re: 0.8126851075719475,
+    F1: 0.6796111967848965
+```
+Weird, and I guess we can never be sure if it isn't a bug (since we've had so many even after evaluation), but the code
+is virtually the same as BoundaryScoresChosen with the addition of 2 lines of code...
+
+BoundaryScoresChosen *does* have variable results, with best F1 so far for exact constraints:
+```
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.25,+1)) + VocabularyConstraintExact)
+    Pr: 0.5384182846558396,
+    Re: 0.909639564124057,
+    F1: 0.6764461436170213
+  
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.33,+1)) + VocabularyConstraintExact)
+    Pr: 0.5491143867320273,
+    Re: 0.8982676725342275,
+    F1: 0.6815777478613906,
+  
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
+    Pr: 0.5645647815327927,
+    Re: 0.8733165688739871,
+    F1: 0.6857920200103124,  ---> New best, but precision is 2% lower than before.
+  
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
+    Pr: 0.586417157275021,  ---> New best, at the cost of recall
+    Re: 0.7792679519418833,
+    F1: 0.6692261547690462,
+  
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-3,+1)) + VocabularyConstraintExact)
+    Pr: 0.585579629787597,
+    Re: 0.7672254819782062,
+    F1: 0.6642074453931932,
+  
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-4,+1)) + VocabularyConstraintExact)
+    Pr: 0.5842290046740044,
+    Re: 0.7578653255099189,
+    F1: 0.6598148801342789,
+```
+Notice how the recall drops monotonously and the precision rises up to a certain point and then teeters down.
+
+Same story for piecewise, although less prominently.
+```
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.25,+1)) + VocabularyConstraintExact)
+    Pr: 0.5641620821377004,
+    Re: 0.8624476110645432,
+    F1: 0.6821210346618344,
+  
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.33,+1)) + VocabularyConstraintExact)
+    Pr: 0.5672451994091581,
+    Re: 0.8583962000558816,
+    F1: 0.6830906058921623,
+  
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
+    Pr: 0.5733971871509966,
+    Re: 0.8463816708577815,
+    F1: 0.683645719315271,
+  
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+    Pr: 0.5861179889091244,
+    Re: 0.8003073484213468,
+    F1: 0.6766675722604802,
+  
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-3,+1)) + VocabularyConstraintExact)
+    Pr: 0.586262046339963,
+    Re: 0.7988823693769209,
+    F1: 0.6762535477767265,
+  
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-4,+1)) + VocabularyConstraintExact)
+    Pr: 0.5863377998481522,
+    Re: 0.7983794355965353,
+    F1: 0.676123658649125,
+```
+It's interesting that precision seems to stagnate.
+
+You could interpret an increase in punishment as a push towards least-token Viterbi, with a tiebreaker on morphological 
+matches (i.e. you find the least amount of tokens to use, and then try to find the path with that amount of tokens that has the
+most good splits). I could see that explaining how you get from 51% precision and 58% recall to 59% precision (not that
+much because you only have, say, 1 less bad split in most words) and 80% recall (the 1 extra good split you now prefer
+makes up a significant amount of all good splits).
+
+Apparently it's not the whole story though, since a literal implementation of least-token with boundary probability as
+tiebreaker gives only 54% precision (+3% not +8%) and 64% recall (+6% not +16%).
+
+If true, that kinda sucks, because it means you can't increase precision arbitrarily. It makes sense though, because not
+all words can be represented by 1 token, so you just can't keep asking for fewer tokens and expect the tokeniser to need
+fewer steps. Also, I'd like to remind that it's not obvious that you would *want* to push towards using fewer and fewer tokens.
+The subword vocabulary contains many full words that contain more than one morpheme (e.g. words with -ion and so on).
+Even though the tokeniser *can* jump to the end immediately, it shouldn't, perhaps even if it costs 1 bad split to get
+1 good split out of it.
+
+The best punishment seems to lie between -0.5 and -2 for both the linear and the piecewise transform.
+To repeat those results, ordered in increasing precision (and coincidentally decreasing recall!):
+```
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
+    Pr: 0.5645647815327927
+    Re: 0.8733165688739871  
+    F1: 0.6857920200103124  ---> New best, but precision is 2% lower than before.
+    
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
+    Pr: 0.5733971871509966
+    Re: 0.8463816708577815
+    F1: 0.683645719315271
+
+HFPointViterbi(BoundaryScoresChosen(LinearPT/PiecewisePT(-1,+1)) + VocabularyConstraintExact)
+    Pr: 0.583957433992571
+    Re: 0.8126292260407936
+    F1: 0.6795724049301947
+  
+HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+    Pr: 0.5861179889091244
+    Re: 0.8003073484213468
+    F1: 0.6766675722604802
+          
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
+    Pr: 0.586417157275021  ---> New best, at the cost of recall
+    Re: 0.7792679519418833
+    F1: 0.6692261547690462
+```
+Also interesting how -1/+1, the centre of these, is approximated so well by `BoundaryScoresAll(LogPT) + Exact`.
+
 #### Hard-boundary-based
 For exact vocabulary constraint, we are looking to beat 58%, 81%, 68%:
 ```
@@ -245,7 +425,7 @@ HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstr
 ```
 
 #### Unguided
-Just using **least-token** Viterbi with ULM vocabulary does better:
+Using **least-token** Viterbi with ULM vocabulary:
 ```
     Precision: 0.5097098186675902
     Recall:    0.5756915339480302

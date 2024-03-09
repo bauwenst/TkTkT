@@ -67,3 +67,22 @@ class HFPointViterbi(ViterbiTokeniser):
     def getName(self):
         constraint: VocabularyConstraint = self.objectives[0].score_generator
         return self.__class__.__name__ + "(" + constraint.nested_generator.__repr__() + " + " + constraint.__class__.__name__ + ")"
+
+
+class LeastTokenWithHfTiebreaker(ViterbiTokeniser):
+
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
+                 logprob_classifier: CharacterClassifier):
+        max_step = max_step or max(map(len, vocab))
+        super().__init__(preprocessor=preprocessor, max_stepsize=max_step, objectives=[
+            ViterbiObjective(
+                initial_score=0,
+                score_generator=VocabularyConstraintExact(ConstantScore(), vocab, reset_value=+INFTY),
+                score_combiner=ScoreSubtract()
+            ),
+            ViterbiObjective(
+                initial_score=0,
+                score_generator=VocabularyConstraintExact(BoundaryScoresChosen(logprob_classifier, IdentityPT()), vocab, reset_value=+INFTY),
+                score_combiner=ScoreSum()
+            )
+        ])
