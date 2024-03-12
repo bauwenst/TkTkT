@@ -93,6 +93,19 @@ class AppendSpace(InvertibleTextMapper):
         return text[trim_front : len(text) - trim_back]
 
 
+class Replace(InvertibleTextMapper):
+
+    def __init__(self, old: str, new: str):
+        self.old = old
+        self.new = new
+
+    def convert(self, text: str) -> str:
+        return text.replace(self.old, self.new)
+
+    def invert(self, text: str) -> str:
+        return text.replace(self.new, self.old)
+
+
 def bytes_to_unicode_documented():
     """
     An implementation that's actually readable.

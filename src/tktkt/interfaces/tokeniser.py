@@ -31,3 +31,6 @@ class TokeniserWithVocab(Tokeniser):
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab):
         super().__init__(preprocessor)
         self.vocab = vocab
+
+    def getVocabSize(self) -> int:  # Can be overridden if there is a more efficient way to get it.
+        return len(self.vocab)

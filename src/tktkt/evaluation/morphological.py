@@ -121,10 +121,12 @@ def tokeniseAndDecode(string: str, tokeniser: Tokeniser) -> List[str]:
     return tokeniser.preprocessor.undo_per_token(tokeniser.prepareAndTokenise(string))
 
 
-def morphologyVersusTokenisation(morphological_generator: Iterable[LemmaMorphology],
-                                 morphology_method: MorphologyVisitor, tokeniser: Tokeniser,  # Compared
-                                 weights: Dict[str, float]=None, holdout: Holdout=None,  # Experimental parameters
-                                 do_write_fusions=False, quiet=False, display_confusion_matrix=False, log_name="log"):  # Display
+def morphologyVersusTokenisation(
+        morphological_generator: Iterable[LemmaMorphology], morphology_method: MorphologyVisitor,
+        tokeniser: Tokeniser,
+        weights: Dict[str, float]=None, holdout: Holdout=None,  # Experiment parameters
+        do_write_fusions: bool=False, quiet: bool=False, display_confusion_matrix: bool=False, log_name: str="log"  # Display
+    ) -> Tuple[ConfusionMatrix, ConfusionMatrix]:
     # Optional stuff
     weighted = weights is not None
     if do_write_fusions:

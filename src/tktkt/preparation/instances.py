@@ -5,6 +5,11 @@ from ..interfaces.preparation import Preprocessor
 from .splitters import *
 from .mappers import *
 
+# Most common space markers
+SennrichSpaceMarker = SpaceMarker("</w>",    detached=False, location=SpaceMarkerLocation.END)    # Sennrich 2016
+RobertaSpaceMarker  = SpaceMarker("Ġ",       detached=True,  location=SpaceMarkerLocation.START)  # Radford 2019
+IsolatedSpaceMarker = SpaceMarker("[SPACE]", detached=True,  location=SpaceMarkerLocation.TOKEN)  # Huck 2017
+
 IdentityPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), IdentityPretokeniser())
 
 TraditionalPretokeniser = PretokeniserSequence([
@@ -12,18 +17,33 @@ TraditionalPretokeniser = PretokeniserSequence([
     PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED)
 ])
 
-# Most common space markers
-SennrichSpaceMarker = SpaceMarker("</w>",    detached=False, location=SpaceMarkerLocation.END)    # Sennrich 2016
-RobertaSpaceMarker  = SpaceMarker("Ġ",       detached=True,  location=SpaceMarkerLocation.START)  # Radford 2019
-IsolatedSpaceMarker = SpaceMarker("[SPACE]", detached=True,  location=SpaceMarkerLocation.TOKEN)  # Huck 2017
+class BoundariesFromSpacesPretokeniser(PretokeniserSequence):
+    """
+    Generalisation of the RoBERTa/GPT-2 tokeniser. Principles it holds by:
+        - Punctuation is always isolated from non-punctuation.
+        - Word boundaries are only placed where there was a space originally.
+
+    The original implementation uses a start-of-word Ġ and is byte-based. For example, a sentence
+        This is a (test) sentënce.
+    becomes
+        ĠThis // Ġis // Ġa // Ġ( // test // ) // ĠsentÃ«nce // .
+
+    My implementation allows customising the boundary marker and turning off the byte-based behaviour.
+    """
+    def __init__(self, marker: SpaceMarker, byte_based: bool):
+        super().__init__([
+            WhitespacePretokeniser(destructive=True),
+            AddWordBoundary(SpaceMarker(" ", detached=True, location=marker.location)),
+            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED, preserve_spaces_at=marker.location),
+            (MapperAsPretokeniser(PseudoByteMapping()) if byte_based else MapperAsPretokeniser(Replace(" ", "Ġ"))),
+            MapperAsPretokeniser(Replace("Ġ", " ")),
+            WhitespaceAndMarkerPretokeniser(marker)
+        ])
 
 # There is only one difference between the original Roberta pretokeniser and this one, which is that multiple spaces are (surprisingly) conserved in the original.
-RobertaPretokeniser = PretokeniserSequence([
-    PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED, grab_preceding_space=True),
-    WhitespaceAndMarkerPretokeniser(SpaceMarker(" ", detached=True, location=SpaceMarkerLocation.START)),  # Split on spaces and add the space as a prefix.
-    MapperAsPretokeniser(PseudoByteMapping())  # Converts the above space into a Ġ and does other byte mappings. Indeed, we do not make any reference to RobertaSpaceMarker, in the philosophy that HuggingFace actually doesn't use a SoW, but just does byte mapping on all characters.
-])
-# The doesn't conform to the original Roberta pretokeniser because 1. it should split off punctuation (but not from the SoW!) and 2. it auto-adds a space at the start.
+RobertaPretokeniser = BoundariesFromSpacesPretokeniser(marker=RobertaSpaceMarker, byte_based=True)
+
+# The following, although it makes intuitive sense, doesn't conform to the original Roberta pretokeniser because 1. it should split off punctuation (but not from the SoW!) and 2. it auto-adds a space at the start.
 # RobertaPretokeniser = PretokeniserSequence([
 #     WhitespacePretokeniser(destructive=True),
 #     MapperAsPretokeniser(PseudoByteMapping()),
@@ -31,16 +51,23 @@ RobertaPretokeniser = PretokeniserSequence([
 # ])
 RobertaPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), RobertaPretokeniser)
 
-# My common-sense pretokeniser can add any space marker for announcing words/punctuations.
-CommonsensePretokeniser = PretokeniserSequence([
-    PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED),
-    WhitespacePretokeniser(destructive=True),
-    MapperAsPretokeniser(PseudoByteMapping()),
-    AddWordBoundary(RobertaSpaceMarker),
-    IsolateDigits(),
-    PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY)
-])
-CommonsensePreprocessor = Preprocessor(HuggingFaceNormaliser(tn.NFKC()), IdentityMapper(), CommonsensePretokeniser)
+class SemanticPretokeniser(PretokeniserSequence):
+    """
+    My common-sense pretokeniser can add any space marker for announcing words/punctuations.
+    """
+    def __init__(self, marker: SpaceMarker):
+        super().__init__([
+            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED),
+            WhitespacePretokeniser(destructive=True),
+            MapperAsPretokeniser(PseudoByteMapping()),
+            AddWordBoundary(marker),
+            IsolateDigits(),
+            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY)
+        ])
+
+class SemanticPreprocessor(Preprocessor):
+    def __init__(self, marker: SpaceMarker):
+        super().__init__(HuggingFaceNormaliser(tn.NFKC()), IdentityMapper(), SemanticPretokeniser(marker))
 
 
 class HuggingFacePreprocessor(Preprocessor):

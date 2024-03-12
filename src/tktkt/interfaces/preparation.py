@@ -22,6 +22,9 @@ class Preprocessor:
         self.reversible: InvertibleTextMapper = invertible_mapping   or IdentityMapper()
         self.splitter: Pretokeniser           = splitter             or IdentityPretokeniser()
 
+    def __call__(self):  # Just in case you accidentally add parentheses to an already-instantiated Preprocessor object.
+        return self
+
     def do(self, text: str) -> List[str]:
         return self.splitter.split(self.reversible.convert(self.irreversible.convert(text)))
 

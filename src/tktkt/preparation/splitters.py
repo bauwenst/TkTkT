@@ -67,6 +67,9 @@ class Pretokeniser(ABC):
         """
         return "".join(self.invertTokens(tokens))
 
+    def __call__(self):  # Just in case you accidentally add parentheses to an already-instantiated Pretokeniser object.
+        return self
+
 
 class PretokeniserSequence(Pretokeniser):
 
@@ -119,7 +122,7 @@ class PunctuationPretokeniser(Pretokeniser):
         EXCLUDED = 2
         INCLUDED = 3
 
-    def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", grab_preceding_space: bool=False):
+    def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", preserve_spaces_at: SpaceMarkerLocation=SpaceMarkerLocation.TOKEN):
         punctuation_hyphens_only = "-–_"
         if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
             punctuation = punctuation_hyphens_only
@@ -134,12 +137,15 @@ class PunctuationPretokeniser(Pretokeniser):
                     punctuation = hyphen + punctuation  # Note: All of these will have effect.
 
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
-        self.core = tp.Split(pattern=Regex(" ?"*grab_preceding_space + "[" + punctuation_escaped + "]+"), behavior="isolated")
+        self.core = tp.Split(pattern=Regex(
+            " ?"*(preserve_spaces_at == SpaceMarkerLocation.START) +
+            "[" + punctuation_escaped + "]+" +
+            " ?"*(preserve_spaces_at == SpaceMarkerLocation.END)), behavior="isolated")
 
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.core.pre_tokenize_str(text)]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Probably needs some kind of intelligent English punctuation rule.
         return pretokens
 
 
@@ -159,7 +165,7 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
 
     def split(self, text: str) -> List[str]:
         if not text.strip():
-            return []
+            return [] if not(self.marker.location == SpaceMarkerLocation.TOKEN and text) else [self.marker.substitute]
 
         pretokens = [text]
         if self.marker.location == SpaceMarkerLocation.TOKEN:
@@ -193,37 +199,48 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
         What it might do, however, is attach the SoW/EoW to the adjacent character.
         """
         if self.marker.location == SpaceMarkerLocation.START:
-            chars, sow = self.stripMarker(pretoken)
+            chars, sow = WhitespaceAndMarkerPretokeniser.stripMarker(pretoken, self.marker)
             if self.marker.detached:
                 return [sow] + list(chars)
             else:
                 return [sow + chars[0]] + list(chars[1:])
         elif self.marker.location == SpaceMarkerLocation.END:
-            chars, eow = self.stripMarker(pretoken)
+            chars, eow = WhitespaceAndMarkerPretokeniser.stripMarker(pretoken, self.marker)
             if self.marker.detached:
                 return list(chars) + [eow]
             else:
                 return list(chars[:-1]) + [chars[-1] + eow]
         elif self.marker.location == SpaceMarkerLocation.TOKEN:
-            return list(pretoken)
+            if pretoken == self.marker.substitute:
+                return [pretoken]
+            else:
+                return list(pretoken)
         else:
             return [pretoken]
 
-    def stripMarker(self, pretoken: str) -> Tuple[str,str]:
+    @staticmethod
+    def stripMarker(pretoken: str, marker: SpaceMarker) -> Tuple[str,str]:
         """
         Retrieve the part of a pretoken that isn't a space marker.
         """
-        L = len(self.marker.substitute)
-        if self.marker.location == SpaceMarkerLocation.START:
-            root, marker = pretoken[L:], pretoken[:L]
-        elif self.marker.location == SpaceMarkerLocation.END:
-            root, marker = pretoken[:len(pretoken)-L], pretoken[len(pretoken)-L:]
-        elif self.marker.location == SpaceMarkerLocation.TOKEN:
-            root, marker = pretoken, ""
+        L = len(marker.substitute)
+        if marker.location == SpaceMarkerLocation.START:
+            root, mark = pretoken[L:], pretoken[:L]
+            if mark != marker.substitute:
+                root, mark = pretoken, ""
+        elif marker.location == SpaceMarkerLocation.END:
+            root, mark = pretoken[:len(pretoken)-L], pretoken[len(pretoken)-L:]
+            if mark != marker.substitute:
+                root, mark = pretoken, ""
+        elif marker.location == SpaceMarkerLocation.TOKEN:
+            if pretoken == marker.substitute:
+                root, mark = "", pretoken
+            else:
+                root, mark = pretoken, ""
         else:
-            root, marker = pretoken, ""
+            root, mark = pretoken, ""
 
-        return root, marker
+        return root, mark
 
     def invertToken(self, pretoken: str) -> str:
         return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
@@ -260,7 +277,7 @@ class WhitespacePretokeniser(Pretokeniser):
         return [t for t in pretokens if t]
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
-        return pretokens
+        return WhitespaceAndMarkerPretokeniser.intercalate(pretokens, " ")
 
 
 class IsolateDigits(Pretokeniser):
@@ -279,7 +296,7 @@ class IsolateDigits(Pretokeniser):
         pretokens = self.pattern.split(text)
         return [t for t in pretokens if t]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Should actually look for adjacent digits and merge them.
         return pretokens
 
 
@@ -306,7 +323,8 @@ class AddWordBoundary(Pretokeniser):
             return [text]
 
     def invertToken(self, pretoken: str) -> str:
-        return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
+        # return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
+        return WhitespaceAndMarkerPretokeniser.stripMarker(pretoken, self.marker)[0]
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         return [self.invertToken(p) for p in pretokens]
