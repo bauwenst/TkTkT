@@ -1,7 +1,7 @@
 """
 Taken from the BPE knockout repo.
 """
-from typing import Callable, Dict, Optional, List, Tuple, Iterable
+from typing import Callable, Dict, Optional, List, Tuple, Iterable, Union
 from dataclasses import dataclass
 
 from bpe_knockout.datahandlers.morphology import MorphologyVisitor, MorphSplit, LexSplit, LemmaMorphology
@@ -10,7 +10,7 @@ from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 
 from ..util.printing import wprint
 from ..files.paths import DataPaths
-from ..interfaces.tokeniser import Tokeniser
+from ..interfaces.tokeniser import Tokeniser, TokeniserWithVocab
 
 
 def compareSplits_cursors(candidate: str, reference: str):
@@ -181,6 +181,7 @@ def morphologyVersusTokenisation(
 @dataclass
 class TokeniserEvaluation:
     name: str
+    vocabsize: int
 
     cm_morph:   ConfusionMatrix
     cm_morph_w: ConfusionMatrix
@@ -189,7 +190,7 @@ class TokeniserEvaluation:
 
 
 # @timeit
-def intrinsicEvaluation(tokenisers: Iterable[Tokeniser],
+def intrinsicEvaluation(tokenisers: Iterable[Union[Tokeniser,TokeniserWithVocab]],
                         reweighting_function: Callable[[float], float]=None, holdout: Holdout=None, do_whole_word=False,
                         verbose=False) -> List[TokeniserEvaluation]:
     """
@@ -218,6 +219,11 @@ def intrinsicEvaluation(tokenisers: Iterable[Tokeniser],
         except:
             name = t.__class__.__name__
 
+        try:
+            vocabsize = t.getVocabSize()
+        except:
+            vocabsize = 0  # Technically not wrong, although infinity is equally true.
+
         # Uncomment this if you need to only simulate the testing framework (e.g. calling this test in a loop), rather than get results.
         # results.append(TokeniserEvaluation(name=name, vocabsize=size, cm_morph=SegmentationConfusionMatrix(), cm_morph_w=SegmentationConfusionMatrix(), cm_lex=SegmentationConfusionMatrix(), cm_lex_w=SegmentationConfusionMatrix()))
         # continue
@@ -242,7 +248,7 @@ def intrinsicEvaluation(tokenisers: Iterable[Tokeniser],
             cm2, cm2_w = None, None
         print()
 
-        results.append(TokeniserEvaluation(name=name,
+        results.append(TokeniserEvaluation(name=name, vocabsize=vocabsize,
                                            cm_morph=cm1, cm_morph_w=cm1_w,
                                            cm_lex=cm2,   cm_lex_w=cm2_w))
     return results

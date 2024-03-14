@@ -33,7 +33,7 @@ class HuggingFaceNormaliser(TextMapper):
 
     @staticmethod
     def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFaceNormaliser":
-        return HuggingFaceNormaliser(hf_model.backend_tokenizer.normalizer)
+        return HuggingFaceNormaliser(hf_model.backend_tokenizer.normalizer or tn.Sequence([]))
 
 
 class Stripper(TextMapper):
@@ -165,6 +165,7 @@ def bytes_to_unicode_softcoded():
 
 BYTE_TO_PSEUDO = bytes_to_unicode()
 PSEUDO_TO_BYTE = {v: k for k, v in BYTE_TO_PSEUDO.items()}
+PSEUDO_TO_BYTE[" "] = PSEUDO_TO_BYTE["Ġ"]
 
 SPACING_BYTES = [9, 10, 13, 32]
 
@@ -178,4 +179,4 @@ class PseudoByteMapping(InvertibleTextMapper):
         return "".join(map(BYTE_TO_PSEUDO.get, text.encode("utf-8")))
 
     def invert(self, text: str) -> str:
-        return bytes(map(PSEUDO_TO_BYTE.get, text)).decode("utf-8")
+        return bytes(map(PSEUDO_TO_BYTE.get, text)).decode("utf-8", errors="replace")
