@@ -34,7 +34,7 @@ class BoundariesFromSpacesPretokeniser(PretokeniserSequence):
         super().__init__([
             WhitespacePretokeniser(destructive=True),
             AddWordBoundary(SpaceMarker(" ", detached=True, location=marker.location)),
-            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED, preserve_spaces_at=marker.location),
+            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED, group_adjacent_spaces_with_punctuation=marker.location),
             (MapperAsPretokeniser(PseudoByteMapping()) if byte_based else MapperAsPretokeniser(Replace(" ", "Ġ"))),
             MapperAsPretokeniser(Replace("Ġ", " ")),
             WhitespaceAndMarkerPretokeniser(marker)
@@ -57,12 +57,13 @@ class SemanticPretokeniser(PretokeniserSequence):
     """
     def __init__(self, marker: SpaceMarker):
         super().__init__([
-            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED),
+            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
             WhitespacePretokeniser(destructive=True),
             MapperAsPretokeniser(PseudoByteMapping()),
             AddWordBoundary(marker),
             IsolateDigits(),
-            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY)
+            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY),
+            EnglishApostrophes(do_nt=True)
         ])
 
 class SemanticPreprocessor(Preprocessor):
@@ -97,7 +98,7 @@ class HuggingFacePreprocessorForWords(Preprocessor):
 
     def __init__(self, hf_model: PreTrainedTokenizerFast):
         super().__init__(
-            uninvertible_mapping=SequenceMapper([
+            uninvertible_mapping=MapperSequence([
                 HuggingFaceNormaliser.fromFullTokeniser(hf_model),
                 Stripper()  # Whatever the HF normaliser does, we want to control all space.
             ]),

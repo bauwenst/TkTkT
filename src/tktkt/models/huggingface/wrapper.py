@@ -5,13 +5,11 @@ from transformers import PreTrainedTokenizerFast
 import tokenizers.pre_tokenizers as tp
 import tokenizers.normalizers as tn
 
-from ...interfaces.tokeniser import Tokeniser, Preprocessor
-from ...preparation.splitters import HuggingFacePretokeniser
+from ...interfaces.tokeniser import TokeniserWithVocab
 from ...preparation.instances import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
-from ...preparation.mappers import HuggingFaceNormaliser
 
 
-class HuggingFaceTokeniser(Tokeniser):
+class HuggingFaceTokeniser(TokeniserWithVocab):
     """
     Takes a HuggingFace tokeniser and splits it into its pretokeniser and core tokeniser.
     This way, the user can choose whether to apply the pretokeniser or not.
@@ -22,7 +20,7 @@ class HuggingFaceTokeniser(Tokeniser):
             preprocessor = HuggingFacePreprocessor(wrapped_tokeniser)
         else:  # Do that, but add additional components that ensure that all input is interpreted as a word, regardless of spacing.
             preprocessor = HuggingFacePreprocessorForWords(wrapped_tokeniser)
-        super().__init__(preprocessor)
+        super().__init__(preprocessor, wrapped_tokeniser.get_vocab())
 
         # Disable the wrapped tokeniser's preprocessing steps. This means that calling .tokenize() now ignores the pretokeniser.
         wrapped_tokeniser = deepcopy(wrapped_tokeniser)

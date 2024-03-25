@@ -195,8 +195,10 @@ def intrinsicEvaluation(tokenisers: Iterable[Union[Tokeniser,TokeniserWithVocab]
                         verbose=False) -> List[TokeniserEvaluation]:
     """
     Generates, for each given tokeniser, 12 metrics:
-        - Morph split unweighted and weighted precision, recall, F1 of split positions vs. e-Lex;
-        - Lemmatic (whole-word) split unweighted and weighted precision, recall, F1 of split positions vs. e-Lex;
+        - Morph-level unweighted and weighted precision, recall, F1 of morphological split positions;
+        - Whole-word unweighted and weighted precision, recall, F1 of split positions;
+
+    Uses the morphology file (for both) and lemma weights (for the latter) in the CURRENTLY ACTIVE KnockoutDataContext.
 
     :param tokenisers: The elements of the given list must have a method .tokenize(str) -> List[str].
     :param reweighting_function: Applied to lemma frequencies. If no function is given, the weighted metrics are dropped
@@ -246,7 +248,9 @@ def intrinsicEvaluation(tokenisers: Iterable[Union[Tokeniser,TokeniserWithVocab]
                                                       do_write_fusions=False, log_name=name, quiet=not verbose)
         else:
             cm2, cm2_w = None, None
-        print()
+
+        if verbose:
+            wprint()
 
         results.append(TokeniserEvaluation(name=name, vocabsize=vocabsize,
                                            cm_morph=cm1, cm_morph_w=cm1_w,

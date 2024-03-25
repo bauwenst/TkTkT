@@ -13,7 +13,7 @@ def timeit(func):
     https://stackoverflow.com/a/62905867/9352077
     """
     def measure_time(*args, **kw):
-        print(f"\n=== Running {func.__qualname__}... ===")
+        print(f"\n=== Running {func.__qualname__} ({time.strftime('%F %X')})... ===")
         start_time = time.time()
         result = func(*args, **kw)
         print(f"=== Finished running {func.__qualname__} (took {time.time() - start_time:.2f} seconds). ===")

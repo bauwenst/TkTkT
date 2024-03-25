@@ -12,7 +12,16 @@ class TextMapper(ABC):
         pass
 
 
-class SequenceMapper(TextMapper):
+class InvertibleTextMapper(TextMapper):
+    @abstractmethod
+    def invert(self, text: str) -> str:
+        pass
+
+
+#####################################################################
+
+
+class MapperSequence(TextMapper):
 
     def __init__(self, submappers: List[TextMapper]):
         self.sequence = submappers
@@ -48,16 +57,33 @@ class Lowercaser(TextMapper):
         return text.lower()
 
 
+from .splitters import Pretokeniser
+class DilatePretokens(TextMapper):
+    """
+    Ensure there are spaces everywhere a pretokeniser indicates there need to be.
+    """
+
+    def __init__(self, pretokeniser: Pretokeniser):
+        self.p = pretokeniser
+
+    def convert(self, text: str) -> str:
+        return " ".join(self.p.split(text))
+
+
+class AsPhonemes(TextMapper):
+
+    def __init__(self):
+        import text2phonemesequence as TeetwoPiece
+        self.model = TeetwoPiece.Text2PhonemeSequence(pretrained_g2p_model='charsiu/g2p_multilingual_byT5_small_100', language='eng-us', is_cuda=True)
+
+    def convert(self, text: str) -> str:
+        return self.model.infer_sentence(text)
+
+
 #####################################################################
 
 
-class InvertibleTextMapper(TextMapper):
-    @abstractmethod
-    def invert(self, text: str) -> str:
-        pass
-
-
-class InvertibleSequenceMapper(InvertibleTextMapper):
+class InvertibleMapperSequence(InvertibleTextMapper):
 
     def __init__(self, submappers: List[InvertibleTextMapper]):
         self.sequence = submappers
@@ -73,7 +99,7 @@ class InvertibleSequenceMapper(InvertibleTextMapper):
         return text
 
 
-class IdentityMapper(InvertibleSequenceMapper):
+class IdentityMapper(InvertibleMapperSequence):
 
     def __init__(self):
         super().__init__([])

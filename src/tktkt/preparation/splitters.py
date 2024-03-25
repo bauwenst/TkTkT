@@ -13,7 +13,6 @@ from string import punctuation as BASIC_PUNCTUATION
 import re
 import regex  # Has \p{} classes
 
-from .mappers import InvertibleTextMapper
 from ..preparation.spacemarking import SpaceMarker, SpaceMarkerLocation
 
 
@@ -122,7 +121,8 @@ class PunctuationPretokeniser(Pretokeniser):
         EXCLUDED = 2
         INCLUDED = 3
 
-    def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", preserve_spaces_at: SpaceMarkerLocation=SpaceMarkerLocation.TOKEN):
+    def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", protect_apostrophes_without_spaces: bool=True,
+                 group_adjacent_spaces_with_punctuation: SpaceMarkerLocation=SpaceMarkerLocation.TOKEN):
         punctuation_hyphens_only = "-–_"
         if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
             punctuation = punctuation_hyphens_only
@@ -137,10 +137,39 @@ class PunctuationPretokeniser(Pretokeniser):
                     punctuation = hyphen + punctuation  # Note: All of these will have effect.
 
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
-        self.core = tp.Split(pattern=Regex(
-            " ?"*(preserve_spaces_at == SpaceMarkerLocation.START) +
-            "[" + punctuation_escaped + "]+" +
-            " ?"*(preserve_spaces_at == SpaceMarkerLocation.END)), behavior="isolated")
+        punctuation_escaped_no_accent = punctuation_escaped.replace("'", "")
+
+        if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
+            pattern = "[" + punctuation_escaped + "]+"
+        else:
+            if protect_apostrophes_without_spaces:
+                if group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.START:
+                    # For space grouping + protected accents,
+                    #   \s?[',]*[,]+[',]*\s?|(\s|^)'|'(\s|$)
+                    punctuation_groups = r"\s?[" + punctuation_escaped + "]*[" + punctuation_escaped_no_accent + "]+[" + punctuation_escaped + "]*"
+                    starting_accent = r"(\s|^)'"
+                    ending_accent   = r"'(?=\s|$)"
+                elif group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.END:
+                    punctuation_groups = "[" + punctuation_escaped + "]*[" + punctuation_escaped_no_accent + "]+[" + punctuation_escaped + r"]*\s?"
+                    starting_accent = r"(?<=\s|^)'"
+                    ending_accent   = r"'(\s|$)"
+                else:
+                    # For no space grouping + protected accents,
+                    #   [',]*[,]+[',]*|(?<=\s|^)'|'(?=\s|$)
+                    punctuation_groups = "[" + punctuation_escaped + "]*[" + punctuation_escaped_no_accent + "]+[" + punctuation_escaped + "]*"
+                    starting_accent = r"(?<=\s|^)'"
+                    ending_accent   = r"'(?=\s|$)"
+                pattern = punctuation_groups + "|" + starting_accent + "|" + ending_accent
+            else:
+                # For space grouping + no protected accents,
+                #   \s?[',]+\s?
+                # For no space grouping + no protected accents,
+                #   [',]+
+                pattern = r"\s?" * (group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.START) + \
+                          "[" + punctuation_escaped + "]+" + \
+                          r"\s?" * (group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.END)
+
+        self.core = tp.Split(pattern=Regex(pattern), behavior="isolated")
 
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.core.pre_tokenize_str(text)]
@@ -300,6 +329,21 @@ class IsolateDigits(Pretokeniser):
         return pretokens
 
 
+class EnglishApostrophes(Pretokeniser):
+
+    def __init__(self, do_nt=True):
+        if do_nt:
+            self.pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|n't)(?=\s|$|\p{P})""", re.IGNORECASE)
+        else:  # This is the GPT-2 standard (except GPT-2 doesn't ignore case).
+            self.pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|'t)(?=\s|$|\p{P})""", re.IGNORECASE)
+
+    def split(self, text: str) -> List[str]:
+        return [p for p in self.pattern.split(text) if p]
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Should be smarter.
+        return pretokens
+
+
 class AddWordBoundary(Pretokeniser):
     """
     Does not split text, but only adds a space marker, assuming the text in its entirety needs only one.
@@ -330,6 +374,7 @@ class AddWordBoundary(Pretokeniser):
         return [self.invertToken(p) for p in pretokens]
 
 
+from .mappers import InvertibleTextMapper
 class MapperAsPretokeniser(Pretokeniser):
     """
     When used in a sequence of pretokenisers, this allows you to apply a text->text mapping on individual pretokens
