@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import List
 
+import requests
+
 import tokenizers.normalizers as tn
 from transformers import PreTrainedTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import bytes_to_unicode
@@ -72,12 +74,34 @@ class DilatePretokens(TextMapper):
 
 class AsPhonemes(TextMapper):
 
-    def __init__(self):
+    def __init__(self, dictionary_language: str="eng-us"):
         import text2phonemesequence as TeetwoPiece
-        self.model = TeetwoPiece.Text2PhonemeSequence(pretrained_g2p_model='charsiu/g2p_multilingual_byT5_small_100', language='eng-us', is_cuda=True)
+        self.model = TeetwoPiece.Text2PhonemeSequence(language="", pretrained_g2p_model='charsiu/g2p_multilingual_byT5_small_100', is_cuda=True)
+        self._initialiseLanguageDictionary(language=dictionary_language)
 
     def convert(self, text: str) -> str:
         return self.model.infer_sentence(text)
+
+    def _initialiseLanguageDictionary(self, language: str):
+        """
+        The library uses wget to a file in the CWD. Not only does this command not work on Windows, but it is also just
+        not pleasant to cache inside the CWD. Hence this method.
+        """
+        self.model.language = language
+        if language + ".tsv" not in self.model.phoneme_length:
+            return
+
+        print(f"Retrieving phoneme dictionary for {language}...")
+        url = "https://raw.githubusercontent.com/lingjzhu/CharsiuG2P/main/dicts/" + language + ".tsv"
+        response = requests.get(url)
+        for word_phone in response.text.strip().split("\n"):
+            w_p = word_phone.split("\t")
+            assert len(w_p) == 2
+            word,phone_string = w_p
+            if "," not in phone_string:
+                self.model.phone_dict[word] = [phone_string]
+            else:
+                self.model.phone_dict[word] = [phone_string.split(',')[0]]
 
 
 #####################################################################
@@ -130,6 +154,22 @@ class Replace(InvertibleTextMapper):
 
     def invert(self, text: str) -> str:
         return text.replace(self.new, self.old)
+
+
+class MorphoChallengeCapitals(InvertibleMapperSequence):
+    """
+    The MorphoChallenge (http://morpho.aalto.fi/events/morphochallenge/) defines a character mapping for Turkish text
+    where special characters are replaced by similar capitals. This is that mapping.
+    """
+    def __init__(self):
+        super().__init__([
+            Replace("ç", "C"),
+            Replace("ı", "I"),
+            Replace("ö", "O"),
+            Replace("ü", "U"),
+            Replace("ş", "S"),
+            Replace("ğ", "G")
+        ])
 
 
 def bytes_to_unicode_documented():

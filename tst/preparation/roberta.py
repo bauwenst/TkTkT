@@ -1,10 +1,11 @@
-from bpe_knockout.auxiliary.robbert_tokenizer import robbert_tokenizer
+from transformers import RobertaTokenizer
+robbert_tokenizer = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
 
 from tktkt.interfaces.preparation import Preprocessor
 from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import *
 from tktkt.preparation.instances import RobertaPreprocessor, RobertaSpaceMarker, SennrichSpaceMarker, \
-    IsolatedSpaceMarker, CommonsensePreprocessor
+    IsolatedSpaceMarker, SemanticPreprocessor
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 
 
@@ -36,8 +37,9 @@ def steps():
     sentence = "It's a Pℛ𝒪𝒥ë𝒞𝒯, bruh! (low-key triggered)"
     clean = RobertaPreprocessor.irreversible.convert(sentence)
 
-    print(CommonsensePreprocessor.do(word))
-    print(CommonsensePreprocessor.do(sentence))
+    s = SemanticPreprocessor(marker=RobertaSpaceMarker)
+    print(s.do(word))
+    print(s.do(sentence))
     print()
 
     print(RobertaPreprocessor.do(word))

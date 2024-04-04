@@ -122,20 +122,8 @@ class PunctuationPretokeniser(Pretokeniser):
         INCLUDED = 3
 
     def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", protect_apostrophes_without_spaces: bool=True,
-                 group_adjacent_spaces_with_punctuation: SpaceMarkerLocation=SpaceMarkerLocation.TOKEN):
-        punctuation_hyphens_only = "-–_"
-        if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
-            punctuation = punctuation_hyphens_only
-        else:
-            punctuation = BASIC_PUNCTUATION + "€£…‘’“”„«»"      # Add some European punctuations.
-            punctuation = punctuation.replace("\\", "") + "\\"  # Put backslash in the back. Makes the pattern clearer.
-            for hyphen in punctuation_hyphens_only:
-                punctuation = punctuation.replace(hyphen, "")  # Note: Not all of these will have effect, but some will.
-
-            if hyphen_mode == PunctuationPretokeniser.HyphenMode.INCLUDED:
-                for hyphen in punctuation_hyphens_only:
-                    punctuation = hyphen + punctuation  # Note: All of these will have effect.
-
+                 group_adjacent_spaces_with_punctuation: SpaceMarkerLocation=SpaceMarkerLocation.ISOLATED):
+        punctuation = PunctuationPretokeniser.buildPunctuationString(hyphen_mode)
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
         punctuation_escaped_no_accent = punctuation_escaped.replace("'", "")
 
@@ -171,10 +159,55 @@ class PunctuationPretokeniser(Pretokeniser):
 
         self.core = tp.Split(pattern=Regex(pattern), behavior="isolated")
 
+    @staticmethod
+    def buildPunctuationString(hyphen_mode: HyphenMode):
+        punctuation_hyphens_only = "-–_"
+        if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
+            punctuation = punctuation_hyphens_only
+        else:
+            punctuation = BASIC_PUNCTUATION + "€£…‘’“”„«»"      # Add some European punctuations.
+            punctuation = punctuation.replace("\\", "") + "\\"  # Put backslash in the back. Makes the pattern clearer.
+            for hyphen in punctuation_hyphens_only:
+                punctuation = punctuation.replace(hyphen, "")  # Note: Not all of these will have effect, but some will.
+
+            if hyphen_mode == PunctuationPretokeniser.HyphenMode.INCLUDED:
+                for hyphen in punctuation_hyphens_only:
+                    punctuation = hyphen + punctuation  # Note: All of these will have effect.
+
+        return punctuation
+
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.core.pre_tokenize_str(text)]
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Probably needs some kind of intelligent English punctuation rule.
+        return pretokens
+
+
+class DistinctPunctuation(Pretokeniser):
+    """
+    Punctuation splitters group all successive punctuation together, but you likely don't want to mix punctuation marks
+    together into one token. So make groups of equal punctuation out of full-punctuation tokens.
+    """
+
+    def __init__(self):
+        self.punctuation = PunctuationPretokeniser.buildPunctuationString(PunctuationPretokeniser.HyphenMode.INCLUDED)
+        self.punctuation_group = re.compile(" ?[" + self.punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-") + "]+ ?")
+
+    def split(self, text: str) -> List[str]:
+        if not self.punctuation_group.match(text):
+            return [text]
+        else:
+            current_char = ""
+            pretokens = []
+            for char in text:
+                if char != current_char:
+                    current_char = char
+                    pretokens.append("")
+                pretokens[-1] += char
+
+            return pretokens
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
         return pretokens
 
 
@@ -194,10 +227,10 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
 
     def split(self, text: str) -> List[str]:
         if not text.strip():
-            return [] if not(self.marker.location == SpaceMarkerLocation.TOKEN and text) else [self.marker.substitute]
+            return [] if not(self.marker.location == SpaceMarkerLocation.ISOLATED and text) else [self.marker.substitute]
 
         pretokens = [text]
-        if self.marker.location == SpaceMarkerLocation.TOKEN:
+        if self.marker.location == SpaceMarkerLocation.ISOLATED:
             pretokens = text.split()  # Will strip all whitespace from both sides, then split on any span of whitespace.
             pretokens = WhitespaceAndMarkerPretokeniser.intercalate(pretokens, self.marker.substitute)  # Will have length 2n-1.
             if text[0].isspace():
@@ -239,7 +272,7 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
                 return list(chars) + [eow]
             else:
                 return list(chars[:-1]) + [chars[-1] + eow]
-        elif self.marker.location == SpaceMarkerLocation.TOKEN:
+        elif self.marker.location == SpaceMarkerLocation.ISOLATED:
             if pretoken == self.marker.substitute:
                 return [pretoken]
             else:
@@ -261,7 +294,7 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
             root, mark = pretoken[:len(pretoken)-L], pretoken[len(pretoken)-L:]
             if mark != marker.substitute:
                 root, mark = pretoken, ""
-        elif marker.location == SpaceMarkerLocation.TOKEN:
+        elif marker.location == SpaceMarkerLocation.ISOLATED:
             if pretoken == marker.substitute:
                 root, mark = "", pretoken
             else:
@@ -357,7 +390,7 @@ class AddWordBoundary(Pretokeniser):
         self.marker = marker
 
     def split(self, text: str) -> List[str]:
-        if self.marker.location == SpaceMarkerLocation.TOKEN:
+        if self.marker.location == SpaceMarkerLocation.ISOLATED:
             return [self.marker.substitute, text]
         elif self.marker.location == SpaceMarkerLocation.START:
             return [self.marker.substitute + text]
@@ -414,3 +447,24 @@ class HuggingFacePretokeniser(Pretokeniser):
     @staticmethod
     def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFacePretokeniser":
         return HuggingFacePretokeniser(hf_model.backend_tokenizer.pre_tokenizer, hf_model.backend_tokenizer.decoder)
+
+
+class InsertReverse(Pretokeniser):
+    """
+    Given tokens [a, b, c], inserts their reverses as [a, rev(a), b, rev(b), c, rev(c)].
+    """
+
+    def split(self, text: str) -> List[str]:
+        return [text, text[::-1]]
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        last_pretoken = ""
+        preserved = []
+        for pretoken in pretokens:
+            if pretoken != last_pretoken[::-1]:  # If you aren't the reverse of the previous string, you need to be preserved.
+                preserved.append(pretoken)
+                last_pretoken = pretoken  # The next pretoken might be your reverse.
+            else:
+                last_pretoken = ""  # We have found the reverse, which means we must NOT include it nor compare it with the next pretoken.
+
+        return preserved

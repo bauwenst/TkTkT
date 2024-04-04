@@ -107,7 +107,7 @@ class KudoPieceTrainer:
             --split_by_whitespace (use a white space to split sentence pieces)  type: bool default: true
             --split_digits (split all digits (0-9) into separate pieces)  type: bool default: false
         """
-        if word_boundary_location == SpaceMarkerLocation.TOKEN:
+        if word_boundary_location == SpaceMarkerLocation.ISOLATED:
             raise ValueError("KudoPiece only supports start-of-word and end-of-word boundary markers!")
 
         self.alphabet = alphabet_arguments

@@ -3,12 +3,11 @@ def compareDeprecatedUnguided():
 
     from tktkt.models.viterbi._deprecated import UnguidedViterbi
     from tktkt.models.viterbi.instances import LeastTokenViterbi
-    from tktkt.preparation.splitters import RobertaPretokeniser
-    from tktkt.preparation.spacemarking import ROBERTA_SPACING
+    from tktkt.preparation.instances import RobertaSpaceMarker, RobertaPreprocessor
 
     baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
-    viterbi = UnguidedViterbi(baseline.get_vocab(), space_marker=ROBERTA_SPACING)
-    viterbi2 = LeastTokenViterbi(RobertaPretokeniser, baseline.get_vocab(), max_step=None)
+    viterbi = UnguidedViterbi(baseline.get_vocab(), space_marker=RobertaSpaceMarker)
+    viterbi2 = LeastTokenViterbi(RobertaPreprocessor, baseline.get_vocab(), max_step=None)
     examples = [" coronamaatregelen", " tyrannosaurus", " departementspolitiek", " acteursloopbaan",
                 " gewichtheffen", " schoonheidsideaal", " softwarepakket", " gekkenwerk",
                 " relatietherapie", " medialeugens", " pianosolo", " flatscreentelevisie", " boseend",
@@ -24,12 +23,13 @@ def compareDeprectatedProduct():
 
     from tktkt.models.viterbi.instances import ProductViterbi
     from tktkt.models.viterbi._deprecated import RA_Product
-    from tktkt.preparation.splitters import RobertaPretokeniser
+    from tktkt.preparation.instances import RobertaPreprocessor
 
     from bpe_knockout.project.config import morphologyGenerator
-    from bpe_knockout.auxiliary.robbert_tokenizer import robbert_tokenizer
+    from transformers import RobertaTokenizer
+    robbert_tokenizer = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
 
-    pre = RobertaPretokeniser
+    pre = RobertaPreprocessor
     vocab = robbert_tokenizer.get_vocab()
 
     tk1 = ProductViterbi(pre, vocab, max_step=None)
@@ -45,4 +45,3 @@ def compareDeprectatedProduct():
             print(word)
             print("\t", tokens1)
             print("\t", tokens2)
-
