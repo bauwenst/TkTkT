@@ -5,6 +5,11 @@ from .framework import *
 
 
 class ConstantScore(ViterbiStepScoreGenerator):
+    """
+    Sets a constant score for each step smaller than K characters.
+    To minimise the amount of tokens used to segment a word, you should accumulate these scores with subtraction,
+    so that more tokens lead to a more negative score and hence will be less likely picked by the maximisation framework.
+    """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
         N = len(string)

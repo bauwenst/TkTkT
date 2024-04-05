@@ -27,7 +27,7 @@ import transformers.optimization
 import torch
 import evaluate
 
-from bpe_knockout.project.config import morphologyGenerator, setupEnglish, TemporaryContext
+from bpe_knockout.project.config import morphologyGenerator, setupEnglish, KnockoutDataConfiguration
 from fiject.hooks.transformers import FijectCallback, EvaluateBeforeTrainingCallback
 
 from ...files.paths import DataPaths
@@ -55,7 +55,7 @@ def datasetOutOfContext():
     BAR = "|"
     FIND_BAR = re.compile(re.escape(BAR))
 
-    with TemporaryContext(DATASET_CONFIG):
+    with KnockoutDataConfiguration(DATASET_CONFIG):
         for obj in morphologyGenerator():
             splitstring = obj.morphSplit()
             split_indices = [match.start() // 2 for match in FIND_BAR.finditer(" ".join(splitstring).replace("   ", BAR))]

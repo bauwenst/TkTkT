@@ -44,7 +44,10 @@ class HuggingFaceNormaliser(TextMapper):
 
     @staticmethod
     def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFaceNormaliser":
-        return HuggingFaceNormaliser(hf_model.backend_tokenizer.normalizer or tn.Sequence([]))
+        if hf_model.backend_tokenizer.normalizer is None:  # For some reason, bool(hf_model.backend_tokenizer.normalizer) == False and yet it isn't None!
+            return HuggingFaceNormaliser(tn.Sequence([]))
+        else:
+            return HuggingFaceNormaliser(hf_model.backend_tokenizer.normalizer)
 
 
 class Stripper(TextMapper):

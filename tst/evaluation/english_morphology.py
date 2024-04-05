@@ -40,7 +40,7 @@ from typing import Type, Optional
 from transformers import CanineTokenizer, CanineForTokenClassification, AutoTokenizer
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
 
-from bpe_knockout.project.config import TemporaryContext, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
+from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from tktkt.preparation.instances import HuggingFacePreprocessorForWords
 from tktkt.evaluation.morphological import intrinsicEvaluation
@@ -53,7 +53,7 @@ from tktkt.files.paths import relativeToCwd, DataPaths
 from tst.preamble import *
 
 
-with TemporaryContext(setupEnglish()):
+with KnockoutDataConfiguration(setupEnglish()):
     english_bpe = Pℛ𝒪𝒥ℰ𝒞𝒯.config.base_tokeniser.toFastBPE()  # Has a byte-based preprocessor; HuggingFace sets it automatically on all Roberta tokenisers.
 
 
@@ -197,7 +197,7 @@ def constructTokenisers_boundaryScoreLog():
 
 
 if __name__ == "__main__":
-    with TemporaryContext(setupEnglish()):
+    with KnockoutDataConfiguration(setupEnglish()):
         # Do evaluation
         results = intrinsicEvaluation(constructTokenisers(), do_whole_word=False, verbose=True)
 

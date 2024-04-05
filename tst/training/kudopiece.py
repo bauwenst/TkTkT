@@ -1,7 +1,7 @@
 from tst.preamble import *
 from tktkt.models.kudopiece.training import *
 
-from bpe_knockout.project.config import Pℛ𝒪𝒥ℰ𝒞𝒯, TemporaryContext, setupEnglish
+from bpe_knockout.project.config import Pℛ𝒪𝒥ℰ𝒞𝒯, KnockoutDataConfiguration, setupEnglish
 from string import ascii_letters
 
 
@@ -9,7 +9,7 @@ def main():
     args_alpha = KudoPieceArguments_Alphabet(required_chars=[l for l in ascii_letters], byte_fallback=True, character_coverage=0.9995)
     args_algo = KudoPieceArguments_Algorithm()
 
-    with TemporaryContext(setupEnglish()):
+    with KnockoutDataConfiguration(setupEnglish()):
         trainer = KudoPieceTrainer(
             word_boundary_location=SpaceMarkerLocation.START,
             final_vocab_size=40_000,

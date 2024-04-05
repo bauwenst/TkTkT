@@ -2,8 +2,8 @@ import time
 from typing import Iterable, List
 
 def dprint(d: dict):
-    for e in d.items():
-        print(e)
+    for k,v in d.items():
+        print(k, ":", v)
 
 
 def lprint(l: Iterable):

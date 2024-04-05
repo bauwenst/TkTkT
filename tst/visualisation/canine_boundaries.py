@@ -1,5 +1,5 @@
 from tst.preamble import *
-from tst.evaluation.english_morphology import make_CanineViterbiBPE, TemporaryContext, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
+from tst.evaluation.english_morphology import make_CanineViterbiBPE, KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from tktkt.evaluation.morphological import tokeniseAndDecode, morphologyGenerator
 from tktkt.visualisation.neural.splitpoints_probabilities import *
@@ -30,7 +30,7 @@ def celex_errors():
     canine_viterbi = make_CanineViterbiBPE()
     classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
-    with TemporaryContext(setupEnglish()):
+    with KnockoutDataConfiguration(setupEnglish()):
         for obj in morphologyGenerator(verbose=False):
             word = obj.lemma()
 
@@ -66,7 +66,7 @@ def celex_probabilityDistribution():
     canine_viterbi = make_CanineViterbiBPE()
     classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
-    with TemporaryContext(setupEnglish()):
+    with KnockoutDataConfiguration(setupEnglish()):
         histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
         if histo.needs_computation:
             for obj in morphologyGenerator():
