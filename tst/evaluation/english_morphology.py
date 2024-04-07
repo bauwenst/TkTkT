@@ -41,32 +41,56 @@ from transformers import CanineTokenizer, CanineForTokenClassification, AutoToke
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
 
 from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
+from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath
 
-from tktkt.preparation.instances import HuggingFacePreprocessorForWords
+from tktkt.preparation.instances import HuggingFacePreprocessorForWords, RobertaSpaceMarker
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.instances import HFPointViterbi, LeastTokenViterbi, LeastTokenWithHfTiebreaker
 from tktkt.models.viterbi.objectives_guided import *
 from tktkt.models.viterbi.objectives_postprocessors import *
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
+from tktkt.models.bpe.knockout import BPEKnockout
 from tktkt.files.paths import relativeToCwd, DataPaths
 
 from tst.preamble import *
 
 
-with KnockoutDataConfiguration(setupEnglish()):
-    english_bpe = Pℛ𝒪𝒥ℰ𝒞𝒯.config.base_tokeniser.toFastBPE()  # Has a byte-based preprocessor; HuggingFace sets it automatically on all Roberta tokenisers.
+def getEnglishBpeFiles() -> BpeTokeniserPath:
+    """
+    Accessing BPE this way ensures that when you do knockout or you strip the HuggingFace tokeniser's pretokeniser,
+    other constructors are unaffected.
+    """
+    with KnockoutDataConfiguration(setupEnglish()):
+        return Pℛ𝒪𝒥ℰ𝒞𝒯.config.base_tokeniser
+
+
+def getEnglishKudo() -> AlbertTokenizerFast:
+    return AutoTokenizer.from_pretrained("albert/albert-base-v2")
 
 
 def make_EnglishBPE():
+    english_bpe = getEnglishBpeFiles().toFastBPE()  # Has a byte-based preprocessor; HuggingFace sets it automatically on all Roberta tokenisers.
     return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
+def make_English_BPEKnockout():
+    files = getEnglishBpeFiles()
+    return BPEKnockout(
+        vocab=files.loadVocabulary(),
+        merges=files.loadMerges(),
+        language="English",
+        boundary_marker=RobertaSpaceMarker,
+        byte_based=True
+    )
+
+
 def make_EnglishKudoPiece():
-    tk: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
+    tk = getEnglishKudo()
     return HuggingFaceTokeniser(tk, for_single_words=True)
 
 
-def make_CompressiveViterbiBPE():
+def make_CompressiveViterbi_BPE():
+    english_bpe = getEnglishBpeFiles().toFastBPE()
     return LeastTokenViterbi(
         HuggingFacePreprocessorForWords(english_bpe),
         vocab=english_bpe.get_vocab(),
@@ -74,7 +98,23 @@ def make_CompressiveViterbiBPE():
     )
 
 
-def make_CompressiveViterbiULM():
+def make_CompressiveViterbi_BPEKnockout():
+    files = getEnglishBpeFiles()
+    only_for_vocabulary = BPEKnockout(
+        vocab=files.loadVocabulary(),
+        merges=files.loadMerges(),
+        language="English",
+        boundary_marker=RobertaSpaceMarker,
+        byte_based=True
+    )
+    return LeastTokenViterbi(
+        preprocessor=only_for_vocabulary.preprocessor,
+        vocab=only_for_vocabulary.vocab,
+        max_step=20
+    )
+
+
+def make_CompressiveViterbi_ULM():
     english_ulm: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
 
     return LeastTokenViterbi(
@@ -85,6 +125,7 @@ def make_CompressiveViterbiULM():
 
 
 def make_CanineViterbiBPE():
+    english_bpe = getEnglishBpeFiles().toFastBPE()
     return HFPointViterbi(
         # HuggingFacePreprocessorForWords(robbert_tokenizer),  # The preprocessor that maps any string into the space of the vocabulary used.
         # vocab=robbert_tokenizer.get_vocab(),                 # The vocabulary that limits Viterbi steps.
@@ -108,7 +149,7 @@ def make_CanineViterbiULM(
         score_transform: Optional[ProbabilityTransform]=LinearPT(-1, +1, negate_as_complement=False),
         constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
     ):
-    english_ulm: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
+    english_ulm = getEnglishKudo()
 
     return HFPointViterbi(
         preprocessor=HuggingFacePreprocessorForWords(english_ulm),
@@ -143,11 +184,20 @@ def make_LeastTokenTiebroken():
 @timeit
 def constructTokenisers():
     return [
-        # make_EnglishBPE(),
-        # make_EnglishKudoPiece()
+        make_EnglishKudoPiece()
         # make_CompressiveViterbiULM(),
-        # make_CanineViterbiBPE(),
-        make_LeastTokenTiebroken()
+        # make_CanineViterbi_BPE(),
+        # make_LeastTokenTiebroken()
+    ]
+
+
+@timeit
+def constructTokenisers_BPE():  # 43, 45.9, 53.2, 52.4
+    return [
+        make_EnglishBPE(),
+        make_CompressiveViterbi_BPE(),
+        make_English_BPEKnockout(),
+        make_CompressiveViterbi_BPEKnockout()
     ]
 
 
@@ -197,9 +247,10 @@ def constructTokenisers_boundaryScoreLog():
 
 
 if __name__ == "__main__":
+    tkz = constructTokenisers_BPE()
     with KnockoutDataConfiguration(setupEnglish()):
         # Do evaluation
-        results = intrinsicEvaluation(constructTokenisers(), do_whole_word=False, verbose=True)
+        results = intrinsicEvaluation(tkz, do_whole_word=False, verbose=True)
 
         # Turn results into a file so that you can check them even if the terminal closes
         d = dict()
@@ -220,5 +271,5 @@ if __name__ == "__main__":
                 }
             }
 
-        with open(DataPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
+        with open(DataPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "_morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
             json.dump(d, handle)

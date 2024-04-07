@@ -4,10 +4,10 @@ from typing import List
 from sentencepiece import SentencePieceProcessor
 from bpe_knockout.datahandlers.wordfiles import iterateWordsFile
 
-from ...interfaces.tokeniser import TokeniserWithVocab, Preprocessor, Vocab
+from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
 
 
-class KudoPieceTokeniser(TokeniserWithVocab):
+class KudoPieceTokeniser(TokeniserWithVocabDict):
 
     def __init__(self, preprocessor: Preprocessor, model_file: Path):
         self.core = SentencePieceProcessor()
