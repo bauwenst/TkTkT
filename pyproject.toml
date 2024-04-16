@@ -6,8 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "tktkt"
 version = "2024.03.01"
 dependencies = [
-    "bpe_knockout",
-    "fiject",
+    "bpe_knockout @ git+https://github.com/bauwenst/BPE-knockout",
+    "fiject       @ git+https://github.com/bauwenst/fiject",
+    "clavier      @ git+https://github.com/MaxHalford/clavier",
 
     "transformers",
     "tokenizers",
@@ -15,7 +16,6 @@ dependencies = [
     "evaluate",
 
     "sentencepiece",
-
     "regex"
 ]
 requires-python = ">= 3.9"

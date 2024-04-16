@@ -2,16 +2,25 @@ import time
 from typing import Iterable, List
 
 def dprint(d: dict):
+    """
+    Print (top-level) dictionary keys and values.
+    """
     for k,v in d.items():
         print(k, ":", v)
 
 
 def lprint(l: Iterable):
+    """
+    Print list elements.
+    """
     for e in l:
         print(e)
 
 
 def kprint(d: dict, indent=0):
+    """
+    Print keys of nested dictionary.
+    """
     for k,v in d.items():
         if isinstance(v, dict):
             print("\t"*indent, k, ":")
