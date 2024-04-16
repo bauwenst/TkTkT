@@ -5,7 +5,7 @@ from typing import List
 import re
 
 from .base import NgramTokeniser, NgramByteBasedMode
-from ...interfaces.huggingface import HuggingFaceTokeniserProtocol
+from ...interfaces.huggingface import HuggingFaceTokeniserInterface
 
 
 from bpe_knockout.datahandlers.hf_corpora import punctuation
@@ -16,7 +16,7 @@ LETTERS = {chr(i) for i in range(97,123)} | {chr(i) for i in range(65,91)} \
 ASCII_PUNCTUATION = {char for char in punctuation if ord(char) < 256}
 
 
-class NgramTokeniser_Hf(HuggingFaceTokeniserProtocol):
+class NgramTokeniser_Hf(HuggingFaceTokeniserInterface):
     """
     NOTE: If you ever want to use this in a model for extrinsic evaluation, beware that this tokeniser uses
       Huck-like space marking, i.e. a separate token indicates that there is a space. It is never part of

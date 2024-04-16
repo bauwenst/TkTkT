@@ -10,10 +10,10 @@ Implementations adapted from my master's thesis (Bauwens, 2023). https://bauwens
 """
 from typing import List
 
-from ...interfaces.tokeniser import TokeniserWithVocab
+from ...interfaces.tokeniser import TokeniserWithVocabDict
 
 
-class L2R_Greedy(TokeniserWithVocab):
+class L2R_Greedy(TokeniserWithVocabDict):
     """
     Note that you can write a left-to-right tokeniser in two ways:
         - Lempel-Ziv-style, where you select progressively larger subwords and stop the moment you encounter a subword
@@ -38,7 +38,7 @@ class L2R_Greedy(TokeniserWithVocab):
         return tokens
 
 
-class L2R_Lazy(TokeniserWithVocab):
+class L2R_Lazy(TokeniserWithVocabDict):
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
@@ -55,7 +55,7 @@ class L2R_Lazy(TokeniserWithVocab):
         return tokens
 
 
-class R2L_Greedy(TokeniserWithVocab):
+class R2L_Greedy(TokeniserWithVocabDict):
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
@@ -72,7 +72,7 @@ class R2L_Greedy(TokeniserWithVocab):
         return tokens
 
 
-class R2L_Lazy(TokeniserWithVocab):
+class R2L_Lazy(TokeniserWithVocabDict):
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
@@ -89,7 +89,7 @@ class R2L_Lazy(TokeniserWithVocab):
         return tokens
 
 
-class Xu(TokeniserWithVocab):
+class Xu(TokeniserWithVocabDict):
     """
     Models the inference method described in the VOLT paper (Xu 2021). It might just be an incorrect description of
     BPE, but it's worth actually attempting this weird algorithm:

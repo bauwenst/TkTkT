@@ -1,10 +1,6 @@
 # TkTkT
 A collection of Pythonic subword tokenisers.
 
-## Pronunciation
-The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast and with beatbox hi-hats
-(kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.
-
 ## Installation
 1. Create an editable install for [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout) using the instructions given in its repo.
 2. Install [`fiject`](https://github.com/bauwenst/fiject#installation).
@@ -78,8 +74,9 @@ First of all, note that *TkTkT* has backwards compatibility with HuggingFace `to
 tokenisers and pretokenisers under `tktkt.models.huggingface`.
 
 Here's a non-exhaustive list of reasons:
-- The HuggingFace `tokenizers` library has horrifically un(der)documented Python interfaces, so programming with it is
-  a nightmare. 
+- The HuggingFace `tokenizers` library has horrifically un(der)documented Python interfaces. Some classes even accept 
+  arguments that aren't in their signature. 
+- The `tokenizers` library is implemented in Rust and hence there is no possibility of inspecting implementations in any Python IDE. Have fun using your black box.
 - The `tokenizers.pre_tokenizers` submodule has so much technical debt that it can't be patched. Some examples:
     - The mapping from Unicode codepoints to UTF-8 bytes, as first used in GPT-2, is only implemented in the `ByteLevel` 
       pretokeniser. Yet, it is concerned with more than this, since it splits on spaces and punctuation (optionally prefixed 
@@ -91,8 +88,10 @@ Here's a non-exhaustive list of reasons:
       `transformers` and `tokenizers` (with options that commonly look like `add_prefix_space`) even though the original
       BPE paper used word boundaries at the *end* of words (`</w>`). Only supporting the start-of-word convention is bad 
       because this deteriorates downstream performance for e.g. Germanic languages, where a compound has its head at the
-      end and hence it should be allowed to tokenise the head with the exact same tokens as it would be if it was isolated. 
-- Weird holdovers like the `Precompiled` normaliser that allow even less insight into what's happening.
+      end and hence it should be allowed to tokenise the head with the exact same tokens as it would be if it was isolated.
+- Weird holdovers from adapting between libraries, like the `Precompiled` normaliser stored as base64, allow for even less insight into what's happening.
+- Did you know that their RoBERTa BPE implementation [removes the highest-priority merge from the tokeniser](https://github.com/huggingface/transformers/blob/9b5a6450d481b0f02834684ffd8b3ba4cbbd6fe0/src/transformers/models/roberta/tokenization_roberta.py#L194)
+  unless the merge file is preceded by a `#version` tag? This doesn't conform to [the BPE standard](https://github.com/rsennrich/subword-nmt/), and almost cost me a paper.
 - In the little documentation that does exist (e.g. for WordPiece and KudoPiece), there are so many 
   theoretical inaccuracies that we shouldn't even have confidence in anything that isn't a BPE tokeniser implemented by them. 
   Their [explanation for KudoPiece](https://huggingface.co/learn/nlp-course/chapter6/7), an algorithm which itself was 
@@ -101,3 +100,8 @@ Here's a non-exhaustive list of reasons:
   and keeps much more updated)
   whilst there exist many more in the literature, and the likelihood that someone who knows the literature comes along to
   implement all of them in C++ is rather low.
+
+## Pronunciation
+The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast and with beatbox hi-hats
+(kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.
+If you are Brazilian, you may pronounce it "tuca tuca" while playing [the official TkTkT theme song](https://open.spotify.com/track/2aX7w5bdbES8A9H5FDydSA).

@@ -99,12 +99,16 @@ def warn(*msgs):
 
 class doPrint:
 
-    def __init__(self, verbose=True):
+    def __init__(self, verbose=True, hesitate=False):
         self.verbose = verbose
+        self.wait    = hesitate
 
     def __call__(self, *args, **kwargs):
         if self.verbose:
-            print(*args, **kwargs)
+            if self.wait:
+                wprint(*args, **kwargs)
+            else:
+                print(*args, **kwargs)
 
 
 class PrintTable:

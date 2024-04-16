@@ -1,7 +1,7 @@
 from typing import List, Callable
 from dataclasses import dataclass
 
-from ...interfaces.tokeniser import TokeniserWithVocab, Vocab
+from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
 from ...preparation.splitters import WhitespaceAndMarkerPretokeniser, SpaceMarker
 
 
@@ -34,7 +34,7 @@ class ViterbiLossUpdater:  # Doesn't use abstract methods because the implementa
                            self.tiebreaker_update(previous_loss, *args, **kwargs))
 
 
-class UnguidedViterbi(TokeniserWithVocab):
+class UnguidedViterbi(TokeniserWithVocabDict):
     """
     Subword tokeniser that uses a Viterbi algorithm to minimise the amount of tokens used
     for segmenting a word given a subword vocabulary.
@@ -108,7 +108,7 @@ class UnguidedViterbi(TokeniserWithVocab):
         return tokens
 
 
-class RA_Product(TokeniserWithVocab):
+class RA_Product(TokeniserWithVocabDict):
     """
     The idea: we want to nicely distribute subwords over the string. One property of multiplication with a fixed sum is
     that it is highest when all numbers are as close as possible.

@@ -1,9 +1,9 @@
 from typing import List
 
-from ...interfaces.tokeniser import TokeniserWithVocab
+from ...interfaces.tokeniser import TokeniserWithVocabDict
 
 
-class UnicodeTokeniser(TokeniserWithVocab):
+class UnicodeTokeniser(TokeniserWithVocabDict):
 
     def tokenise(self, word: str) -> List[str]:
         return list(word)

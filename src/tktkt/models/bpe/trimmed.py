@@ -1,17 +1,17 @@
 from typing import List
 from collections import Counter
 
-from .segmentation import BpeTokeniser, WhitespaceAndMarkerPretokeniser, Vocab
+from .base import *
 
 
-class TrimmedBPETokeniser(BpeTokeniser):
+class TrimmedBPETokeniser(ClassicBPE):
     """
     Implementation of Yuval Pinter's TrimmedBPE tokeniser, which first applies BPE like normal, and then
     recursively undoes applied merges until all tokens are NOT in a predefined set of illegal types.
     """
 
-    def __init__(self, pretokeniser: WhitespaceAndMarkerPretokeniser, vocab: Vocab, merges: List[str]):
-        super().__init__(pretokeniser, vocab, merges)
+    def __init__(self, vocab: Vocab, merges: List[str], marker: SpaceMarker, normaliser: TextMapper):
+        super().__init__(vocab, merges, boundary_marker=marker, normaliser=normaliser)
         self.disabled = set()
 
     def tokenise(self, pretoken: str) -> List[str]:
@@ -31,7 +31,7 @@ class TrimmedBPETokeniser(BpeTokeniser):
         if token not in self.disabled:
             return [token]
         else:
-            part1, part2 = self.core.merge_graph.merges_of[token][0].parts
+            part1, part2 = self.merge_graph.merges_of[token][0].parts
             return self.recursivelyDecompose(part1) + self.recursivelyDecompose(part2)
 
     def trim(self, corpus: Counter, threshold: int=0):
@@ -57,7 +57,7 @@ class TrimmedBPETokeniser(BpeTokeniser):
                     pass
 
     def _disableType(self, type_to_disable: str):
-        if type_to_disable not in self.vocab or not self.core.merge_graph.merges_of[type_to_disable]:
+        if type_to_disable not in self.vocab or not self.merge_graph.merges_of[type_to_disable]:
             raise ValueError(f"Cannot trim a type from the vocabulary that cannot be decomposed further: {type_to_disable}")
 
         self.disabled.add(type_to_disable)

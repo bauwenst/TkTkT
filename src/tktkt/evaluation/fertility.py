@@ -6,7 +6,7 @@ from typing import Tuple, Iterable, Dict
 from dataclasses import dataclass
 from numpy import log2
 
-from ..interfaces.tokeniser import TokeniserWithVocab, Vocab
+from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab
 
 
 def possibleSegmentations(vocab: Vocab, pretoken: str) -> int:
@@ -41,7 +41,7 @@ class SegmentationStatistics:
     segmentations_per_token_max_macro: float   # [1/sum_w f(w)] * [sum_w f(w)*seg(w)/maxseg(w)]
 
 
-def makeSegmentationStats(prep_and_vocab: TokeniserWithVocab,
+def makeSegmentationStats(prep_and_vocab: TokeniserWithVocabDict,
                           raw_words: Iterable[str], counts: Dict[str, float]=None,
                           do_measure_original_word_length: bool=False, exclude_words_over_length: int=100, do_log_segmentations: bool=False) -> SegmentationStatistics:
     """

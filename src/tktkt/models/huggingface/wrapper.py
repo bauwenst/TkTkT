@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Mapping
 from copy import deepcopy
 
 from transformers import PreTrainedTokenizerFast
@@ -20,7 +20,7 @@ class HuggingFaceTokeniser(TokeniserWithVocab):
             preprocessor = HuggingFacePreprocessor(wrapped_tokeniser)
         else:  # Do that, but add additional components that ensure that all input is interpreted as a word, regardless of spacing.
             preprocessor = HuggingFacePreprocessorForWords(wrapped_tokeniser)
-        super().__init__(preprocessor, wrapped_tokeniser.get_vocab())
+        super().__init__(preprocessor)
 
         # Disable the wrapped tokeniser's preprocessing steps. This means that calling .tokenize() now ignores the pretokeniser.
         wrapped_tokeniser = deepcopy(wrapped_tokeniser)
@@ -37,3 +37,15 @@ class HuggingFaceTokeniser(TokeniserWithVocab):
         No UNKs, just delete. For such tokenisers, you have to ensure manually that you don't use out-of-alphabet characters.
         """
         return self.backend.tokenize(pretoken)
+
+    def typeToId(self, t: str) -> int:
+        return self.backend._convert_token_to_id(t)
+
+    def idToType(self, i: int) -> str:
+        return self.backend._convert_id_to_token(i)
+
+    def getVocabMapping(self) -> Mapping[str, int]:
+        return self.backend.get_vocab()
+
+    def getVocabSize(self) -> int:
+        return self.backend.vocab_size
