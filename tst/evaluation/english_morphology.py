@@ -194,10 +194,10 @@ def constructTokenisers():
 @timeit
 def constructTokenisers_BPE():  # 43, 45.9, 53.2, 52.4
     return [
-        make_EnglishBPE(),
-        make_CompressiveViterbi_BPE(),
-        make_English_BPEKnockout(),
-        make_CompressiveViterbi_BPEKnockout()
+        make_EnglishBPE(),                     # Worst
+        make_CompressiveViterbi_BPE(),         # Better by +1%
+        make_English_BPEKnockout(),            # Best (+10% Pr, +25% Re)
+        make_CompressiveViterbi_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
     ]
 
 

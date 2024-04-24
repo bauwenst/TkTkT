@@ -160,7 +160,7 @@ class PunctuationPretokeniser(Pretokeniser):
         self.core = tp.Split(pattern=Regex(pattern), behavior="isolated")
 
     @staticmethod
-    def buildPunctuationString(hyphen_mode: HyphenMode):
+    def buildPunctuationString(hyphen_mode: HyphenMode=HyphenMode.INCLUDED):
         punctuation_hyphens_only = "-–_"
         if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
             punctuation = punctuation_hyphens_only

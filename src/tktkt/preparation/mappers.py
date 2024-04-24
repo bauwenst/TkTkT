@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import List, Iterable
+
+import re
 
 import requests
 
@@ -60,6 +62,15 @@ class Lowercaser(TextMapper):
 
     def convert(self, text: str) -> str:
         return text.lower()
+
+
+class FilterCharacters(TextMapper):
+
+    def __init__(self, charset: Iterable[str]):
+        self.pattern = re.compile("[" + re.escape(charset) + "]")
+
+    def convert(self, text: str) -> str:
+        return self.pattern.sub("", text)
 
 
 from .splitters import Pretokeniser
