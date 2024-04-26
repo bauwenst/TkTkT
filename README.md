@@ -2,9 +2,21 @@
 A collection of Pythonic subword tokenisers.
 
 ## Installation
-1. Create an editable install for [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout) using the instructions given in its repo.
-2. Install [`fiject`](https://github.com/bauwenst/fiject#installation).
-3. Follow the exact same instructions as for `fiject`, but for this repo.
+### Non-editable (recommended)
+Simply run
+```shell
+pip install "tktkt[github] @ git+https://github.com/bauwenst/TkTkT.git"
+```
+where you should leave out the `[github]` suffix if you have an editable installation of [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout).
+
+### Editable
+If you want to keep TkTkT out of your `site-packages` for easy editing, an editable install is always possible:
+```shell
+git clone https://github.com/bauwenst/TkTkT.git
+cd TkTkT
+pip install -e .[github]
+```
+where the same caveat applies about the `[github]` suffix.
 
 ## Architecture
 The goal of TkTkT is to provide a straightforward Pythonic interface for everything-tokenisation, and to be as object-oriented

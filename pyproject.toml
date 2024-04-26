@@ -5,19 +5,6 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tktkt"
 version = "2024.03.01"
-dependencies = [
-    "bpe_knockout @ git+https://github.com/bauwenst/BPE-knockout",
-    "fiject       @ git+https://github.com/bauwenst/fiject",
-    "clavier      @ git+https://github.com/MaxHalford/clavier",
-
-    "transformers",
-    "tokenizers",
-    "datasets",
-    "evaluate",
-
-    "sentencepiece",
-    "regex"
-]
 requires-python = ">= 3.9"
 authors = [
   {name = "Thomas Bauwens", email = "thomas.bauwens@kuleuven.be"}
@@ -32,4 +19,21 @@ keywords = ["NLP", "tokenizers", "tokenization", "subwords", "segmentation", "na
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+]
+dependencies = [
+    "transformers",
+    "tokenizers",
+    "datasets",
+    "evaluate",
+
+    "sentencepiece",
+    "regex"
+]
+
+# These are not optional, but if you have these packages as editable install, you don't want to let pip install them again!
+[project.optional-dependencies]
+github = [
+    "bpe_knockout[github] @ git+https://github.com/bauwenst/BPE-knockout",
+    "fiject               @ git+https://github.com/bauwenst/fiject",
+    "clavier              @ git+https://github.com/MaxHalford/clavier"
 ]
