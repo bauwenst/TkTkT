@@ -5,6 +5,7 @@ from functools import reduce
 import numpy as np
 import numpy.random as npr
 
+from ..util.functions import softmax, relu
 from .mappers import TextMapper
 
 RNG = npr.default_rng(0)
@@ -151,20 +152,6 @@ class Pop(Perturber):
             map(lambda i: text[i],
                 filter(lambda i: i not in pop_indices,
                        range(0, len(text)))))  # join is faster than building a string with += https://stackoverflow.com/a/1350289/9352077
-
-
-def softmax(x: np.ndarray):
-    """
-    Shifts to a maximum of 0 first, for numerical stability of the exponential (which is apparently more important
-    than the numerical stability of a subtraction).
-    https://stackoverflow.com/questions/34968722/how-to-implement-the-softmax-function-in-python
-    """
-    exps = np.exp(x - np.max(x))
-    return exps / np.sum(exps)
-
-
-def relu(x: float) -> float:
-    return max(x,0)
 
 
 import clavier

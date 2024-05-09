@@ -2,11 +2,8 @@ from abc import ABC, abstractmethod
 from typing import List, Iterable
 
 import re
-
 import requests
 
-import tokenizers.normalizers as tn
-from transformers import PreTrainedTokenizerFast
 from transformers.models.gpt2.tokenization_gpt2 import bytes_to_unicode
 
 
@@ -34,22 +31,6 @@ class MapperSequence(TextMapper):
         for mapper in self.sequence:
             text = mapper.convert(text)
         return text
-
-
-class HuggingFaceNormaliser(TextMapper):
-
-    def __init__(self, core: tn.Normalizer):
-        self.hf = core
-
-    def convert(self, text: str) -> str:
-        return self.hf.normalize_str(text)
-
-    @staticmethod
-    def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFaceNormaliser":
-        if hf_model.backend_tokenizer.normalizer is None:  # For some reason, bool(hf_model.backend_tokenizer.normalizer) == False and yet it isn't None!
-            return HuggingFaceNormaliser(tn.Sequence([]))
-        else:
-            return HuggingFaceNormaliser(hf_model.backend_tokenizer.normalizer)
 
 
 class Stripper(TextMapper):

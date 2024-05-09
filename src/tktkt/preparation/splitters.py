@@ -427,28 +427,6 @@ class MapperAsPretokeniser(Pretokeniser):
         return [self.invertToken(p) for p in pretokens]
 
 
-class HuggingFacePretokeniser(Pretokeniser):
-
-    def __init__(self, encoder: tp.PreTokenizer, decoder: td.Decoder):
-        """
-        Steals the pretokeniser from a HuggingFace tokeniser.
-        Only possible for the "Fast" variants because some people don't know how to design a software system.
-        https://github.com/huggingface/transformers/issues/26254
-        """
-        self.encode: tp.PreTokenizer = encoder
-        self.decode: td.Decoder      = decoder
-
-    def split(self, text: str) -> List[str]:
-        return [w for w, _ in self.encode.pre_tokenize_str(text)]
-
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
-        return self.decode.decode(pretokens)
-
-    @staticmethod
-    def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFacePretokeniser":
-        return HuggingFacePretokeniser(hf_model.backend_tokenizer.pre_tokenizer, hf_model.backend_tokenizer.decoder)
-
-
 class InsertReverse(Pretokeniser):
     """
     Given tokens [a, b, c], inserts their reverses as [a, rev(a), b, rev(b), c, rev(c)].
