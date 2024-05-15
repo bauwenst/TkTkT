@@ -33,8 +33,8 @@ def langstringToLanguage(language: str) -> Language:
 
 class BPEKnockout(BTE):
 
-    def __init__(self, vocab: Vocab, merges: MergeList, language: Union[Language, str],
-                 boundary_marker: SpaceMarker, byte_based: bool=True, normaliser: TextMapper=None):
+    def __init__(self, preprocessor: Preprocessor, boundary_marker: SpaceMarker,
+                 vocab: Vocab, merges: MergeList, language: Union[Language, str]):
         # Impute language
         if isinstance(language, str):
             language = langstringToLanguage(language)
@@ -47,11 +47,28 @@ class BPEKnockout(BTE):
         # Run knockout in the context of that language
         with KnockoutDataConfiguration(config):
             super().__init__(
-                BteInitConfig(
-                    knockout=RefMode.MORPHEMIC,
-                    bytebased=ByteBasedMode.NONE if not byte_based else ByteBasedMode.INPUT_TO_BYTES
-                ),
+                BteInitConfig(knockout=RefMode.MORPHEMIC),
                 starting_vocab=vocab, starting_mergelist=merges,
-                autorun_modes=True, quiet=True,
-                normalisation=normaliser, boundary_marker=boundary_marker
+
+                preprocessor=preprocessor,
+                boundary_marker=boundary_marker,
+
+                autorun_modes=True,
+                quiet=True,
+                holdout=None
             )
+
+    @staticmethod
+    def fromHuggingFace(hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str]) -> "BPEKnockout":
+        vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
+        marker = detectBoundaryMarker(hf_bpe_tokenizer)
+        # byte_based = detectByteBased(tokenizer)
+        return BPEKnockout(
+            preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
+            boundary_marker=marker,
+
+            vocab=vocab_and_merges.loadVocabulary(),
+            merges=vocab_and_merges.loadMerges(),
+
+            language=language
+        )

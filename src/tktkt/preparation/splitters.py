@@ -252,58 +252,6 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
 
         return pretokens
 
-    def splitWord(self, pretoken: str) -> List[str]:
-        """
-        Extra method for algorithms like BPE that require a word to start out as
-        being split into characters.
-
-        Does NOT add SoW/EoW because this is already done when you split the sentence into words.
-        What it might do, however, is attach the SoW/EoW to the adjacent character.
-        """
-        if self.marker.location == SpaceMarkerLocation.START:
-            chars, sow = WhitespaceAndMarkerPretokeniser.stripMarker(pretoken, self.marker)
-            if self.marker.detached:
-                return [sow] + list(chars)
-            else:
-                return [sow + chars[0]] + list(chars[1:])
-        elif self.marker.location == SpaceMarkerLocation.END:
-            chars, eow = WhitespaceAndMarkerPretokeniser.stripMarker(pretoken, self.marker)
-            if self.marker.detached:
-                return list(chars) + [eow]
-            else:
-                return list(chars[:-1]) + [chars[-1] + eow]
-        elif self.marker.location == SpaceMarkerLocation.ISOLATED:
-            if pretoken == self.marker.substitute:
-                return [pretoken]
-            else:
-                return list(pretoken)
-        else:
-            return [pretoken]
-
-    @staticmethod
-    def stripMarker(pretoken: str, marker: SpaceMarker) -> Tuple[str,str]:
-        """
-        Retrieve the part of a pretoken that isn't a space marker.
-        """
-        L = len(marker.substitute)
-        if marker.location == SpaceMarkerLocation.START:
-            root, mark = pretoken[L:], pretoken[:L]
-            if mark != marker.substitute:
-                root, mark = pretoken, ""
-        elif marker.location == SpaceMarkerLocation.END:
-            root, mark = pretoken[:len(pretoken)-L], pretoken[len(pretoken)-L:]
-            if mark != marker.substitute:
-                root, mark = pretoken, ""
-        elif marker.location == SpaceMarkerLocation.ISOLATED:
-            if pretoken == marker.substitute:
-                root, mark = "", pretoken
-            else:
-                root, mark = pretoken, ""
-        else:
-            root, mark = pretoken, ""
-
-        return root, mark
-
     def invertToken(self, pretoken: str) -> str:
         return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
 
@@ -400,8 +348,7 @@ class AddWordBoundary(Pretokeniser):
             return [text]
 
     def invertToken(self, pretoken: str) -> str:
-        # return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
-        return WhitespaceAndMarkerPretokeniser.stripMarker(pretoken, self.marker)[0]
+        return self.marker.isolate(pretoken)[0]
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         return [self.invertToken(p) for p in pretokens]

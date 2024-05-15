@@ -425,7 +425,7 @@ class GoldSplits(CharacterClassifier):
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         labels = np.zeros(len(pretoken), dtype=np.float32)
 
-        word, _ = self.pretokeniser.stripMarker(pretoken)
+        word, _ = self.pretokeniser.marker.isolate(pretoken)
         if word in self.gold_segmentations:
             tokens = self.gold_segmentations[word].split()
             split_positions = np.cumsum([len(t) for t in tokens[:-1]]) - 1
