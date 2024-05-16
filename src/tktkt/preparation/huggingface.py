@@ -6,8 +6,8 @@ import tokenizers.pre_tokenizers as tp
 import tokenizers.decoders as td
 
 from .mappers import MapperSequence, Stripper, AppendSpace, TextMapper, Pretokeniser
-from .spacemarking import SpaceMarkerLocation
-from .splitters import PretokeniserSequence, SpaceMarker, MapperAsPretokeniser
+from .spacemarking import BoundaryMarkerLocation
+from .splitters import PretokeniserSequence, BoundaryMarker, MapperAsPretokeniser
 from ..interfaces.preparation import Preprocessor
 
 
@@ -105,7 +105,7 @@ def detectByteBased(hf_tokeniser: PreTrainedTokenizerBase) -> bool:
     return True
 
 
-def detectBoundaryMarker(hf_tokeniser: PreTrainedTokenizerBase) -> SpaceMarker:
+def detectBoundaryMarker(hf_tokeniser: PreTrainedTokenizerBase) -> BoundaryMarker:
     """
     Assumes a couple of things about the marker:
         - It will always appear attached to another letter, even though we assume it starts out as "detached" during tokenisation.
@@ -118,14 +118,14 @@ def detectBoundaryMarker(hf_tokeniser: PreTrainedTokenizerBase) -> SpaceMarker:
     token_with_potential_prefix = hf_tokeniser.tokenize(" " + CHAR*N)[0]
     if CHAR in token_with_potential_prefix and token_with_potential_prefix.rstrip(CHAR) and token_with_potential_prefix != token_with_potential_prefix.rstrip(CHAR):
         prefix = token_with_potential_prefix.rstrip(CHAR)
-        return SpaceMarker(prefix, detached=True, location=SpaceMarkerLocation.START)
+        return BoundaryMarker(prefix, detached=True, location=BoundaryMarkerLocation.START)
 
     token_with_potential_suffix = hf_tokeniser.tokenize(CHAR*N + " ")[-1]
     if CHAR in token_with_potential_suffix and token_with_potential_suffix.lstrip(CHAR) and token_with_potential_suffix != token_with_potential_suffix.lstrip(CHAR):
         suffix = token_with_potential_suffix.lstrip(CHAR)
-        return SpaceMarker(suffix, detached=True, location=SpaceMarkerLocation.END)
+        return BoundaryMarker(suffix, detached=True, location=BoundaryMarkerLocation.END)
 
     # continuation = hf_tokeniser.tokenize("a"*100)[1].rstrip("a")  # TODO: Does TkTkT even support BERT continuation?
     # print("P:", prefix)
     # print("S:", suffix)
-    return SpaceMarker("", detached=True, location=SpaceMarkerLocation.START)
+    return BoundaryMarker("", detached=True, location=BoundaryMarkerLocation.START)

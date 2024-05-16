@@ -2,7 +2,7 @@ from typing import List, Callable
 from dataclasses import dataclass
 
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
-from ...preparation.splitters import WhitespaceAndMarkerPretokeniser, SpaceMarker
+from ...preparation.splitters import WhitespaceAndMarkerPretokeniser, BoundaryMarker
 
 
 class ViterbiNode:
@@ -42,7 +42,7 @@ class UnguidedViterbi(TokeniserWithVocabDict):
     The subwords have no notion of probability, and we don't have sentence-level context.
     """
 
-    def __init__(self, pretrained_vocabulary: Vocab, space_marker: SpaceMarker):
+    def __init__(self, pretrained_vocabulary: Vocab, space_marker: BoundaryMarker):
         super().__init__(preprocessor=WhitespaceAndMarkerPretokeniser(space_marker))
         self.vocab = pretrained_vocabulary
 

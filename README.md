@@ -35,14 +35,16 @@ Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
 ### KudoPiece (ULM)
 Let's say you want to train and load an English ULM tokeniser, which is notorious for being a convoluted process. 
 In TkTkT, that would go like this (note that ULM is called "KudoPiece" in TkTkT because it is a less ambiguous name):
+
 ```python
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
 from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
 
-def load(model_path: Path):    
+
+def load(model_path: Path):
     preprocessor = Preprocessor(
-        IdentityMapper(), 
-        AppendSpace(front_not_back=True), 
+        IdentityMapper(),
+        AppendSpace(front_not_back=True),
         IdentityPretokeniser()
     )
     return KudoPieceTokeniser(preprocessor, model_path)
@@ -51,16 +53,17 @@ def load(model_path: Path):
 from tktkt.models.kudopiece.training import *
 from string import ascii_letters
 
+
 def train(sentence_corpus: Iterable[str]):
     args_alpha = KudoPieceArguments_Alphabet(
-        required_chars=[l for l in ascii_letters], 
-        byte_fallback=True, 
+        required_chars=[l for l in ascii_letters],
+        byte_fallback=True,
         character_coverage=0.9995
     )
     args_algo = KudoPieceArguments_Algorithm()
 
     trainer = KudoPieceTrainer(
-        word_boundary_location=SpaceMarkerLocation.START,
+        word_boundary_location=BoundaryMarkerLocation.START,
         final_vocab_size=40_000,
         alphabet_arguments=args_alpha,
         algorithm_arguments=args_algo,

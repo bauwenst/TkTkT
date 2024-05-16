@@ -10,7 +10,7 @@ class TrimmedBPETokeniser(ClassicBPE):
     recursively undoes applied merges until all tokens are NOT in a predefined set of illegal types.
     """
 
-    def __init__(self, preprocessor: Preprocessor, marker: SpaceMarker,
+    def __init__(self, preprocessor: Preprocessor, marker: BoundaryMarker,
                  vocab: Vocab, merges: List[str]):
         super().__init__(preprocessor, marker, vocab, merges)
         self.disabled = set()

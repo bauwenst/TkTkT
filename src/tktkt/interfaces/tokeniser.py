@@ -55,19 +55,31 @@ class TokeniserWithVocab(Tokeniser):
 
 class TokeniserWithVocabDict(TokeniserWithVocab):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None):
         super().__init__(preprocessor)
         self.vocab         = vocab
         self.reverse_vocab = {v:k for k,v in vocab.items()}
+        self.unk = unk_type
 
+        if self.unk is not None and self.unk not in self.vocab:
+            raise ValueError(f"The given vocabulary does not have an ID defined for the given UNK type '{unk_type}'.")
         if len(self.vocab) != len(self.reverse_vocab):
-            warnings.warn("Tokeniser with non-injective vocabulary instantiated. This means some types will never be returned given their ID, since another type has the same ID.")
+            warnings.warn("Tokeniser with non-injective vocabulary instantiated. This means some types will never result from decoding their ID, since another type has the same ID.")
 
     def typeToId(self, t: str) -> int:
-        return self.vocab.get(t)
+        try:  # try-except is the fastest method to check+return a key in use cases where most lookups are valid (https://stackoverflow.com/a/28860508/9352077).
+            return self.vocab[t]
+        except:
+            if self.unk is not None:
+                return self.vocab[self.unk]
+            else:
+                raise RuntimeError(f"Unknown vocabulary type '{t}' cannot be converted to ID, and no UNK is defined.")
 
     def idToType(self, i: int) -> str:
-        return self.reverse_vocab.get(i)
+        try:
+            return self.reverse_vocab[i]
+        except:
+            raise RuntimeError(f"Unknown ID {i} cannot be decoded to a string type.")
 
     def getVocabMapping(self):
         return self.vocab

@@ -13,7 +13,7 @@ from string import punctuation as BASIC_PUNCTUATION
 import re
 import regex  # Has \p{} classes
 
-from ..preparation.spacemarking import SpaceMarker, SpaceMarkerLocation
+from ..preparation.spacemarking import BoundaryMarker, BoundaryMarkerLocation
 
 
 class Pretokeniser(ABC):
@@ -122,7 +122,7 @@ class PunctuationPretokeniser(Pretokeniser):
         INCLUDED = 3
 
     def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", protect_apostrophes_without_spaces: bool=True,
-                 group_adjacent_spaces_with_punctuation: SpaceMarkerLocation=SpaceMarkerLocation.ISOLATED):
+                 group_adjacent_spaces_with_punctuation: BoundaryMarkerLocation=BoundaryMarkerLocation.ISOLATED):
         punctuation = PunctuationPretokeniser.buildPunctuationString(hyphen_mode)
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
         punctuation_escaped_no_accent = punctuation_escaped.replace("'", "")
@@ -131,13 +131,13 @@ class PunctuationPretokeniser(Pretokeniser):
             pattern = "[" + punctuation_escaped + "]+"
         else:
             if protect_apostrophes_without_spaces:
-                if group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.START:
+                if group_adjacent_spaces_with_punctuation == BoundaryMarkerLocation.START:
                     # For space grouping + protected accents,
                     #   \s?[',]*[,]+[',]*\s?|(\s|^)'|'(\s|$)
                     punctuation_groups = r"\s?[" + punctuation_escaped + "]*[" + punctuation_escaped_no_accent + "]+[" + punctuation_escaped + "]*"
                     starting_accent = r"(\s|^)'"
                     ending_accent   = r"'(?=\s|$)"
-                elif group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.END:
+                elif group_adjacent_spaces_with_punctuation == BoundaryMarkerLocation.END:
                     punctuation_groups = "[" + punctuation_escaped + "]*[" + punctuation_escaped_no_accent + "]+[" + punctuation_escaped + r"]*\s?"
                     starting_accent = r"(?<=\s|^)'"
                     ending_accent   = r"'(\s|$)"
@@ -153,9 +153,9 @@ class PunctuationPretokeniser(Pretokeniser):
                 #   \s?[',]+\s?
                 # For no space grouping + no protected accents,
                 #   [',]+
-                pattern = r"\s?" * (group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.START) + \
+                pattern = r"\s?" * (group_adjacent_spaces_with_punctuation == BoundaryMarkerLocation.START) + \
                           "[" + punctuation_escaped + "]+" + \
-                          r"\s?" * (group_adjacent_spaces_with_punctuation == SpaceMarkerLocation.END)
+                          r"\s?" * (group_adjacent_spaces_with_punctuation == BoundaryMarkerLocation.END)
 
         self.core = tp.Split(pattern=Regex(pattern), behavior="isolated")
 
@@ -222,15 +222,15 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
     the .prepareAndTokenise() method.
     """
 
-    def __init__(self, replacement: SpaceMarker):
+    def __init__(self, replacement: BoundaryMarker):
         self.marker = replacement
 
     def split(self, text: str) -> List[str]:
         if not text.strip():
-            return [] if not(self.marker.location == SpaceMarkerLocation.ISOLATED and text) else [self.marker.substitute]
+            return [] if not(self.marker.location == BoundaryMarkerLocation.ISOLATED and text) else [self.marker.substitute]
 
         pretokens = [text]
-        if self.marker.location == SpaceMarkerLocation.ISOLATED:
+        if self.marker.location == BoundaryMarkerLocation.ISOLATED:
             pretokens = text.split()  # Will strip all whitespace from both sides, then split on any span of whitespace.
             pretokens = WhitespaceAndMarkerPretokeniser.intercalate(pretokens, self.marker.substitute)  # Will have length 2n-1.
             if text[0].isspace():
@@ -238,13 +238,13 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
             if text[-1].isspace():  # Due to the sanity check above, we know that this is not the same whitespace!
                 pretokens.append(self.marker.substitute)
 
-        elif self.marker.location == SpaceMarkerLocation.START:
+        elif self.marker.location == BoundaryMarkerLocation.START:
             pretokens = text.split()
             for i in range(len(pretokens)):
                 if i != 0 or text[0].isspace():
                     pretokens[i] = self.marker.substitute + pretokens[i]
 
-        elif self.marker.location == SpaceMarkerLocation.END:
+        elif self.marker.location == BoundaryMarkerLocation.END:
             pretokens = text.split()
             for i in range(len(pretokens)):
                 if i != len(pretokens)-1 or text[-1].isspace():
@@ -334,15 +334,15 @@ class AddWordBoundary(Pretokeniser):
     punctuation sometimes removes preceding or succeeding space. A boundary is a boundary.
     """
 
-    def __init__(self, marker: SpaceMarker):
+    def __init__(self, marker: BoundaryMarker):
         self.marker = marker
 
     def split(self, text: str) -> List[str]:
-        if self.marker.location == SpaceMarkerLocation.ISOLATED:
+        if self.marker.location == BoundaryMarkerLocation.ISOLATED:
             return [self.marker.substitute, text]
-        elif self.marker.location == SpaceMarkerLocation.START:
+        elif self.marker.location == BoundaryMarkerLocation.START:
             return [self.marker.substitute + text]
-        elif self.marker.location == SpaceMarkerLocation.END:
+        elif self.marker.location == BoundaryMarkerLocation.END:
             return [text + self.marker.substitute]
         else:
             return [text]

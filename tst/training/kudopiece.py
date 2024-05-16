@@ -11,7 +11,7 @@ def main():
 
     with KnockoutDataConfiguration(setupEnglish()):
         trainer = KudoPieceTrainer(
-            word_boundary_location=SpaceMarkerLocation.START,
+            word_boundary_location=BoundaryMarkerLocation.START,
             final_vocab_size=40_000,
             alphabet_arguments=args_alpha,
             algorithm_arguments=args_algo,

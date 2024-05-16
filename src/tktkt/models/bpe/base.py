@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
 from ...interfaces.tokeniser import Vocab
-from ...preparation.spacemarking import SpaceMarker
+from ...preparation.spacemarking import BoundaryMarker
 from ...preparation.huggingface import detectBoundaryMarker, detectByteBased, HuggingFacePreprocessor
 
 MergeList = List[str]
@@ -17,7 +17,7 @@ class ClassicBPE(BTE):
     BPE with binary merges (that's what the P stands for).
     """
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: SpaceMarker,
+    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
                  vocab: Vocab, merges: MergeList):
         super().__init__(
             # Init

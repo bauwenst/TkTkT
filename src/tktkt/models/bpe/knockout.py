@@ -33,7 +33,7 @@ def langstringToLanguage(language: str) -> Language:
 
 class BPEKnockout(BTE):
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: SpaceMarker,
+    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
                  vocab: Vocab, merges: MergeList, language: Union[Language, str]):
         # Impute language
         if isinstance(language, str):
@@ -60,6 +60,10 @@ class BPEKnockout(BTE):
 
     @staticmethod
     def fromHuggingFace(hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str]) -> "BPEKnockout":
+        """
+        Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
+        (rather than wrapping it), then apply knockout using the given language.
+        """
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         marker = detectBoundaryMarker(hf_bpe_tokenizer)
         # byte_based = detectByteBased(tokenizer)

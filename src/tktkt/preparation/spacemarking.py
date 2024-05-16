@@ -1,37 +1,39 @@
 """
 One contract for all forms of start-of-word (SoW) and end-of-word (EoW).
+
+TODO: Rename this file to "boundaries.py"
 """
 from dataclasses import dataclass
 from enum import Enum
 from typing import Tuple
 
 
-class SpaceMarkerLocation(Enum):
+class BoundaryMarkerLocation(Enum):
     ISOLATED = 1
     START = 2
     END = 3
 
 
 @dataclass
-class SpaceMarker:
+class BoundaryMarker:
     substitute: str
     detached: bool
-    location: SpaceMarkerLocation
+    location: BoundaryMarkerLocation
 
     def isolate(self, pretoken: str) -> Tuple[str, str]:
         """
         Retrieve the part of a pretoken that isn't a space marker.
         """
         L = len(self.substitute)
-        if self.location == SpaceMarkerLocation.START:
+        if self.location == BoundaryMarkerLocation.START:
             root, mark = pretoken[L:], pretoken[:L]
             if mark != self.substitute:
                 root, mark = pretoken, ""
-        elif self.location == SpaceMarkerLocation.END:
+        elif self.location == BoundaryMarkerLocation.END:
             root, mark = pretoken[:len(pretoken)-L], pretoken[len(pretoken)-L:]
             if mark != self.substitute:
                 root, mark = pretoken, ""
-        elif self.location == SpaceMarkerLocation.ISOLATED:
+        elif self.location == BoundaryMarkerLocation.ISOLATED:
             if pretoken == self.substitute:
                 root, mark = "", pretoken
             else:
@@ -47,25 +49,34 @@ class SpaceMarker:
 
         Does NOT add SoW/EoW because this is already done when you split the sentence into words.
         What it might do, however, is attach the SoW/EoW to the adjacent character.
-
-        FIXME: Possibly doesn't work properly if the pretoken does not contain the self.marker.
         """
-        if self.location == SpaceMarkerLocation.START:
+        if self.location == BoundaryMarkerLocation.START:
             chars, sow = self.isolate(pretoken)
-            if self.detached:
-                return [sow] + list(chars)
+            if not sow:
+                return list(chars)
             else:
-                return [sow + chars[0]] + list(chars[1:])
-        elif self.location == SpaceMarkerLocation.END:
+                if self.detached:
+                    return [sow] + list(chars)
+                else:
+                    return [sow + chars[0]] + list(chars[1:])
+        elif self.location == BoundaryMarkerLocation.END:
             chars, eow = self.isolate(pretoken)
-            if self.detached:
-                return list(chars) + [eow]
+            if not eow:
+                return list(chars)
             else:
-                return list(chars[:-1]) + [chars[-1] + eow]
-        elif self.location == SpaceMarkerLocation.ISOLATED:
+                if self.detached:
+                    return list(chars) + [eow]
+                else:
+                    return list(chars[:-1]) + [chars[-1] + eow]
+        elif self.location == BoundaryMarkerLocation.ISOLATED:
             if pretoken == self.substitute:
                 return [pretoken]
             else:
                 return list(pretoken)
         else:
             return [pretoken]
+
+
+# Old names for compatibility
+SpaceMarker = BoundaryMarker
+SpaceMarkerLocation = BoundaryMarkerLocation

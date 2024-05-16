@@ -11,7 +11,7 @@ import time
 import sentencepiece
 from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter, iterateWordsFile
 
-from ...preparation.spacemarking import SpaceMarkerLocation
+from ...preparation.spacemarking import BoundaryMarkerLocation
 from ...files.paths import DataPaths
 
 MAXIMUM_SENTENCE_LENGTH = 4192
@@ -34,7 +34,7 @@ class KudoPieceArguments_Algorithm:
 
 class KudoPieceTrainer:
 
-    def __init__(self, final_vocab_size: int, word_boundary_location: SpaceMarkerLocation,
+    def __init__(self, final_vocab_size: int, word_boundary_location: BoundaryMarkerLocation,
                  alphabet_arguments: KudoPieceArguments_Alphabet,
                  algorithm_arguments: KudoPieceArguments_Algorithm,
                  file_stem: str="kudopiece"):
@@ -107,7 +107,7 @@ class KudoPieceTrainer:
             --split_by_whitespace (use a white space to split sentence pieces)  type: bool default: true
             --split_digits (split all digits (0-9) into separate pieces)  type: bool default: false
         """
-        if word_boundary_location == SpaceMarkerLocation.ISOLATED:
+        if word_boundary_location == BoundaryMarkerLocation.ISOLATED:
             raise ValueError("KudoPiece only supports start-of-word and end-of-word boundary markers!")
 
         self.alphabet = alphabet_arguments
@@ -138,7 +138,7 @@ class KudoPieceTrainer:
             character_coverage=self.alphabet.character_coverage,
 
             # Algorithm
-            treat_whitespace_as_suffix=self.boundary_style == SpaceMarkerLocation.END,
+            treat_whitespace_as_suffix=self.boundary_style == BoundaryMarkerLocation.END,
 
             seed_sentencepiece_size=self.algorithm.initial_vocab_size,
             max_sentencepiece_length=self.algorithm.maximum_token_length,
@@ -187,7 +187,7 @@ class KudoPieceTrainer:
             """
             with open(wordfile, "r", encoding="utf-8") as handle:
                 for word, count in iterateWordsFile(handle):
-                    word = " "*(self.boundary_style == SpaceMarkerLocation.START) + word + " "*(self.boundary_style == SpaceMarkerLocation.END)
+                    word = " " * (self.boundary_style == BoundaryMarkerLocation.START) + word + " " * (self.boundary_style == BoundaryMarkerLocation.END)
                     yield f"{word}\t{count}"
 
         return self.train_from_iterator(tsvGenerator(), is_wordfile=True, strings_need_space_splitting=False)

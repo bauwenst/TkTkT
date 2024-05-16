@@ -7,9 +7,9 @@ from .mappers import *
 from .huggingface import *
 
 # Most common space markers
-SennrichSpaceMarker = SpaceMarker("</w>",    detached=False, location=SpaceMarkerLocation.END)       # Sennrich 2016
-RobertaSpaceMarker  = SpaceMarker("Ġ",       detached=True,  location=SpaceMarkerLocation.START)     # Radford 2019
-IsolatedSpaceMarker = SpaceMarker("[SPACE]", detached=True,  location=SpaceMarkerLocation.ISOLATED)  # Huck 2017
+SennrichSpaceMarker = BoundaryMarker("</w>", detached=False, location=BoundaryMarkerLocation.END)       # Sennrich 2016
+RobertaSpaceMarker  = BoundaryMarker("Ġ", detached=True, location=BoundaryMarkerLocation.START)     # Radford 2019
+IsolatedSpaceMarker = BoundaryMarker("[SPACE]", detached=True, location=BoundaryMarkerLocation.ISOLATED)  # Huck 2017
 
 IdentityPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), IdentityPretokeniser())
 
@@ -31,10 +31,10 @@ class BoundariesFromSpacesPretokeniser(PretokeniserSequence):
 
     My implementation allows customising the boundary marker and turning off the byte-based behaviour.
     """
-    def __init__(self, marker: SpaceMarker, byte_based: bool):
+    def __init__(self, marker: BoundaryMarker, byte_based: bool):
         super().__init__([
             WhitespacePretokeniser(destructive=True),
-            AddWordBoundary(SpaceMarker(" ", detached=True, location=marker.location)),
+            AddWordBoundary(BoundaryMarker(" ", detached=True, location=marker.location)),
             PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED, group_adjacent_spaces_with_punctuation=marker.location),
             (MapperAsPretokeniser(PseudoByteMapping()) if byte_based else MapperAsPretokeniser(Replace(" ", "Ġ"))),
             MapperAsPretokeniser(Replace("Ġ", " ")),
@@ -56,7 +56,7 @@ class SemanticPretokeniser(PretokeniserSequence):
     """
     My common-sense pretokeniser can add any space marker for announcing words/punctuations.
     """
-    def __init__(self, marker: SpaceMarker):
+    def __init__(self, marker: BoundaryMarker):
         super().__init__([
             PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
             WhitespacePretokeniser(destructive=True),
@@ -68,5 +68,5 @@ class SemanticPretokeniser(PretokeniserSequence):
         ])
 
 class SemanticPreprocessor(Preprocessor):
-    def __init__(self, marker: SpaceMarker):
+    def __init__(self, marker: BoundaryMarker):
         super().__init__(HuggingFaceNormaliser(tn.NFKC()), IdentityMapper(), SemanticPretokeniser(marker))

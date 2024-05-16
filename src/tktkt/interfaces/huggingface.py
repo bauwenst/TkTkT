@@ -12,7 +12,7 @@ from transformers import PreTrainedTokenizer, SpecialTokensMixin
 from .tokeniser import TokeniserWithVocab
 
 
-class HuggingFaceTokeniserInterface(ABC, PreTrainedTokenizer):
+class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
     """
     The base class for a Pythonic HuggingFace tokeniser (transformers.PreTrainedTokenizer) has unimplemented methods,
     yet it does NOT tag these with @abstractmethod and instead just assumes you will notice when they throw a
@@ -84,8 +84,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     (the entire raison d'être of TkTkT...).
     """
 
-    def __init__(self, backend: TokeniserWithVocab, specials: SpecialTokensMixin, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, backend: TokeniserWithVocab, specials_from: SpecialTokensMixin, **kwargs):
         self.backend = backend
 
         # TODO: Since this constructor is given the specials that we want, you can actually quite safely add them to
@@ -94,11 +93,12 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
         #                 isn't done safely. Also, because HuggingFace doesn't check whether declared special tokens exist
         #                 in the vocab (and will return the ID for UNK if you ask for their ID), I do that here.
         vocab_keys = set(self.backend.getVocabMapping().keys())
-        assert all(s in vocab_keys for s in specials.special_tokens_map.values())
+        special_values = set(specials_from.special_tokens_map.values())
+        assert len(vocab_keys - special_values) == len(vocab_keys) - len(special_values)
         # Adding them:
-        #   self.add_special_tokens(SPECIAL_TYPES.special_tokens_map)  # We cannot use this because in case the tokens are missing, it makes new IDs using len(vocab) and that could be an existing ID after knockout.
+        #   self.add_special_tokens(specials_from.special_tokens_map)  # We cannot use this because in case the tokens are missing, it makes new IDs using len(vocab) and that could be an existing ID after knockout.
         # Declaring them:
-        kwargs.update(specials.special_tokens_map)
+        kwargs.update(specials_from.special_tokens_map)
         super().__init__(**kwargs)
 
     def _tokenize(self, text, **kwargs):

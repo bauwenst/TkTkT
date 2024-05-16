@@ -18,7 +18,7 @@ import torch
 from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
-from ...preparation.spacemarking import SpaceMarkerLocation
+from ...preparation.spacemarking import BoundaryMarkerLocation
 from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
 from ...util.printing import sgnprint
 
@@ -419,7 +419,7 @@ class GoldSplits(CharacterClassifier):
 
     def __init__(self, pretokeniser: WhitespaceAndMarkerPretokeniser):
         self.pretokeniser = pretokeniser
-        self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == SpaceMarkerLocation.START)
+        self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == BoundaryMarkerLocation.START)
         self.gold_segmentations = {obj.lemma(): obj.morphSplit() for obj in morphologyGenerator()}
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
