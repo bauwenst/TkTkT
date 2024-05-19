@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
 from ...interfaces.tokeniser import Vocab
-from ...preparation.spacemarking import BoundaryMarker
+from ...preparation.boundaries import BoundaryMarker
 from ...preparation.huggingface import detectBoundaryMarker, detectByteBased, HuggingFacePreprocessor
 
 MergeList = List[str]

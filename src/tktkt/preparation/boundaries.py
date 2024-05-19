@@ -1,7 +1,5 @@
 """
 One contract for all forms of start-of-word (SoW) and end-of-word (EoW).
-
-TODO: Rename this file to "boundaries.py"
 """
 from dataclasses import dataclass
 from enum import Enum

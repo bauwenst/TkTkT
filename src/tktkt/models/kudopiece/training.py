@@ -11,7 +11,7 @@ import time
 import sentencepiece
 from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter, iterateWordsFile
 
-from ...preparation.spacemarking import BoundaryMarkerLocation
+from ...preparation.boundaries import BoundaryMarkerLocation
 from ...files.paths import DataPaths
 
 MAXIMUM_SENTENCE_LENGTH = 4192

@@ -16,6 +16,9 @@ class HashingMapping(Mapping):
         #  the specials you give to the HF constructor have a well-defined ID, and we don't want to hash to
         #  special IDs.) Arguably, what we actually want is a Mapping that has one extra method "set(key, value)" that
         #  is linked to a dictionary (regardless of the type of mapping).
+        #  |
+        #  You would implement this in a parent that inherits from Mapping, and have subclasses implement a method that
+        #  lets the parent check if a certain ID exists already.
         raise RuntimeError("Hashing mapping has an infinite key domain.")
 
     def values(self):

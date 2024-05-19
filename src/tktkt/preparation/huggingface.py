@@ -6,7 +6,7 @@ import tokenizers.pre_tokenizers as tp
 import tokenizers.decoders as td
 
 from .mappers import MapperSequence, Stripper, AppendSpace, TextMapper, Pretokeniser
-from .spacemarking import BoundaryMarkerLocation
+from .boundaries import BoundaryMarkerLocation
 from .splitters import PretokeniserSequence, BoundaryMarker, MapperAsPretokeniser
 from ..interfaces.preparation import Preprocessor
 

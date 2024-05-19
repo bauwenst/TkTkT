@@ -8,7 +8,7 @@ Apparently this was published a year prior by Hofmann (2022). https://aclantholo
 from typing import List
 
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
-from ...preparation.spacemarking import BoundaryMarker
+from ...preparation.boundaries import BoundaryMarker
 from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
 
 

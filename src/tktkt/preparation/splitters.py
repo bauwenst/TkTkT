@@ -13,7 +13,7 @@ from string import punctuation as BASIC_PUNCTUATION
 import re
 import regex  # Has \p{} classes
 
-from ..preparation.spacemarking import BoundaryMarker, BoundaryMarkerLocation
+from ..preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 
 
 class Pretokeniser(ABC):

@@ -18,7 +18,7 @@ import torch
 from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
-from ...preparation.spacemarking import BoundaryMarkerLocation
+from ...preparation.boundaries import BoundaryMarkerLocation
 from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
 from ...util.printing import sgnprint
 
