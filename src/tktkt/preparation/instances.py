@@ -52,7 +52,7 @@ RobertaPretokeniser = BoundariesFromSpacesPretokeniser(marker=RobertaSpaceMarker
 # ])
 RobertaPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), RobertaPretokeniser)
 
-class SemanticPretokeniser(PretokeniserSequence):
+class CommonsensePretokeniser(PretokeniserSequence):
     """
     My common-sense pretokeniser can add any space marker for announcing words/punctuations.
     """
@@ -67,6 +67,6 @@ class SemanticPretokeniser(PretokeniserSequence):
             EnglishApostrophes(do_nt=True)
         ])
 
-class SemanticPreprocessor(Preprocessor):
+class CommonsensePreprocessor(Preprocessor):
     def __init__(self, marker: BoundaryMarker):
-        super().__init__(HuggingFaceNormaliser(tn.NFKC()), IdentityMapper(), SemanticPretokeniser(marker))
+        super().__init__(HuggingFaceNormaliser(tn.NFKC()), IdentityMapper(), CommonsensePretokeniser(marker))

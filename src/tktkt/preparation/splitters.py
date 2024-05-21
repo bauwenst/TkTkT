@@ -14,6 +14,7 @@ import re
 import regex  # Has \p{} classes
 
 from ..preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
+from ..util.lists import intercalate
 
 
 class Pretokeniser(ABC):
@@ -232,7 +233,7 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
         pretokens = [text]
         if self.marker.location == BoundaryMarkerLocation.ISOLATED:
             pretokens = text.split()  # Will strip all whitespace from both sides, then split on any span of whitespace.
-            pretokens = WhitespaceAndMarkerPretokeniser.intercalate(pretokens, self.marker.substitute)  # Will have length 2n-1.
+            pretokens = intercalate(pretokens, self.marker.substitute)  # Will have length 2n-1.
             if text[0].isspace():
                 pretokens.insert(0, self.marker.substitute)
             if text[-1].isspace():  # Due to the sanity check above, we know that this is not the same whitespace!
@@ -258,14 +259,6 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         return [self.invertToken(p) for p in pretokens]
 
-    @staticmethod
-    def intercalate(lst: list, new_element):
-        new_list = []
-        for old_element in lst:
-            new_list.append(old_element)
-            new_list.append(new_element)
-        return new_list[:-1]
-
 
 class WhitespacePretokeniser(Pretokeniser):
     """
@@ -287,7 +280,7 @@ class WhitespacePretokeniser(Pretokeniser):
         return [t for t in pretokens if t]
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
-        return WhitespaceAndMarkerPretokeniser.intercalate(pretokens, " ")
+        return intercalate(pretokens, " ")
 
 
 class IsolateDigits(Pretokeniser):

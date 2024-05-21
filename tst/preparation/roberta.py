@@ -4,8 +4,9 @@ robbert_tokenizer = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutc
 from tktkt.interfaces.preparation import Preprocessor
 from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import *
+from tktkt.preparation.huggingface import HuggingFacePretokeniser
 from tktkt.preparation.instances import RobertaPreprocessor, RobertaSpaceMarker, SennrichSpaceMarker, \
-    IsolatedSpaceMarker, SemanticPreprocessor
+    IsolatedSpaceMarker, CommonsensePreprocessor
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 
 
@@ -16,8 +17,9 @@ def robbertsucks():
 
     print(robbert_tokenizer.tokenize("this has     many     spaces"))
 
-    from tktkt.preparation.mappers import BYTE_TO_PSEUDO, SPACING_BYTES
-    print(list(map(BYTE_TO_PSEUDO.get, SPACING_BYTES)))
+    from tktkt.preparation.mappers import PseudoByteMapping
+    mapping = PseudoByteMapping()
+    print(list(map(mapping.BYTE_TO_PSEUDO.get, mapping.SPACING_BYTES)))
 
 
 def punctuation():
@@ -37,7 +39,7 @@ def steps():
     sentence = "It's a Pℛ𝒪𝒥ë𝒞𝒯, bruh! (low-key triggered)"
     clean = RobertaPreprocessor.irreversible.convert(sentence)
 
-    s = SemanticPreprocessor(marker=RobertaSpaceMarker)
+    s = CommonsensePreprocessor(marker=RobertaSpaceMarker)
     print(s.do(word))
     print(s.do(sentence))
     print()

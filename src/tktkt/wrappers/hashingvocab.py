@@ -9,7 +9,7 @@ class HashingMapping(Mapping):
         self.size = hash_size
 
     def get(self, key: str) -> int:
-        return hash(key) % self.size  # TODO: I wonder which has function the CANINE paper uses. We should likely allow custom string hashing functions.
+        return hash(key) % self.size  # TODO: I wonder which hash function the CANINE paper uses. We should likely allow custom string hashing functions.
 
     def keys(self):
         # TODO: Should, at the very least, support special tokens. (TktktToHuggingFace needs to be able to check that

@@ -21,36 +21,55 @@ class L2R_Greedy(TokeniserWithVocabDict):
         - The inverse of that, i.e. you select progressively smaller subwords and stop the moment you encounter a subword
           that is in the vocab;
 
-    I've implemented the latter. It finds bigger subwords at the start, obviously.
+    This class implements the latter. It is "greedy" like regex operators by default: make the match as big as possible,
+    even if that means you pass the first match to go look for longer matches while meanwhile passing over strings that don't match.
     """
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
-        i = len(word)
+        token_length = len(word)
         while word:
-            if word[:i] in self.vocab:
-                tokens.append(word[:i])
-                word = word[i:]
-                i = len(word)
+            if token_length == 0 or word[:token_length] in self.vocab:
+                if token_length == 0:  # This means the previous iteration, 'word[:1] in self.vocab' was False. Hence, there are no tokens for the remaining word. Pretend like the character does belong to the vocab. (Will be UNK'ed as a type.) TODO: Alternative is to produce self.unk.
+                    token_length = 1
+
+                tokens.append(word[:token_length])
+                word = word[token_length:]
+                token_length = len(word)
             else:
-                i -= 1
+                token_length -= 1
 
         return tokens
 
 
 class L2R_Lazy(TokeniserWithVocabDict):
+    """
+    "Lazy" like a lazy regex operator: matches as few characters as possible in order to have a match, i.e. find a string
+    unknown to the vocabulary, at which point the token so far will be grouped.
+
+    In the edge case that a single-character token is already unknown to the vocabulary, it is segmented off, but will
+    be mapped to an UNK ID when looked up in the vocabulary.
+    (The alternative, i.e. keep looking for a 2-character, 3-character, ... token that is known and then stopping when
+    you again find a string that is unknown, probably won't work well, since that single character probably also won't
+    exist inside bigger types.)
+    """
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
-        i = 1  # Assumes letters are in the vocab. Otherwise, the loop will run forever by adding empty strings the whole time.
-        while word:
-            if word[:i] not in self.vocab or i > len(
-                    word):  # The "or" is justified because you've reached past the max length, the word hasn't been consumed, and the "not in vocab" hasn't been triggered, so the full string is in the vocab.
-                tokens.append(word[:i - 1])
-                word = word[i - 1:]
-                i = 1
+
+        token_start  = 0
+        token_length = 0
+        while token_start < len(word):
+            # Make a token if extending the length of the current token by 1 (looking ahead one position) gives an unknown token, or reaches past the end of the string (i.e. so far the token is in the vocab, and there are no more characters to add).
+            if token_start+token_length == len(word) or word[token_start:token_start+token_length+1] not in self.vocab:
+                if token_length == 0:  # This means you don't even recognise the current character. Pretend like you recognised the isolated character as a token. TODO: Alternatively, append self.unk.
+                    token_length = 1
+
+                tokens.append(word[token_start:token_start+token_length])
+                token_start += token_length
+                token_length = 0
             else:
-                i += 1
+                token_length += 1
 
         return tokens
 
@@ -59,14 +78,16 @@ class R2L_Greedy(TokeniserWithVocabDict):
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
-        i = 0
+        token_length = len(word)
         while word:
-            if word[i:] in self.vocab:
-                tokens.append(word[i:])
-                word = word[:i]
-                i = 0
+            if token_length == 0 or word[len(word)-token_length:] in self.vocab:
+                if token_length == 0:
+                    token_length = 1
+                tokens.append(word[len(word)-token_length:])
+                word = word[:len(word)-token_length]
+                token_length = 0
             else:
-                i += 1
+                token_length -= 1
 
         tokens.reverse()
         return tokens
@@ -76,14 +97,19 @@ class R2L_Lazy(TokeniserWithVocabDict):
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
-        i = len(word) - 1
-        while word:
-            if word[i:] not in self.vocab or i == -1:
-                tokens.append(word[i + 1:])
-                word = word[:i + 1]
-                i = len(word) - 1
+
+        token_end    = len(word)  # exclusive
+        token_length = 0
+        while token_end > 0:
+            if token_end-token_length == 0 or word[token_end-token_length-1:token_end] not in self.vocab:
+                if token_length == 0:
+                    token_length = 1
+
+                tokens.append(word[token_end-token_length:token_end])
+                token_end -= token_length
+                token_length = 0
             else:
-                i -= 1
+                token_length += 1
 
         tokens.reverse()
         return tokens

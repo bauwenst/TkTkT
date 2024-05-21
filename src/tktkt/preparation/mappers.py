@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import List, Iterable
+from typing import List, Iterable, Dict
 
 import re
 import requests
 
-from transformers.models.gpt2.tokenization_gpt2 import bytes_to_unicode
+from ..util.dicts import invertdict, insertKeyAlias
 
 
 class TextMapper(ABC):
@@ -167,69 +167,6 @@ class MorphoChallengeCapitals(InvertibleMapperSequence):
         ])
 
 
-def bytes_to_unicode_documented():
-    """
-    An implementation that's actually readable.
-
-    The basic idea: most bytes are mapped to their codepoint when decoded with UTF-8, with the exception of the 68 bytes
-    that have no representation.
-        - The first 33 codepoints are unrepresentable bytes **and whitespace**. Both are difficult to represent in merges.txt.
-        - The end of the 7-bit ASCII space is also a bunch of unrepresentable bytes.
-        - There is a single unrepresentable byte after that (byte 173).
-
-    The way these bytes and whitespace characters are mapped is simply by taking the first unused codepoint above byte 255.
-    Note that it doesn't matter that the latter codepoints cannot themselves be encoded with 1 byte. All that matters is
-    that they are one CHARACTER.
-
-    The bytes that have a representable UTF-8 codepoint:
-        First range (94):  !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
-        Second range (12): ¡¢£¤¥¦§¨©ª«¬
-        Third range (82):  ®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ
-
-    There is a gap of 33 bytes before the first range, 34 between the first two, 1 between the last two.
-    That makes 68 bytes not mapped in total.
-
-    The first range of missing bytes contains tab (\t), newline (\n), carriage return (\r), and space.
-    """
-    bytes_with_mapping = list(range(ord("!"), ord("~") + 1)) \
-                       + list(range(ord("¡"), ord("¬") + 1)) \
-                       + list(range(ord("®"), ord("ÿ") + 1))
-    bytes_without_mapping = [byte for byte in range(2**8) if byte not in bytes_with_mapping]
-
-    mappings = bytes_with_mapping[:]
-    n = 0
-    for byte in bytes_without_mapping:
-        bytes_with_mapping.append(byte)
-        mappings.append(2**8 + n)
-        n += 1
-
-    codepoints_of_mappings = [chr(n) for n in mappings]
-    return dict(zip(bytes_with_mapping, codepoints_of_mappings))
-
-
-def bytes_to_unicode_softcoded():
-    """
-    Same mapping except without any hardcoding.
-    """
-    offset = 0
-    mappings = dict()
-    for byte in range(256):
-        representation = chr(byte)
-        if representation.isspace() or len(representation.__repr__()) == 6:  # Cannot be printed properly in a text file.
-            mappings[byte] = chr(256 + offset)
-            offset += 1
-        else:
-            mappings[byte] = representation
-
-    return mappings
-
-
-BYTE_TO_PSEUDO = bytes_to_unicode()
-PSEUDO_TO_BYTE = {v: k for k, v in BYTE_TO_PSEUDO.items()}
-PSEUDO_TO_BYTE[" "] = PSEUDO_TO_BYTE["Ġ"]
-
-SPACING_BYTES = [9, 10, 13, 32]
-
 class PseudoByteMapping(InvertibleTextMapper):
     """
     Converts each character to its UTF-8 encoding's "pseudo-bytes", which are themselves characters that each represent
@@ -237,7 +174,70 @@ class PseudoByteMapping(InvertibleTextMapper):
     """
 
     def convert(self, text: str) -> str:
-        return "".join(map(BYTE_TO_PSEUDO.get, text.encode("utf-8")))
+        return "".join(map(self.BYTE_TO_PSEUDO.get, text.encode("utf-8")))
 
     def invert(self, text: str) -> str:
-        return bytes(map(PSEUDO_TO_BYTE.get, text)).decode("utf-8", errors="replace")
+        return bytes(map(self.PSEUDO_TO_BYTE.get, text)).decode("utf-8", errors="replace")
+
+    @staticmethod
+    def bytes_to_unicode_documented() -> Dict[int, str]:
+        """
+        An implementation of `transformers.models.gpt2.tokenization_gpt2.bytes_to_unicode` that's actually readable.
+        Has been tested for equivalence.
+
+        The basic idea: most bytes are mapped to their codepoint when decoded with UTF-8, with the exception of the 68 bytes
+        that have no representation.
+            - The first 33 codepoints are unrepresentable bytes **and whitespace**. Both are difficult to represent in merges.txt.
+            - The end of the 7-bit ASCII space is also a bunch of unrepresentable bytes.
+            - There is a single unrepresentable byte after that (byte 173).
+
+        The way these bytes and whitespace characters are mapped is simply by taking the first unused codepoint above byte 255.
+        Note that it doesn't matter that the latter codepoints cannot themselves be encoded with 1 byte. All that matters is
+        that they are one CHARACTER.
+
+        The bytes that have a representable UTF-8 codepoint:
+            First range (94):  !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+            Second range (12): ¡¢£¤¥¦§¨©ª«¬
+            Third range (82):  ®¯°±²³´µ¶·¸¹º»¼½¾¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ
+
+        There is a gap of 33 bytes before the first range, 34 between the first two, 1 between the last two.
+        That makes 68 bytes not mapped in total.
+
+        The first range of missing bytes contains tab (\t), newline (\n), carriage return (\r), and space.
+        """
+        bytes_with_mapping = list(range(ord("!"), ord("~") + 1)) \
+                             + list(range(ord("¡"), ord("¬") + 1)) \
+                             + list(range(ord("®"), ord("ÿ") + 1))
+        bytes_without_mapping = [byte for byte in range(2 ** 8) if byte not in bytes_with_mapping]
+
+        mappings = bytes_with_mapping[:]
+        n = 0
+        for byte in bytes_without_mapping:
+            bytes_with_mapping.append(byte)
+            mappings.append(2 ** 8 + n)
+            n += 1
+
+        codepoints_of_mappings = [chr(n) for n in mappings]
+        return dict(zip(bytes_with_mapping, codepoints_of_mappings))
+
+    @staticmethod
+    def bytes_to_unicode_softcoded() -> Dict[int, str]:
+        """
+        Same mapping except without any hardcoding.
+        """
+        offset = 0
+        mappings = dict()
+        for byte in range(256):
+            representation = chr(byte)
+            if representation.isspace() or len(
+                    representation.__repr__()) == 6:  # Cannot be printed properly in a text file.
+                mappings[byte] = chr(256 + offset)
+                offset += 1
+            else:
+                mappings[byte] = representation
+
+        return mappings
+
+    BYTE_TO_PSEUDO = bytes_to_unicode_softcoded()
+    PSEUDO_TO_BYTE = insertKeyAlias(invertdict(BYTE_TO_PSEUDO), existing_key="Ġ", alias_key=" ")  # Map spaces (which technically shouldn't be in encoded input) to the byte G maps to.
+    SPACING_BYTES = [9, 10, 13, 32]

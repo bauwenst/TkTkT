@@ -18,11 +18,12 @@ class ClassicBPE(BTE):
     """
 
     def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
-                 vocab: Vocab, merges: MergeList):
+                 vocab: Vocab, merges: MergeList, unk_type: str=None):
         super().__init__(
             # Init
             BteInitConfig(),
             starting_vocab=vocab, starting_mergelist=merges,
+            unk_type=unk_type,
 
             # Prep
             preprocessor=preprocessor,
@@ -50,4 +51,5 @@ class ClassicBPE(BTE):
             merges=vocab_and_merges.loadMerges(),
             boundary_marker=marker,
             # byte_based=byte_based
+            unk_type=hf_bpe_tokenizer.unk_token
         )
