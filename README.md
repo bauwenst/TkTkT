@@ -1,5 +1,5 @@
 # TkTkT
-A collection of Pythonic subword tokenisers.
+A collection of Pythonic subword tokenisers and preprocessing tools.
 
 ## Installation
 ### Non-editable (recommended)
