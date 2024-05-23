@@ -18,6 +18,8 @@ The pretokeniser is a sequence of:
     WhitespaceSplit
     Metaspace("▁", add_prefix_space=true)
 """
+from tst.preamble import *
+
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 
 from transformers import AutoTokenizer

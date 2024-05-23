@@ -14,6 +14,7 @@ from abc import abstractmethod
 
 import numpy as np
 import torch
+from math import exp
 
 from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞𝒯
 
@@ -170,7 +171,7 @@ class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
         # We turn it into "|w|or|d|" with mask [1,   1, 0, 1,   1].
         # Position i now says whether there is a boundary BEFORE character i,
         # with an extra position at the end for a boundary behind the last character.
-        boundary_after_asmask = [1*(np.exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
+        boundary_after_asmask = [1*(exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
         boundary_before_asmask = [1] + boundary_after_asmask
         boundary_before_asmask[-1] = 1
         boundary_before = np.nonzero(boundary_before_asmask)[0]  # np.nonzero produces one array PER dimension. No errors are thrown if you forget the [0], but the zip() below will be empty!
@@ -184,7 +185,7 @@ class ScoreGeneratorUsingCharacterClassifierAndTransform(ScoreGeneratorUsingChar
         self.T = transform
 
     def getBoundaryScores(self, string: str):
-        boundary_scores = list(map(self.T.probabilityToScore, map(np.exp, self.logprob_classifier.getPointLogProbabilities(string))))  # one entry for each character
+        boundary_scores = list(map(self.T.probabilityToScore, map(exp, self.logprob_classifier.getPointLogProbabilities(string))))  # one entry for each character
         boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
         return boundary_scores
 

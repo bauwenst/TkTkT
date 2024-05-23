@@ -1,6 +1,8 @@
 """
 Tests punctuation pretokenisation to support Text2PhonemeSequence (T2PS, pronounced TeetwoPiece).
 """
+from tst.preamble import *
+
 from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import *
 

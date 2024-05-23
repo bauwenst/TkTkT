@@ -1,9 +1,15 @@
+from tst.preamble import *
+
 from tktkt.preparation.perturbers import *
 
 def test_pops():
     example = "This is a specific test to see how many deletions happen."
-    pop = RandomPop(p=1.0, min_n=1, max_n=2)
+
+    sampler = FixedUniformSampler(1, 2)
+
+    pop = Pop(p=1.0, sampler=sampler)
     print(pop.perturb(example))
 
-    pop = GeometricPop(p=1.0, min_n=1, max_n=10, probability_to_stop=0.9, start_at_max=True)
+    sampler = GeometricSampler(1, 10, 0.9, start_at_max=True)
+    pop = Pop(p=1.0, sampler=sampler)
     print(pop.perturb(example))

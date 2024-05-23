@@ -1,3 +1,5 @@
+from tst.preamble import *
+
 from tktkt.preparation.instances import *
 
 

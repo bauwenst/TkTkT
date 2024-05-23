@@ -1,7 +1,7 @@
 from tktkt.evaluation.fertility import *
 from tktkt.util.printing import dprint
 
-from tst.evaluation.english_morphology import make_EnglishBPE, make_EnglishKudoPiece
+from tst.evaluation.english_morphology import make_English_BPE, make_English_KudoPiece
 from bpe_knockout.project.config import morphologyGenerator, lexiconWeights, KnockoutDataConfiguration, setupEnglish
 
 # TODO: The only actual fair comparison is BPE and KudoPiece trained on the exact same corpus with the exact same vocab size.
@@ -20,8 +20,8 @@ DO_LOG = False
 with KnockoutDataConfiguration(setupEnglish()):
     counts = lexiconWeights(override_reweighter=lambda x: x)
     print("\nBPE")
-    dprint(makeSegmentationStats(make_EnglishBPE(),       raw_words=(o.lemma() for o in morphologyGenerator()), counts=counts,
+    dprint(makeSegmentationStats(make_English_BPE(), raw_words=(o.lemma() for o in morphologyGenerator()), counts=counts,
                                  exclude_words_over_length=MAX, do_log_segmentations=DO_LOG).__dict__)
     print("\nKudoPiece")
-    dprint(makeSegmentationStats(make_EnglishKudoPiece(), raw_words=(o.lemma() for o in morphologyGenerator()), counts=counts,
+    dprint(makeSegmentationStats(make_English_KudoPiece(), raw_words=(o.lemma() for o in morphologyGenerator()), counts=counts,
                                  exclude_words_over_length=MAX, do_log_segmentations=DO_LOG).__dict__)

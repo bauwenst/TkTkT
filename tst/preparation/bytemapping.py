@@ -1,3 +1,5 @@
+from tst.preamble import *
+
 from transformers.models.gpt2.tokenization_gpt2 import bytes_to_unicode
 from tktkt.preparation.mappers import PseudoByteMapping
 
