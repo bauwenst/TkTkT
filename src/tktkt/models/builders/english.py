@@ -20,7 +20,7 @@ from ...models.bpe.knockout import BPEKnockout
 from ...files.paths import relativeToCwd, DataPaths
 from ...interfaces.tokeniser import Tokeniser
 
-from .base import TokeniserFactory
+from .base import TokeniserBuilder
 
 
 PATH_CANINE_FOR_MBR_EN = relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_MBR-en_2024-02-12_19-35-28")
@@ -48,13 +48,13 @@ def getEnglishCANINE() -> CharacterClassifier:
     )
 
 
-class Factory_English_BPE(TokeniserFactory):
+class Builder_English_BPE(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         english_bpe = getEnglishBpeFiles().toFastBPE()  # HuggingFace automatically sets a ByteBased tokenizers.pretokeniser on all RobertaTokenizerFast instances, which also implicitly adds a start-of-word Ġ as replacement for spaces.
         return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
-class Factory_English_BPEKnockout(TokeniserFactory):
+class Builder_English_BPEKnockout(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         files = getEnglishBpeFiles()
         return BPEKnockout(
@@ -66,13 +66,13 @@ class Factory_English_BPEKnockout(TokeniserFactory):
         )
 
 
-class Factory_English_KudoPiece(TokeniserFactory):
+class Builder_English_KudoPiece(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         tk = getEnglishKudo()
         return HuggingFaceTokeniser(tk, for_single_words=True)
 
 
-class Factory_English_CompressiveViterbi_BPE(TokeniserFactory):
+class Builder_English_CompressiveViterbi_BPE(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         english_bpe = getEnglishBpeFiles().toFastBPE()
         return LeastTokenViterbi(
@@ -82,7 +82,7 @@ class Factory_English_CompressiveViterbi_BPE(TokeniserFactory):
         )
 
 
-class Factory_English_CompressiveViterbi_BPEKnockout(TokeniserFactory):
+class Builder_English_CompressiveViterbi_BPEKnockout(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         files = getEnglishBpeFiles()
         only_for_vocabulary = BPEKnockout(
@@ -99,7 +99,7 @@ class Factory_English_CompressiveViterbi_BPEKnockout(TokeniserFactory):
         )
 
 
-class Factory_English_CompressiveViterbi_ULM(TokeniserFactory):
+class Builder_English_CompressiveViterbi_ULM(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         hf_english_ulm = getEnglishKudo()
         return LeastTokenViterbi(
@@ -109,7 +109,7 @@ class Factory_English_CompressiveViterbi_ULM(TokeniserFactory):
         )
 
 
-class Factory_English_CanineViterbi_BPE(TokeniserFactory):
+class Builder_English_CanineViterbi_BPE(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         english_bpe = getEnglishBpeFiles().toFastBPE()
         return HFPointViterbi(
@@ -130,7 +130,7 @@ class Factory_English_CanineViterbi_BPE(TokeniserFactory):
         )
 
 
-class Factory_English_CanineViterbi_ULM(TokeniserFactory):
+class Builder_English_CanineViterbi_ULM(TokeniserBuilder):
 
     def __init__(self,
         generator: Type[ScoreGeneratorUsingCharacterClassifier]=BoundaryScoresChosen,
@@ -160,9 +160,9 @@ class Factory_English_CanineViterbi_ULM(TokeniserFactory):
         )
 
 
-class Factory_English_LeastTokenThenHF_ULM(TokeniserFactory):
+class Builder_English_LeastTokenThenHF_ULM(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
-        kudo: HuggingFaceTokeniser = Factory_English_KudoPiece().buildTokeniser()
+        kudo: HuggingFaceTokeniser = Builder_English_KudoPiece().buildTokeniser()
         classifier = getEnglishCANINE()
         return LeastTokenViterbiWithProbabilityTiebreaker(
             preprocessor=kudo.preprocessor,
@@ -172,9 +172,9 @@ class Factory_English_LeastTokenThenHF_ULM(TokeniserFactory):
         )
 
 
-class Factory_English_HfThenLeastToken_ULM(TokeniserFactory):
+class Builder_English_HfThenLeastToken_ULM(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
-        kudo: HuggingFaceTokeniser = Factory_English_KudoPiece().buildTokeniser()
+        kudo: HuggingFaceTokeniser = Builder_English_KudoPiece().buildTokeniser()
         classifier = getEnglishCANINE()
         return ProbabilityViterbiWithLeastTokenTiebreaker(
             preprocessor=kudo.preprocessor,

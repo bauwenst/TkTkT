@@ -31,7 +31,7 @@ TODO: There are two issues with our CANINE evaluation.
 import itertools
 import json
 
-from tktkt.models.factories.english import *
+from tktkt.models.builders.english import *
 
 from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
@@ -46,19 +46,19 @@ from tst.preamble import *
 
 def constructTokenisers():
     return [
-        Factory_English_KudoPiece(),
-        Factory_English_CanineViterbi_BPE(),
-        Factory_English_CompressiveViterbi_ULM(),
-        Factory_English_LeastTokenThenHF_ULM(),
+        Builder_English_KudoPiece(),
+        Builder_English_CanineViterbi_BPE(),
+        Builder_English_CompressiveViterbi_ULM(),
+        Builder_English_LeastTokenThenHF_ULM(),
     ]
 
 
 def constructTokenisers_BPE():  # 43, 45.9, 53.2, 52.4
     return [
-        Factory_English_BPE(),                            # Worst
-        Factory_English_CompressiveViterbi_BPE(),         # Better by +1%
-        Factory_English_BPEKnockout(),                    # Best (+10% Pr, +25% Re)
-        Factory_English_CompressiveViterbi_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
+        Builder_English_BPE(),                            # Worst
+        Builder_English_CompressiveViterbi_BPE(),         # Better by +1%
+        Builder_English_BPEKnockout(),                    # Best (+10% Pr, +25% Re)
+        Builder_English_CompressiveViterbi_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
     ]
 
 
@@ -76,7 +76,7 @@ def constructTokenisers_prefixGenerators():
 
     for c in constraints:
         for g in generators:
-            yield Factory_English_CanineViterbi_ULM(g, None, c)
+            yield Builder_English_CanineViterbi_ULM(g, None, c)
 
 
 def constructTokenisers_boundaryScores():
@@ -87,7 +87,7 @@ def constructTokenisers_boundaryScores():
 
     for g in generators:
         for t in transforms:
-            yield Factory_English_CanineViterbi_ULM(g, t, VocabularyConstraintExact)
+            yield Builder_English_CanineViterbi_ULM(g, t, VocabularyConstraintExact)
 
 
 def constructTokenisers_boundaryScorePunishments():
@@ -98,17 +98,17 @@ def constructTokenisers_boundaryScorePunishments():
     for low in lower_bounds:
         for t in transforms:
             for g in generators:
-                yield Factory_English_CanineViterbi_ULM(g, t(low, +1), VocabularyConstraintExact)
+                yield Builder_English_CanineViterbi_ULM(g, t(low, +1), VocabularyConstraintExact)
 
 
 def constructTokenisers_boundaryScoreLog():
     generators = [BoundaryScoresChosen, BoundaryScoresAll]
     for g in generators:
-        yield Factory_English_CanineViterbi_ULM(g, LogPT(), VocabularyConstraintExact)
+        yield Builder_English_CanineViterbi_ULM(g, LogPT(), VocabularyConstraintExact)
 
 
 if __name__ == "__main__":
-    tkz = (factory.buildTokeniser() for factory in constructTokenisers_BPE())
+    tkz = (builder.buildTokeniser() for builder in constructTokenisers_BPE())
     with KnockoutDataConfiguration(setupEnglish()):
         # Do evaluation
         results = intrinsicEvaluation(tkz, do_whole_word=False, verbose=True)
