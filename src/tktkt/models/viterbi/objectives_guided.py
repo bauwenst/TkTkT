@@ -158,7 +158,10 @@ class PiecewisePT(ProbabilityTransform):
 
 
 class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
-    
+    """
+    Stores a model that generates log(probability) values.
+    """
+
     def __init__(self, point_model: CharacterClassifier, **kwargs):
         self.logprob_classifier = point_model
 
@@ -179,6 +182,10 @@ class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
 
 
 class ScoreGeneratorUsingCharacterClassifierAndTransform(ScoreGeneratorUsingCharacterClassifier):
+    """
+    Stores a transformation for probabilities (not log probabilities!), since it automatically converts the given model's
+    log probabilities into probabilities before applying the transformation.
+    """
 
     def __init__(self, point_model: CharacterClassifier, transform: ProbabilityTransform):
         super().__init__(point_model)
@@ -213,6 +220,11 @@ class BoundaryScoresChosen(ScoreGeneratorUsingCharacterClassifierAndTransform):
     punishment to stepping on a non-boundary (a single non-boundary can make 20 boundary hits evaporate by multiplying
     by a very small number). This is also easy to see when you take the ln, where you are punished by -100 if you
     get it wrong but getting it right is an invisible +0.
+
+    Furthermore, multiplying probabilities (summing logarithms) has some bias towards shorter token sequences.
+    Picking up [START, 1, 1, 1, 0.99, END] is worse than picking up [START, 1, 1, 1, END] when you multiply, even though
+    clearly the first is much better. In log space, you get -0 -0 -0 -0.000001 versus -0 -0 -0. This is why a probability
+    transform and then summing instead of multiplying is worthwhile.
     """
 
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
@@ -350,7 +362,7 @@ class HardBoundaryAndNonBoundaryPrefixLength(ScoreGeneratorUsingCharacterClassif
         boundary_before = self.getHardBoundaries(string)
 
         N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=-1)  #   # The only difference with the previous class. Every step that is NOT a prefix is discouraged, and more such steps are more discouraged.
+        scores = ViterbiStepScores(N, max_k, default=-1)  # The only difference with the previous class. Every step that is NOT a prefix is discouraged, and more such steps are more discouraged.
         for start,end in zip(boundary_before[:-1], boundary_before[1:]):
             for k in range(min(end-start, max_k)):
                 scores.set(start, k, k+1)

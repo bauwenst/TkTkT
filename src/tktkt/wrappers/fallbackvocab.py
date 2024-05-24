@@ -1,6 +1,6 @@
 from typing import List, Any, Tuple, Iterable
 
-from ..interfaces.tokeniser import TokeniserWithVocabDict, Tokeniser
+from ..interfaces.tokeniser import TokeniserWithVocabDict
 from ..util.lists import reduceSpans
 
 
@@ -65,11 +65,11 @@ class TokeniserWithByteFallback(TokeniserWithVocabDict):
         # - Viterbi for alignment: you have N characters to traverse, and a list of T-U normal tokens and U [UNK] tokens.
         #   You want to consume all T tokens. A non-UNK is consumed by matching its characters. An UNK is consumed by
         #   skipping characters. All tokens must be consumed by the end.
-        # - In unresolvably ambiguous cases, e.g. "prefixaaabcccbdddsuffix" -> [prefix, UNK, b, UNK, suffix], where
-        #               FIXME: This example isn't ambiguous, because the non-UNK "anchor" that repeats actually should appear twice in your token list. b UNK b UNK.
-        #   the UNKs could be either "aaabccc"/"ddd" or they could be "aaa"/"cccbddd", the heuristic is applied that the
-        #   sequence that has a history of mapping shorter strings to UNKs is preferred. In this case, the second one,
-        #   because when it arrives at the second UNK, it has had to resort to UNKs minimally.
+        # - In unresolvably ambiguous cases, e.g. "prefixaaabcccbdddsuffix" -> [prefix, UNK, b, UNK, suffix] (which would
+        #   not happen in a sensible tokeniser, because "b" would be recognised twice), where the UNKs could be either
+        #   "aaabccc"/"ddd" or they could be "aaa"/"cccbddd", the heuristic is applied that the sequence that has a
+        #   history of mapping shorter strings to UNKs is preferred. In this case, the second one, because when it
+        #   arrives at the second UNK, it has had to resort to UNKs minimally.
         trellis = [[None for _ in range(len(pretoken)+1)] for _ in range(len(tokens)+1)]  # trellis[i][j] means i tokens consumed and j characters consumed.
         trellis[0][0] = 0
         for i in range(len(pretoken)):

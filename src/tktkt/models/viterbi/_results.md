@@ -315,7 +315,7 @@ much because you only have, say, 1 less bad split in most words) and 80% recall 
 makes up a significant amount of all good splits).
 
 Apparently it's not the whole story though, since a literal implementation of least-token with boundary probability as
-tiebreaker gives only 54% precision (+3% not +8%) and 64% recall (+6% not +16%).
+tiebreaker gives only 55% precision (+4% not +8%) and 64% recall (+6% not +16%). (See below.)
 
 If true, that kinda sucks, because it means you can't increase precision arbitrarily. It makes sense though, because not
 all words can be represented by 1 token, so you just can't keep asking for fewer tokens and expect the tokeniser to need
@@ -355,6 +355,24 @@ HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact
 Also interesting how -1/+1, the centre of these, is approximated so well by `BoundaryScoresAll(LogPT) + Exact`.
 
 #### Hard-boundary-based
+One way to disincentivise splitting, as seen above, is to give a low score to non-boundaries in the same grid you score
+boundaries highly.
+
+A different approach is to optimise for probability and, of the paths with the same maximal boundary probability (among
+which is the full character segmentation, which hits every boundary), pick the one with fewest tokens. For the first step
+you need to discretise your probabilities so that small probabilities on negative boundaries don't give the
+character segmentation an edge (incentivising segmentation).
+
+As expected, you get high recall (although you would really expect almost 100%...), but
+no fundamental improvements over the disincentivisation using negative scores rather than tiebreaking the best positive scorers.
+```
+ProbabilityViterbiWithLeastTokenTiebreaker
+    Precision: 0.5450523702110546
+    Recall:    0.8746071829405163
+    F1:        0.6715789246894828
+```
+
+#### Hard-boundary-prefix-based
 For exact vocabulary constraint, we are looking to beat 58%, 81%, 68%:
 ```
 HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintExact)
@@ -427,7 +445,17 @@ HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstr
 #### Unguided
 Using **least-token** Viterbi with ULM vocabulary:
 ```
-    Precision: 0.5097098186675902
-    Recall:    0.5756915339480302
-    F1:        0.5406951569942136
+LeastTokenViterbi
+    Precision: 0.5134891184434861
+    Recall:    0.574635241301908
+    F1:        0.5423441555002384
 ```
+
+Adding a guided tiebreaker (`BoundaryScoresChosen` with no transform applied to the probabilities) is slightly better:
+```
+LeastTokenViterbiWithProbabilityTiebreaker
+    Precision: 0.5498700730990601
+    Recall:    0.635297418630752
+    F1:        0.5895049272947395
+```
+... but it is much worse (-24% recall and -9% F1) than if you swap the main objective with the tiebreaker, see above.
