@@ -1,6 +1,4 @@
-from tst.preamble import *
-
-from tktkt.models.builders.english import getEnglishBpeFiles
+from tktkt.builders.english import getEnglishBpeFiles
 from tktkt.preparation.instances import CommonsensePreprocessor, RobertaSpaceMarker
 from tktkt.models.bpe.base import ClassicBPE
 

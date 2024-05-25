@@ -1,7 +1,7 @@
 # Evaluation results
 
 ## English morphology
-To beat is BPE-knockout, which does Pr=53%, Re=75%, F1=62% on morphs and .
+To beat is BPE-knockout, which does Pr=53%, Re=75%, F1=62% on morphs.
 
 ### BPE vocabulary
 #### Probability-based

@@ -42,7 +42,7 @@ class HuggingFacePretokeniser(Pretokeniser):
         return [w for w, _ in self.encode.pre_tokenize_str(text)]
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
-        return self.decode.decode(pretokens)
+        return [self.decode.decode(pretokens)]
 
     @staticmethod
     def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFacePretokeniser":

@@ -70,6 +70,9 @@ class Pretokeniser(ABC):
     def __call__(self):  # Just in case you accidentally add parentheses to an already-instantiated Pretokeniser object.
         return self
 
+    def getName(self):
+        return self.__class__.__name__
+
 
 class PretokeniserSequence(Pretokeniser):
 
@@ -88,8 +91,10 @@ class PretokeniserSequence(Pretokeniser):
         return current_pretokens
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
+        # print(pretokens)
         for pretokeniser in reversed(self.sequence):
             pretokens = pretokeniser.invertTokens(pretokens)
+            # print("\t->", pretokeniser.getName() + "⁻¹", "->", pretokens)
         return pretokens
 
 
@@ -346,6 +351,9 @@ class AddWordBoundary(Pretokeniser):
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         return [self.invertToken(p) for p in pretokens]
 
+    def getName(self):
+        return super().getName() + "(" + "+"*(self.marker.location == BoundaryMarkerLocation.END) + self.marker.substitute + "+"*(self.marker.location == BoundaryMarkerLocation.START) + ")"
+
 
 from .mappers import InvertibleTextMapper
 class MapperAsPretokeniser(Pretokeniser):
@@ -365,6 +373,9 @@ class MapperAsPretokeniser(Pretokeniser):
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         return [self.invertToken(p) for p in pretokens]
+
+    def getName(self):
+        return super().getName() + "(" + self.core.__class__.__name__ + ")"
 
 
 class InsertReverse(Pretokeniser):

@@ -41,7 +41,7 @@ class TokeniserWithVocab(Tokeniser):
         pass
 
     @abstractmethod
-    def getVocabMapping(self, ) -> Mapping[str,int]:
+    def getVocabMapping(self) -> Mapping[str,int]:
         """
         Return an object which has the four methods .get(), .keys(), .values(), .items() representing the vocabulary.
         Does not have to be a dictionary!

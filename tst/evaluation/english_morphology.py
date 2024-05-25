@@ -28,27 +28,52 @@ TODO: There are two issues with our CANINE evaluation.
             result to the Viterbi tokeniser. Now you have segmentations into strings that include spaces and ë etc.
          2. Apply the byte mapping of the LM to map these tokens into the LM vocabulary.
 """
-import itertools
 import json
 
-from tktkt.models.builders.english import *
+from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
-
-from tktkt.util.timing import datetimeDashed, timeit
+from tktkt.builders.english import *
+from tktkt.util.timing import datetimeDashed
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.objectives_guided import *
 from tktkt.models.viterbi.objectives_postprocessors import *
 from tktkt.files.paths import DataPaths
 
-from tst.preamble import *
 
+def testTokenisers(tokenisers: Iterable[Tokeniser]):
+    with KnockoutDataConfiguration(setupEnglish()):
+        # Do evaluation
+        results = intrinsicEvaluation(tokenisers, do_whole_word=False, verbose=True)
+
+        # Turn results into a file so that you can check them even if the terminal closes
+        d = dict()
+        for result in results:
+            matrix = result.cm_morph
+            pr, re, f1 = matrix.computePrReF1()
+            tp, fp, tn, fn = matrix.compute()
+
+            d[result.name] = {
+                "morph-types": {
+                    "Pr": pr,
+                    "Re": re,
+                    "F1": f1,
+                    "TP": tp,
+                    "FP": fp,
+                    "TN": tn,
+                    "FN": fn
+                }
+            }
+
+        with open(DataPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "_morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
+            json.dump(d, handle)
+
+##################################################################################################################
 
 def constructTokenisers():
     return [
         Builder_English_KudoPiece(),
         Builder_English_CanineViterbi_BPE(),
-        Builder_English_CompressiveViterbi_ULM(),
+        Builder_English_LeastToken_ULM(),
         Builder_English_LeastTokenThenHF_ULM(),
     ]
 
@@ -56,9 +81,9 @@ def constructTokenisers():
 def constructTokenisers_BPE():  # 43, 45.9, 53.2, 52.4
     return [
         Builder_English_BPE(),                            # Worst
-        Builder_English_CompressiveViterbi_BPE(),         # Better by +1%
+        Builder_English_LeastToken_BPE(),         # Better by +1%
         Builder_English_BPEKnockout(),                    # Best (+10% Pr, +25% Re)
-        Builder_English_CompressiveViterbi_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
+        Builder_English_LeastToken_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
     ]
 
 
@@ -107,30 +132,26 @@ def constructTokenisers_boundaryScoreLog():
         yield Builder_English_CanineViterbi_ULM(g, LogPT(), VocabularyConstraintExact)
 
 
+def constructTokenisers_leasttoken():
+    return [
+        Builder_English_LeastToken_ULM(),
+        Builder_English_LeastTokenThenHF_ULM(),
+        Builder_English_HfThenLeastToken_ULM(),
+    ]
+
+
+def constructTokenisers_dropout():
+    return [
+        Builder_English_CanineBPEdropout(None),
+        Builder_English_CanineBPEdropout(0.5),
+        Builder_English_CanineBPEdropout(0.4),
+        Builder_English_CanineBPEdropout(0.3),
+        Builder_English_CanineBPEdropout(0.2),
+        Builder_English_CanineBPEdropout(0.1)
+    ]
+
+
 if __name__ == "__main__":
-    tkz = (builder.buildTokeniser() for builder in constructTokenisers_BPE())
-    with KnockoutDataConfiguration(setupEnglish()):
-        # Do evaluation
-        results = intrinsicEvaluation(tkz, do_whole_word=False, verbose=True)
-
-        # Turn results into a file so that you can check them even if the terminal closes
-        d = dict()
-        for result in results:
-            matrix = result.cm_morph
-            pr, re, f1 = matrix.computePrReF1()
-            tp, fp, tn, fn = matrix.compute()
-
-            d[result.name] = {
-                "morph-types": {
-                    "Pr": pr,
-                    "Re": re,
-                    "F1": f1,
-                    "TP": tp,
-                    "FP": fp,
-                    "TN": tn,
-                    "FN": fn
-                }
-            }
-
-        with open(DataPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "_morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
-            json.dump(d, handle)
+    tokeniser_builders = constructTokenisers_dropout()
+    ###
+    testTokenisers(builder.buildTokeniser() for builder in tokeniser_builders)

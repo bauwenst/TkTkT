@@ -54,6 +54,15 @@ class FilterCharacters(TextMapper):
         return self.pattern.sub("", text)
 
 
+class FilterWhitespace(TextMapper):
+
+    def __init__(self):
+        self.pattern = re.compile(r"\s")
+
+    def convert(self, text: str) -> str:
+        return self.pattern.sub("", text)
+
+
 from .splitters import Pretokeniser
 class DilatePretokens(TextMapper):
     """
@@ -135,12 +144,17 @@ class AppendSpace(InvertibleTextMapper):
     def invert(self, text: str) -> str:
         trim_front = text[0].isspace() and self.front
         trim_back  = text[-1].isspace() and not self.front
-        return text[trim_front : len(text) - trim_back]
+        return text[trim_front:len(text) - trim_back]
 
 
 class Replace(InvertibleTextMapper):
 
     def __init__(self, old: str, new: str):
+        if old == "":
+            raise ValueError("Empty strings cannot be replaced because they cannot be found inside other strings.")
+        if new == "":
+            raise ValueError(f"Cannot replace string '{old}' by an empty string, since that is non-invertible. Use one of the Filter... mappers instead.")
+
         self.old = old
         self.new = new
 

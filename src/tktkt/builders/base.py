@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from ...interfaces.tokeniser import Tokeniser
+from ..interfaces.tokeniser import Tokeniser
 
 
 class TokeniserBuilder(ABC):
