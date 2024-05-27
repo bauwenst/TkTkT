@@ -3,11 +3,19 @@
 his superbizarre paper: https://aclanthology.org/2021.acl-long.279.pdf.
 
 Reimplementation of the source code found at
-https://github.com/valentinhofmann/superbizarre
-and specifically https://github.com/valentinhofmann/superbizarre/blob/main/src/derivator.py
+    https://github.com/valentinhofmann/superbizarre
+
+FIXME: Verify whether the GitHub list is an intersection with BERT's vocab.
+       The way the list is constructed is by starting from a gigantic corpus and running DeL with BERT's entire vocab
+       as stem set. Afterwards, we check which subwords were actually used as stems, and reduce the stem set to only
+       that subset. By using this reduced set, we can now expand the input domain to any string, and we are sure that
+       we won't accidentally recognise prefices/suffices since we now know which stems can be trusted as real.
 """
 from pathlib import Path
+from typing import Union, List, Tuple, Optional
 
+from tktkt.interfaces.preparation import Preprocessor
+from tktkt.interfaces.tokeniser import Tokeniser
 
 THIS_FOLDER = Path(__file__).resolve().parent
 DEFAULT_PREFICES = THIS_FOLDER / "english_prefices.txt"
@@ -22,144 +30,169 @@ def is_cons(char):
 
 
 class Derivator:
+    """
+    Core implementation. Is to DeL what BTE is to BPE-knockout.
+    """
 
-    def __init__(self, f_pfxes: Path=DEFAULT_PREFICES, f_sfxes: Path=DEFAULT_SUFFICES, f_stems="stems.txt", n_stems=None):
-        self.pfxes = []
-        self.sfxes = []
+    def __init__(self, path_prefices: Path=DEFAULT_PREFICES, path_suffices: Path=DEFAULT_SUFFICES, path_stems="stems.txt", n_stems=None):
         self.stems = set()
 
-        # Load prefixes
-        with open(f_pfxes, 'r') as f:
-            for l in f:
-                if l.strip() == '':
-                    continue
-                self.pfxes.append(l.strip().lower())
+        with open(path_prefices, "r", encoding="utf-8") as handle:
+            self.prefices = [line.strip().lower() for line in handle if line.strip()]
 
-        # Load suffixes
-        with open(f_sfxes, 'r') as f:
-            for l in f:
-                if l.strip() == '':
-                    continue
-                self.sfxes.append(l.strip().lower())
+        with open(path_suffices, "r", encoding="utf-8") as handle:
+            self.suffices = [line.strip().lower() for line in handle if line.strip()]
 
-        # Load stems
-        with open(f_stems, 'r') as f:
-            for l in f:
-                if l.strip() == '':
+        with open(path_stems, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
                     continue
-                self.stems.add(l.strip().lower())
-                if n_stems and len(self.stems) == n_stems:
+                self.stems.add(line.lower())
+
+                if n_stems is not None and len(self.stems) == n_stems:
                     break
 
-    def segment(self, form):
-        found_pfxes = []
-        pfx_happy = True
+    def segment(self, word: str) -> Optional[List[str], str, List[str]]:
+        """
+        Core method.
+        """
+        found_prefices = []
+        did_find_prefix = True
 
         # Outer loop to check prefixes
-        while pfx_happy:
-            found_sfxes = []
-            form_temp = form
-            sfx_happy = True
+        while did_find_prefix:
+            found_suffices = []
+            root = word
+            did_find_suffix = True
 
             # Inner loop to check suffixes
-            while sfx_happy:
-                if form_temp == '':
+            while did_find_suffix:
+                if not root:
                     break
 
-                if form_temp in self.stems:
-                    return found_pfxes[:], form_temp, found_sfxes[::-1]
+                if root in self.stems:
+                    return found_prefices[:], root, found_suffices[::-1]
 
-                elif len(form_temp) > 2 \
-                        and is_cons(form_temp[-1]) \
-                        and len(found_sfxes) > 0 \
-                        and is_vowel(found_sfx[0]) \
-                        and form_temp + 'e' in self.stems:
-                    form_temp = form_temp + 'e'
-                    return found_pfxes[:], form_temp, found_sfxes[::-1]
-
-                elif len(form_temp) > 2 \
-                        and is_cons(form_temp[-1]) \
-                        and form_temp[-1] == form_temp[-2] \
-                        and is_vowel(form_temp[-3]) \
-                        and len(found_sfxes) > 0 \
-                        and form_temp[:-1] in self.stems:
-                    form_temp = form_temp[:-1]
-                    return found_pfxes[:], form_temp, found_sfxes[::-1]
+                elif len(root) >= 3 and is_cons(root[-1]) and found_suffices:
+                    if is_vowel(found_sfx[0]) and root + "e" in self.stems:
+                        root = root + "e"
+                        return found_prefices[:], root, found_suffices[::-1]
+                    elif root[-1] == root[-2] and is_vowel(root[-3]) and root[:-1] in self.stems:
+                        root = root[:-1]
+                        return found_prefices[:], root, found_suffices[::-1]
 
                 # Need to find suffix to stay in inner loop
-                sfx_happy = False
-                found_sfx = ''
-                for sfx in self.sfxes:
-                    if form_temp.endswith(sfx):
-                        sfx_happy = True
-                        if sfx == 'ise':
-                            found_sfx = 'ize'
+                did_find_suffix = False
+                found_sfx = ""
+                for sfx in self.suffices:
+                    if root.endswith(sfx):
+                        did_find_suffix = True
+                        if sfx == "ise":
+                            found_sfx = "ize"
                         else:
                             found_sfx = sfx
-                        found_sfxes.append(found_sfx)
-                        form_temp = form_temp[:-len(sfx)]
+                        found_suffices.append(found_sfx)
+                        root = root[:-len(sfx)]
                         break
 
                 # Check for special phonological alternations
                 try:
-                    if found_sfx in {'ation', 'ate'} and form_temp[-4:] == 'ific':
-                        form_temp = form_temp[:-4] + 'ify'
-                    elif found_sfx == 'ness' and form_temp[-1] == 'i':
-                        form_temp = form_temp[:-1] + 'y'
-                    elif form_temp[-4:] == 'abil':
-                        form_temp = form_temp[:-4] + 'able'
-                except IndexError:
+                    if found_sfx in {"ation", "ate"} and root[-4:] == "ific":
+                        root = root[:-4] + "ify"
+                    elif found_sfx == "ness" and root[-1] == "i":
+                        root = root[:-1] + "y"
+                    elif root[-4:] == "abil":
+                        root = root[:-4] + "able"
+                except IndexError:  # Can only be thrown by the root[-1] statement.
                     continue
 
             # Need to find prefix to stay in outer loop
-            pfx_happy = False
-            for pfx in self.pfxes:
-                if form.startswith(pfx):
+            did_find_prefix = False
+            for pfx in self.prefices:
+                if word.startswith(pfx):
                     # Check addition of false prefixes
-                    pfx_happy = True
-                    if pfx in {'im', 'il', 'ir'}:
-                        found_prefix = 'in'
+                    did_find_prefix = True
+                    if pfx in {"im", "il", "ir"}:
+                        found_prefix = "in"
                     else:
                         found_prefix = pfx
-                    found_pfxes.append(found_prefix)
-                    form = form[len(pfx):]
+                    found_prefices.append(found_prefix)
+                    word = word[len(pfx):]
                     break
 
-        return ''
+        return None
 
-    def derive(self, form, mode='bundles'):
+    def derive(self, word: str) -> Tuple[List[str], str, List[str]]:
+        """
+        Exception-safe wrapper around .segment().
+
+        Used to have a `mode` parameter that could be one of {"morphemes", "bundles", "roots"}. Now this method is just
+        the "morphemes" version because it is the only one called in Valentin's repo.
+        """
         try:
-            pfxes, root, sfxes = self.segment(form)
-            if mode == 'roots':
-                return root
-            if mode == 'bundles':
-                return ''.join(p + '_' for p in pfxes), root, ''.join('_' + s for s in sfxes)
-            if mode == 'morphemes':
-                return pfxes, root, sfxes
+            prefices, root, suffices = self.segment(word)  # This assignment is what may trigger a ValueError (not enough values to unpack)
+            return prefices, root, suffices
         except ValueError:
-            if mode == 'roots':
-                return form
-            if mode == 'bundles':
-                return '', form, ''
-            if mode == 'morphemes':
-                return [], form, []
+            return [], word, []
 
-    def tokenize(self, form_list, mode='bundles'):
-        if isinstance(form_list, str):
-            form_list = form_list.strip().split()
+    def derive_bundled(self, word: str) -> Tuple[str, str, str]:
+        try:
+            prefices, root, suffices = self.segment(word)
+            return "".join(p + "_" for p in prefices), root, "".join("_" + s for s in suffices)
+        except ValueError:
+            return "", word, ""
 
-        output = list()
-        for f in form_list:
-            d = self.derive(f, mode)
-            if mode == 'roots':
-                output.append(d)
-            if mode == 'bundles':
-                output.extend([s for s in d if s != ''])
-            if mode == 'morphemes':
-                if len(d[0]) > 0:
-                    output.extend(d[0])
-                output.append(d[1])
-                if len(d[2]) > 0:
-                    output.extend(d[2])
+    def derive_root(self, word: str) -> str:
+        try:
+            _, root, _ = self.segment(word)
+            return root
+        except ValueError:
+            return word
+
+    def tokenize(self, word_list: Union[str, List[str]], mode="bundles"):
+        """
+        Serialises the output of .derive() for many words into one big list.
+        This isn't actually used anywhere.
+        """
+        if isinstance(word_list, str):  # It's just a sentence.
+            word_list = word_list.split()
+
+        output = []
+        for word in word_list:
+            if mode == "roots":
+                output.append(self.derive_root(word))
+            if mode == "bundles":
+                output.extend([s for s in self.derive_bundled(word) if s])
+            if mode == "morphemes":
+                prefices, root, suffices = self.derive(word)
+                output.extend(prefices)
+                output.append(root)
+                output.extend(suffices)
 
         return output
+
+
+class DeL(Tokeniser):
+    """
+    TkTkT wrapper around a derivator.
+    """
+
+    def __init__(self, preprocessor: Preprocessor, prefix_separator: str="-"):
+        super().__init__(preprocessor)
+        self.derivator = Derivator()
+        self.prefix_sep = prefix_separator
+
+    def tokenise(self, pretoken: str) -> List[str]:  # TODO: Uses BERT's convention of ##. Should allow any convention.
+        # TODO: Split off any SoW/EoW pretoken, because otherwise this doesn't work.
+        prefices, root, suffices = self.derivator.derive(pretoken)
+
+        tokens = []
+        for p in prefices:
+            tokens.append(p)
+            tokens.append(self.prefix_sep)
+        tokens.append(root)
+        for s in suffices:
+            tokens.append("##" + s)
+
+        return tokens
