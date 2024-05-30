@@ -4,24 +4,16 @@ his superbizarre paper: https://aclanthology.org/2021.acl-long.279.pdf.
 
 Reimplementation of the source code found at
     https://github.com/valentinhofmann/superbizarre
-
-FIXME: Verify whether the GitHub list is an intersection with BERT's vocab.
-       The way the list is constructed is by starting from a gigantic corpus and running DeL with BERT's entire vocab
-       as stem set. Afterwards, we check which subwords were actually used as stems, and reduce the stem set to only
-       that subset. By using this reduced set, we can now expand the input domain to any string, and we are sure that
-       we won't accidentally recognise prefices/suffices since we now know which stems can be trusted as real.
-       |
-       So basically, DeL should be able to run with and without a "safe stem" list.
 """
 from pathlib import Path
-from typing import Union, List, Tuple, Optional
+from typing import Union, List, Tuple, Optional, Type, Iterable
+from abc import ABC, abstractmethod
 
 from ...interfaces.preparation import Preprocessor
 from ...interfaces.tokeniser import Tokeniser
+from ...util.lists import fileToList
 
-THIS_FOLDER = Path(__file__).resolve().parent
-DEFAULT_PREFICES = THIS_FOLDER / "english_prefices.txt"
-DEFAULT_SUFFICES = THIS_FOLDER / "english_suffices.txt"
+DEL_DATA = Path(__file__).resolve().parent / "data"
 
 
 def is_vowel(char):
@@ -31,26 +23,62 @@ def is_cons(char):
     return char.lower() in 'bdgptkmnlrszfv'
 
 
-class EnglishDerivator:
+class Derivator(ABC):
+
+    def __init__(self, prefices: Iterable[str], suffices: Iterable[str], stems: Iterable[str]):
+        self.prefices = list(prefices)
+        self.suffices = list(suffices)
+        self.stems    = set(stems)
+
+    @classmethod  # Output doesn't differ between instances of the same class, but superclass needs to be able to call "whatever implementation the class overrides this method with" which you can't do with a static method (since ParentClass.method() won't call the overriding implementation).
+    @abstractmethod
+    def _pathToDefaultPreficesAndSuffices(cls) -> Tuple[Path,Path]:
+        pass
+
+    @classmethod
+    def fromFiles(cls, path_prefices: Path=None, path_suffices: Path=None, path_stems: Path=None):
+        """
+        Can be overridden to support other constructors, but this default will work for most languages.
+        The reason for not having this method itself as the constructor is because it's bad design to expect subclasses
+        to have the same interface for their __init__ method as the superclass. That's not what __init__ is for.
+
+        If you want more arguments, you can put them in __init__'s signature and override this fromFiles method to give
+        appropriate values to those arguments, changing the interface for __init__ whilst keeping that of fromFiles stable.
+        Hence, users of this class can always expect to give the same three files.
+        """
+        # Impute paths
+        default_prefices, default_suffices = cls._pathToDefaultPreficesAndSuffices()
+        path_prefices = path_prefices or default_prefices
+        path_suffices = path_suffices or default_suffices
+
+        # Read files
+        prefices = fileToList(path_prefices, include_empty_lines=False)
+        suffices = fileToList(path_suffices, include_empty_lines=False)
+        stems    = fileToList(path_stems,    include_empty_lines=False) if path_stems is not None else []
+        return cls(prefices, suffices, stems)
+
+    @abstractmethod
+    def invertDerivation(self, word: str) -> Tuple[List[str], str, List[str]]:
+        """
+        Go from derivation back to prefices, root and suffices.
+        For example, go from the derivation "animation" back to ([], "animate", ["ion"]).
+        """
+        pass
+
+
+class EnglishDerivator(Derivator):
     """
     Core implementation. Is to DeL what BTE is to BPE-knockout.
     """
 
-    def __init__(self, path_prefices: Path=DEFAULT_PREFICES, path_suffices: Path=DEFAULT_SUFFICES, path_stems="stems.txt"):
-        self.stems = set()
+    @classmethod
+    def _pathToDefaultPreficesAndSuffices(cls) -> Tuple[Path,Path]:
+        return (DEL_DATA / "english_prefices.txt", DEL_DATA / "english_suffices.txt")
 
-        with open(path_prefices, "r", encoding="utf-8") as handle:
-            self.prefices = [line.strip().lower() for line in handle if line.strip()]
-
-        with open(path_suffices, "r", encoding="utf-8") as handle:
-            self.suffices = [line.strip().lower() for line in handle if line.strip()]
-
-        with open(path_stems, "r", encoding="utf-8") as handle:
-            self.stems = {line.strip().lower() for line in handle if line.strip()}
-
-    def segment(self, word: str) -> Optional[List[str], str, List[str]]:
+    def segment(self, word: str) -> Optional[Tuple[List[str], str, List[str]]]:
         """
         Core method.
+        Produces prefices, root and suffices when applicable.
         """
         found_prefices = []
         did_find_prefix = True
@@ -115,12 +143,12 @@ class EnglishDerivator:
 
         return None
 
-    def derive(self, word: str) -> Tuple[List[str], str, List[str]]:
+    def invertDerivation(self, word: str) -> Tuple[List[str], str, List[str]]:
         """
-        Exception-safe wrapper around .segment().
+        Wrapper around .segment() that handles the None case.
 
-        Used to have a `mode` parameter that could be one of {"morphemes", "bundles", "roots"}. Now this method is just
-        the "morphemes" version because it is the only one called in Valentin's repo.
+        This method used to have a `mode` parameter that could be one of {"morphemes", "bundles", "roots"}. Now this
+        method is just the "morphemes" version because it is the only one called in Valentin's repo.
         """
         try:
             prefices, root, suffices = self.segment(word)  # This assignment is what may trigger a ValueError (not enough values to unpack)
@@ -128,41 +156,51 @@ class EnglishDerivator:
         except ValueError:
             return [], word, []
 
-    def derive_bundled(self, word: str) -> Tuple[str, str, str]:
+    def invertDerivation_bundled(self, word: str) -> Tuple[str, str, str]:
         try:
             prefices, root, suffices = self.segment(word)
             return "".join(p + "_" for p in prefices), root, "".join("_" + s for s in suffices)
         except ValueError:
             return "", word, ""
 
-    def derive_root(self, word: str) -> str:
+    def invertDerivation_root(self, word: str) -> str:
         try:
             _, root, _ = self.segment(word)
             return root
         except ValueError:
             return word
 
-    def tokenize(self, word_list: Union[str, List[str]], mode="bundles"):
-        """
-        Serialises the output of .derive() for many words into one big list.
-        This isn't actually used anywhere.
-        """
-        if isinstance(word_list, str):  # It's just a sentence.
-            word_list = word_list.split()
+    def derive(self, word: str, mode: str) -> Union[Tuple[List[str], str, List[str]], Tuple[str, str, str], str]:
+        if mode == "morphemes":
+            return self.invertDerivation(word)
+        elif mode == "bundles":
+            return self.invertDerivation_bundled(word)
+        elif mode == "roots":
+            return self.invertDerivation_root(word)
+        else:
+            raise ValueError("Derivative mode unrecognised:", mode)
 
-        output = []
-        for word in word_list:
-            if mode == "roots":
-                output.append(self.derive_root(word))
-            if mode == "bundles":
-                output.extend([s for s in self.derive_bundled(word) if s])
-            if mode == "morphemes":
-                prefices, root, suffices = self.derive(word)
-                output.extend(prefices)
-                output.append(root)
-                output.extend(suffices)
-
-        return output
+    # def tokenize(self, word_list: Union[str, List[str]], mode="bundles"):
+    #     """
+    #     Serialises the output of .derive() for many words into one big list.
+    #     This isn't actually used anywhere.
+    #     """
+    #     if isinstance(word_list, str):  # It's just a sentence.
+    #         word_list = word_list.split()
+    #
+    #     output = []
+    #     for word in word_list:
+    #         if mode == "roots":
+    #             output.append(self.derive_root(word))
+    #         if mode == "bundles":
+    #             output.extend([s for s in self.derive_bundled(word) if s])
+    #         if mode == "morphemes":
+    #             prefices, root, suffices = self.derive(word)
+    #             output.extend(prefices)
+    #             output.append(root)
+    #             output.extend(suffices)  # Doesn't take into account e.g. BERT's "##".
+    #
+    #     return output
 
 
 class DeL(Tokeniser):
@@ -170,14 +208,14 @@ class DeL(Tokeniser):
     TkTkT wrapper around a derivator.
     """
 
-    def __init__(self, preprocessor: Preprocessor, prefix_separator: str="-"):
+    def __init__(self, preprocessor: Preprocessor, derivator: Derivator, prefix_separator: str="-"):
         super().__init__(preprocessor)
-        self.derivator = EnglishDerivator()
+        self.derivator = derivator
         self.prefix_sep = prefix_separator
 
-    def tokenise(self, pretoken: str) -> List[str]:  # TODO: Uses BERT's convention of ##. Should allow any convention.
-        # TODO: Split off any SoW/EoW pretoken, because otherwise this doesn't work.
-        prefices, root, suffices = self.derivator.derive(pretoken)
+    def tokenise(self, pretoken: str) -> List[str]:
+        # TODO: Split off any SoW/EoW from the pretoken, because otherwise this doesn't work.
+        prefices, root, suffices = self.derivator.invertDerivation(pretoken)
 
         tokens = []
         for p in prefices:
@@ -185,6 +223,6 @@ class DeL(Tokeniser):
             tokens.append(self.prefix_sep)
         tokens.append(root)
         for s in suffices:
-            tokens.append("##" + s)
+            tokens.append("##" + s)  # TODO: Uses BERT's convention of ##. Should allow any convention.
 
         return tokens

@@ -1,4 +1,10 @@
-from typing import Any
+from typing import Any, List
+from pathlib import Path
+
+
+def fileToList(path: Path, include_empty_lines=True) -> List[str]:
+    with open(path, "r", encoding="utf-8") as handle:
+        return [line.strip() for line in handle if include_empty_lines or line.strip()]
 
 
 def intercalate(lst: list, new_element):
