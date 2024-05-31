@@ -1,18 +1,23 @@
-from typing import List, Mapping
+from typing import List, Iterable
 from copy import deepcopy
 
 from transformers import PreTrainedTokenizerFast
 import tokenizers.pre_tokenizers as tp
 import tokenizers.normalizers as tn
 
-from ...interfaces.tokeniser import TokeniserWithVocab
+from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain
 from ...preparation.instances import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
 
 
-class HuggingFaceTokeniser(TokeniserWithVocab):
+class HuggingFaceTokeniser(TokeniserWithFiniteTypeDomain):
     """
     Takes a HuggingFace tokeniser and splits it into its pretokeniser and core tokeniser.
     This way, the user can choose whether to apply the pretokeniser or not.
+
+    Note that all HuggingFace tokenisers have a known type-id bijection. This is even true for CANINE's tokeniser,
+    which is just a UnicodeTokeniser. The catch is that it hashes the produced IDs inside the *model* rather than
+    inside the *tokeniser* for doing lookups (and in fact, it uses sharded embeddings, i.e. one ID maps to multiple
+    small embeddings based on different hash functions and then those are concatenated together as if it was looked up).
     """
 
     def __init__(self, wrapped_tokeniser: PreTrainedTokenizerFast, for_single_words: bool=False):
@@ -38,14 +43,23 @@ class HuggingFaceTokeniser(TokeniserWithVocab):
         """
         return self.backend.tokenize(pretoken)
 
+    def getVocabSize(self) -> int:
+        return self.backend.vocab_size
+
     def typeToId(self, t: str) -> int:
-        return self.backend._convert_token_to_id(t)
+        return self.backend._convert_token_to_id_with_added_voc(t)
+
+    def types(self) -> Iterable[str]:
+        return self.backend.get_vocab().keys()
+
+    def hasType(self, t: str) -> bool:
+        return self.backend.unk_token_id != self.typeToId(t) or t == self.backend.unk_token
 
     def idToType(self, i: int) -> str:
         return self.backend._convert_id_to_token(i)
 
-    def getVocabMapping(self) -> Mapping[str, int]:
-        return self.backend.get_vocab()
+    def ids(self) -> Iterable[int]:
+        return self.backend.get_vocab().values()
 
-    def getVocabSize(self) -> int:
-        return self.backend.vocab_size
+    def hasId(self, i: int) -> bool:
+        return self.idToType(i) is not None  # self.backend.unk_token != self.idToType(i) doesn't work because HuggingFace is freaky like that.

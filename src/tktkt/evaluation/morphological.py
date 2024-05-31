@@ -10,7 +10,7 @@ from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 
 from ..util.printing import wprint
 from ..files.paths import DataPaths
-from ..interfaces.tokeniser import Tokeniser, TokeniserWithVocab
+from ..interfaces.tokeniser import Tokeniser, TokeniserWithFiniteIdRange
 
 
 def compareSplits_cursors(candidate: str, reference: str):
@@ -190,7 +190,7 @@ class TokeniserEvaluation:
 
 
 # @timeit
-def intrinsicEvaluation(tokenisers: Iterable[Union[Tokeniser,TokeniserWithVocab]],
+def intrinsicEvaluation(tokenisers: Iterable[Union[Tokeniser, TokeniserWithFiniteIdRange]],
                         reweighting_function: Callable[[float], float]=None, holdout: Holdout=None, do_whole_word=False,
                         verbose=False) -> List[TokeniserEvaluation]:
     """

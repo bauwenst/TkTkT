@@ -9,7 +9,7 @@ from pathlib import Path
 
 from transformers import PreTrainedTokenizer, SpecialTokensMixin
 
-from .tokeniser import TokeniserWithVocab
+from .tokeniser import TokeniserWithFiniteTypeDomain
 
 
 class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
@@ -80,11 +80,12 @@ class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
 class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     """
     Wrap any TkTkT tokeniser with a vocabulary so that it adheres to the above interface.
-    We don't do this by default because then that class would become polluted with HuggingFace shit which we want to avoid
-    (the entire raison d'être of TkTkT...).
+
+    We don't do this by default because then that TkTkT tokeniser's class would become polluted with HuggingFace shit
+    which we want to avoid (the entire raison d'être of TkTkT...).
     """
 
-    def __init__(self, backend: TokeniserWithVocab, specials_from: SpecialTokensMixin, **kwargs):
+    def __init__(self, backend: TokeniserWithFiniteTypeDomain, specials_from: SpecialTokensMixin, **kwargs):
         self.backend = backend
 
         # TODO: Since this constructor is given the specials that we want, you can actually quite safely add them to
@@ -92,8 +93,8 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
         # Special tokens: HF allows you to either ADD them or DECLARE them. I choose to declare them, because adding them
         #                 isn't done safely. Also, because HuggingFace doesn't check whether declared special tokens exist
         #                 in the vocab (and will return the ID for UNK if you ask for their ID), I do that here.
-        vocab_keys = set(self.backend.getVocabMapping().keys())
-        special_values = set(specials_from.special_tokens_map.values())
+        vocab_keys = set(self.backend.types())                           # key "[UNK]"     -> value 0
+        special_values = set(specials_from.special_tokens_map.values())  # key "unk_token" -> value "[UNK]"
         assert len(vocab_keys - special_values) == len(vocab_keys) - len(special_values)
         # Adding them:
         #   self.add_special_tokens(specials_from.special_tokens_map)  # We cannot use this because in case the tokens are missing, it makes new IDs using len(vocab) and that could be an existing ID after knockout.

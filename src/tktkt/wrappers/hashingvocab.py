@@ -1,34 +1,83 @@
-from typing import Mapping, List
+import warnings
+from typing import Mapping, List, Iterable
+from abc import ABC, abstractmethod
 
-from ..interfaces.tokeniser import Tokeniser, TokeniserWithVocab, Dict
+from ..interfaces.tokeniser import Tokeniser, TokeniserWithFiniteIdRange, Dict
 
 
-class HashingMapping(Mapping):
+class ExtensibleMapping(Mapping, ABC):
 
-    def __init__(self, hash_size: int):
-        self.size = hash_size
+    def __init__(self):
+        self.hardcoded = dict()
 
-    def get(self, key: str) -> int:
-        return hash(key) % self.size  # TODO: I wonder which hash function the CANINE paper uses. We should likely allow custom string hashing functions.
+    @abstractmethod
+    def _get(self, key):
+        pass
+
+    @abstractmethod
+    def _keys(self) -> Iterable:
+        pass
+
+    @abstractmethod
+    def _values(self) -> Iterable:
+        pass
+
+    @abstractmethod
+    def _items(self) -> Iterable:
+        pass
+
+    def get(self, key):
+        try:
+            return self.hardcoded[key]
+        except:
+            try:
+                return self._get(key)
+            except:
+                return None
+
+    def set(self, key, value):
+        original_value = value
+        while value in set(self.values()):
+            value += 1
+        self.hardcoded[key] = value
+        if value != original_value:
+            warnings.warn(f"Requested to set value {original_value} for key {key}, but was increased to {value} due to collisions.")
 
     def keys(self):
-        # TODO: Should, at the very least, support special tokens. (TktktToHuggingFace needs to be able to check that
-        #  the specials you give to the HF constructor have a well-defined ID, and we don't want to hash to
-        #  special IDs.) Arguably, what we actually want is a Mapping that has one extra method "set(key, value)" that
-        #  is linked to a dictionary (regardless of the type of mapping).
-        #  |
-        #  You would implement this in a parent that inherits from Mapping, and have subclasses implement a method that
-        #  lets the parent check if a certain ID exists already.
-        raise RuntimeError("Hashing mapping has an infinite key domain.")
+        yield from self.hardcoded.keys()
+        yield from self._keys()
 
     def values(self):
-        return range(0, self.size)
+        yield from self.hardcoded.values()
+        yield from self._values()
 
     def items(self):
-        raise RuntimeError("Hashing mapping has an infinite key domain.")
+        yield from self.hardcoded.items()
+        yield from self._items()
 
 
-class TokeniserWithHashingVocab(TokeniserWithVocab):
+class HashingMapping(ExtensibleMapping):
+
+    def __init__(self, hash_size: int):
+        super().__init__()
+        self.size = hash_size
+
+    def _get(self, key: str) -> int:
+        return hash(key) % self.size  # FIXME: CANINE has sharded embeddings and multi-hashing, so doesn't really fit this framework. Per embedding shard, it uses the function '((1 + ord(character)) * prime) % shard_size'.
+
+    def _keys(self) -> Iterable:
+        warnings.warn("Hashing mapping has an infinite key domain.")
+        return []
+
+    def _items(self) -> Iterable:
+        warnings.warn("Hashing mapping has an infinite key domain.")
+        return []
+
+    def _values(self) -> Iterable:
+        return range(self.size)
+
+
+class TokeniserWithHashingVocab(TokeniserWithFiniteIdRange):
     """
     Wraps an existing Tokeniser such that it gets a vocabulary mapping from tokens to IDs.
 
@@ -65,18 +114,16 @@ class TokeniserWithHashingVocab(TokeniserWithVocab):
     def tokenise(self, pretoken: str) -> List[str]:
         return self.core.tokenise(pretoken)
 
+    ########################################################
+
     def typeToId(self, t: str) -> int:
         return self.vocabulary_mapping.get(t)  # This cannot error nor give None (all strings have a vocab ID), so there is no need for UNK logic.
+
+    def ids(self) -> Iterable[int]:
+        return self.vocabulary_mapping.values()
 
     def idToType(self, i: int) -> str:
         return self.default_decodings.get(i, f"[ID={i}]")
 
-    def getVocabMapping(self) -> Mapping[str,int]:
-        """
-        Return an object which has the four methods .get(), .keys(), .values(), .items() representing the vocabulary.
-        Does not have to be a dictionary!
-        """
-        return self.vocabulary_mapping
-
     def getVocabSize(self) -> int:
-        return self.vocabulary_mapping.size
+        return self.vocabulary_mapping.size + len(set(self.vocabulary_mapping.hardcoded.values()))
