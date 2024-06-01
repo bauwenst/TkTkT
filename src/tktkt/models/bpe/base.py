@@ -53,3 +53,6 @@ class ClassicBPE(BTE):
             # byte_based=byte_based
             unk_type=hf_bpe_tokenizer.unk_token
         )
+
+    def getName(self):
+        return self.__class__.__name__
