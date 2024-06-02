@@ -3,8 +3,8 @@ Guided score functions. These are informed by knowledge of the language, e.g. mo
 token appearing at all (with or without considering context), or models that estimate the probability of a split point.
 
 TODO: Another idea:
-    - There is still quite a big difference between a StringClassifier and the idea of turning a CharacterClassifier
-      into a StringClassifier, which is that a StringClassifier normalises across all possible steps from length 1 to K
+    - There is still quite a big difference between a SubstringClassifier and the idea of turning a CharacterClassifier
+      into a SubstringClassifier, which is that a SubstringClassifier normalises across all possible steps from length 1 to K
       that you can take (e.g. a softmax over the vocab, although you lose mass because only a few of those are actually
       allowed as a step at the current position) whilst if you use boundary probabilities, you're only going to be normalised for each of the 2^k boundary configurations of
       a fixed length k.
@@ -40,7 +40,7 @@ class CharacterClassifier:
         pass
 
 
-class StringClassifier:
+class SubstringClassifier:
 
     @abstractmethod
     def getSegmentLogProbabilities(self, pretoken: str, max_k: int) -> MutableSequence[MutableSequence[float]]:
@@ -254,8 +254,8 @@ class BoundaryScoresAll(ScoreGeneratorUsingCharacterClassifierAndTransform):
     accurate type of score, since maximising this objective maximises the joint distribution across all possible split points.
     Of course, when constraints are involved, this is no longer true.
 
-    There's a funky equivalence here: you could convert the CharacterClassifier into a StringClassifier first, and
-    then use that StringClassifier with its usual grid generator.
+    There's a funky equivalence here: you could convert the CharacterClassifier into a SubstringClassifier first, and
+    then use that SubstringClassifier with its usual grid generator.
 
     TODO: As it turns out, for symmetric scores, this is mathematically equivalent to only considering boundaries. Given the preferred score
           at position i, you can either choose to split there or not. You get the score at that position when you do.
@@ -478,3 +478,17 @@ class HuggingFaceCharacterModelForTokenClassification(CharacterClassifier):
         positive_logits = chars_by_classes[:,1]
         logprobabilities = positive_logits - normalisation_constants
         return logprobabilities.cpu().numpy()  # Always need to go to CPU to cast down to numpy.
+
+
+###########################################################################################
+
+
+class ScoreGeneratorUsingSubstringClassifier(ViterbiStepScoreGenerator):
+
+    def __init__(self, classifier: SubstringClassifier):
+        self.classifier = classifier
+
+    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(len(string), max_k)
+        scores.grid = np.array(self.classifier.getSegmentLogProbabilities(string, max_k))
+        return scores
