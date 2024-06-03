@@ -11,10 +11,13 @@ TODO:
 from typing import List
 from enum import Enum
 
+from copy import copy
+
 from bpe_knockout.datahandlers.hf_corpora import punctuation
 from bpe_knockout.auxiliary.bytemapping import BYTE_ALPHABET
 
 from ...interfaces.tokeniser import Tokeniser
+from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.instances import Preprocessor, IdentityMapper, PseudoByteMapping, PunctuationPretokeniser, WhitespacePretokeniser, IsolatedSpaceMarker, PretokeniserSequence, AddWordBoundary, MapperAsPretokeniser
 
 
@@ -39,14 +42,14 @@ class NgramTokeniser(Tokeniser):
           another token. This is important to know if you want a fair comparison between tokenisers.
     """
 
-    def __init__(self, N: int, mode: NgramByteBasedMode=NgramByteBasedMode.CHAR_NGRAMS):
+    def __init__(self, N: int, mode: NgramByteBasedMode=NgramByteBasedMode.CHAR_NGRAMS, word_boundary: BoundaryMarker=IsolatedSpaceMarker):
         if N < 1 or not isinstance(N, int):
             raise ValueError("N-gram tokenisers only exist for N = 1, 2, 3, ...")
         self.N = N
         self.mode = mode
 
-        byte_based = self.mode != NgramByteBasedMode.CHAR_NGRAMS
-
+        self.marker  = copy(word_boundary)
+        self.marker.detached = False
         self.bytemap = PseudoByteMapping()
         preprocessor = Preprocessor(
             IdentityMapper(),
@@ -54,12 +57,13 @@ class NgramTokeniser(Tokeniser):
             PretokeniserSequence([
                 WhitespacePretokeniser(destructive=True),
                 PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED),
-                MapperAsPretokeniser((self.bytemap if byte_based else IdentityMapper())),
-                AddWordBoundary(IsolatedSpaceMarker),
+                MapperAsPretokeniser((self.bytemap if NgramByteBasedMode.BYTE_NGRAMS else IdentityMapper())),
+                AddWordBoundary(self.marker),
+                PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY)
             ])
         )
 
-        if byte_based:
+        if self.mode != NgramByteBasedMode.CHAR_NGRAMS:
             self.alphabet = (set(BYTE_ALPHABET) - ASCII_PUNCTUATION, ASCII_PUNCTUATION)  # These two sets can never appear in the same token.
         else:
             self.alphabet = (LETTERS, set(punctuation))
@@ -67,16 +71,22 @@ class NgramTokeniser(Tokeniser):
         super().__init__(preprocessor)
 
     def tokenise(self, pretoken: str) -> List[str]:
-        if pretoken == IsolatedSpaceMarker.substitute:  # FIXME: In general, this is not secure, and shouldn't be handled by the .tokenise method.
-            return [pretoken]
-
-        if self.mode == NgramByteBasedMode.CHAR_NGRAMS_AS_BYTES:
-            pretoken = self.bytemap.invert(pretoken)
+        pretoken, marker = self.marker.isolate(pretoken)
+        if not pretoken:
+            return [marker]
 
         tokens = [pretoken[i*self.N:(i+1)*self.N] for i in range((len(pretoken)-1)//self.N + 1)]
 
         if self.mode == NgramByteBasedMode.CHAR_NGRAMS_AS_BYTES:
-            tokens = [self.bytemap.convert(t) for t in tokens]
+            tokens_as_bytes = []
+            for t in tokens:
+                tokens_as_bytes.append(self.bytemap.convert(t))
+            tokens = tokens_as_bytes
+
+        if self.marker.location == BoundaryMarkerLocation.START:
+            tokens[0] = marker + tokens[0]
+        elif self.marker.location == BoundaryMarkerLocation.END:
+            tokens[-1] = tokens[-1] + marker
 
         return tokens
 

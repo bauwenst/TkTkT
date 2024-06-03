@@ -41,6 +41,19 @@ class BoundaryMarker:
 
         return root, mark
 
+    def concatenate(self, root: str, marker: str):
+        """
+        Inverse of isolate().
+        """
+        if self.location == BoundaryMarkerLocation.START:
+            return marker + root
+        elif self.location == BoundaryMarkerLocation.END:
+            return root + marker
+        elif self.location == BoundaryMarkerLocation.ISOLATED:
+            return root if root else marker
+        else:
+            return root
+
     def intoCharacters(self, pretoken: str):
         """
         Method for algorithms like BPE that require a word to start out as being split into characters.

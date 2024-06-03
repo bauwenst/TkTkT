@@ -7,9 +7,10 @@ from .mappers import *
 from .huggingface import *
 
 # Most common space markers
-SennrichSpaceMarker = BoundaryMarker("</w>", detached=False, location=BoundaryMarkerLocation.END)       # Sennrich 2016
-RobertaSpaceMarker  = BoundaryMarker("Ġ", detached=True, location=BoundaryMarkerLocation.START)     # Radford 2019
+SennrichSpaceMarker = BoundaryMarker("</w>", detached=False, location=BoundaryMarkerLocation.END)         # Sennrich 2016
+RobertaSpaceMarker  = BoundaryMarker("Ġ", detached=True, location=BoundaryMarkerLocation.START)           # Radford 2019
 IsolatedSpaceMarker = BoundaryMarker("[SPACE]", detached=True, location=BoundaryMarkerLocation.ISOLATED)  # Huck 2017
+NoSpaceMarker       = BoundaryMarker("", detached=False, location=BoundaryMarkerLocation.START)
 
 IdentityPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), IdentityPretokeniser())
 

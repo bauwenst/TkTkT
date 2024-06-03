@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import List, Iterable, Dict
+from typing import List, Iterable, Dict, Union
 
 import re
+import regex
 import requests
 
 from ..util.dicts import invertdict, insertKeyAlias
@@ -45,22 +46,70 @@ class Lowercaser(TextMapper):
         return text.lower()
 
 
-class FilterCharacters(TextMapper):
+class FilterRegex(TextMapper):
 
+    def __init__(self, pattern: Union[re.Pattern, regex.Pattern]):
+        self.pattern = pattern
+
+    def convert(self, text: str) -> str:
+        return self.pattern.sub("", text)
+
+
+class FilterCharacters(FilterRegex):
     def __init__(self, charset: Iterable[str]):
-        self.pattern = re.compile("[" + re.escape(charset) + "]")
-
-    def convert(self, text: str) -> str:
-        return self.pattern.sub("", text)
+        super().__init__(re.compile("[" + re.escape(charset) + "]"))
 
 
-class FilterWhitespace(TextMapper):
-
+class FilterWhitespace(FilterRegex):
     def __init__(self):
-        self.pattern = re.compile(r"\s")
+        super().__init__(re.compile(r"\s"))
+
+
+class FilterHyperlinks(FilterRegex):  # Source: https://stackoverflow.com/a/6041965/9352077
+    def __init__(self):
+        super().__init__(re.compile(r"""(https?|ftp)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])"""))
+
+
+class SwallowIfContains(TextMapper):
+    """
+    Given an input, returns the empty string if any substring matches the given regular expression, else just returns
+    the same input. This is not the same as simply filtering out the part of the string that matches.
+    """
+
+    def __init__(self, pattern: Union[re.Pattern, regex.Pattern]):
+        self.pattern = pattern
 
     def convert(self, text: str) -> str:
-        return self.pattern.sub("", text)
+        if self.pattern.search(text):
+            return ""
+        else:
+            return text
+
+
+class LimitRepetitions(TextMapper):
+    """
+    Reduce characters that repeat more than N times consecutively to N times instead.
+    """
+
+    def __init__(self, n: int):
+        self.n = n
+
+    def convert(self, text: str) -> str:
+        new_text = []  # Yes, a list of characters, not a string.  https://stackoverflow.com/a/3055541/9352077
+
+        prev_char = ""
+        repeats = 0
+        for c in text:
+            if c != prev_char:
+                prev_char = c
+                repeats = 1
+            else:
+                repeats += 1
+
+            if repeats <= self.n:
+                new_text.append(c)
+
+        return "".join(new_text)
 
 
 from .splitters import Pretokeniser

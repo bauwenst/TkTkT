@@ -1,6 +1,6 @@
 from typing import List, Mapping
 
-from ...interfaces.tokeniser import TokeniserWithVocab
+from ...interfaces.tokeniser import TokeniserWithFiniteIdRange
 
 
 UNICODE_VALUES = 149_813 + 65
@@ -23,7 +23,7 @@ class OrdMapping(Mapping):
         raise RuntimeError("ord() mapping has an indefinite key domain.")
 
 
-class UnicodeTokeniser(TokeniserWithVocab):
+class UnicodeTokeniser(TokeniserWithFiniteIdRange):
 
     def tokenise(self, word: str) -> List[str]:
         return list(word)
