@@ -5,7 +5,7 @@ from tktkt.preparation.instances import *
 
 def tst_distinctPunctuation():
     p = PretokeniserSequence([
-        PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED),
+        PunctuationPretokeniser(HyphenMode.INCLUDED),
         DistinctPunctuation()
     ])
 
@@ -15,7 +15,7 @@ def tst_distinctPunctuation():
 def tst_reverse():
     p = PretokeniserSequence([
         WhitespacePretokeniser(),
-        PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED),
+        PunctuationPretokeniser(HyphenMode.INCLUDED),
         InsertReverse(),
         AddWordBoundary(RobertaSpaceMarker)
     ])

@@ -7,16 +7,17 @@ from .mappers import *
 from .huggingface import *
 
 # Most common space markers
-SennrichSpaceMarker = BoundaryMarker("</w>", detached=False, location=BoundaryMarkerLocation.END)         # Sennrich 2016
-RobertaSpaceMarker  = BoundaryMarker("Ġ", detached=True, location=BoundaryMarkerLocation.START)           # Radford 2019
-IsolatedSpaceMarker = BoundaryMarker("[SPACE]", detached=True, location=BoundaryMarkerLocation.ISOLATED)  # Huck 2017
-NoSpaceMarker       = BoundaryMarker("", detached=False, location=BoundaryMarkerLocation.START)
+SennrichSpaceMarker = BoundaryMarker("</w>",    detached=False, location=BoundaryMarkerLocation.END)       # Sennrich 2016
+IsolatedSpaceMarker = BoundaryMarker("[SPACE]", detached=True,  location=BoundaryMarkerLocation.ISOLATED)  # Huck 2017
+KudoSpaceMarker     = BoundaryMarker("▁",       detached=True,  location=BoundaryMarkerLocation.START)     # Kudo 2018
+RobertaSpaceMarker  = BoundaryMarker("Ġ",       detached=True,  location=BoundaryMarkerLocation.START)     # Radford 2019
+NoSpaceMarker       = BoundaryMarker("",        detached=False, location=BoundaryMarkerLocation.START)
 
 IdentityPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), IdentityPretokeniser())
 
 TraditionalPretokeniser = PretokeniserSequence([
     WhitespacePretokeniser(destructive=True),
-    PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED)
+    PunctuationPretokeniser(HyphenMode.EXCLUDED)
 ])
 
 class BoundariesFromSpacesPretokeniser(PretokeniserSequence):
@@ -36,7 +37,7 @@ class BoundariesFromSpacesPretokeniser(PretokeniserSequence):
         super().__init__([
             WhitespacePretokeniser(destructive=True),
             AddWordBoundary(BoundaryMarker(" ", detached=True, location=marker.location)),
-            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.INCLUDED, group_adjacent_spaces_with_punctuation=marker.location),
+            PunctuationPretokeniser(HyphenMode.INCLUDED, group_adjacent_spaces_with_punctuation=marker.location),
             (MapperAsPretokeniser(PseudoByteMapping()) if byte_based else MapperAsPretokeniser(Replace(" ", "Ġ"))),
             MapperAsPretokeniser(Replace("Ġ", " ")),
             WhitespaceAndMarkerPretokeniser(marker)
@@ -59,12 +60,12 @@ class CommonsensePretokeniser(PretokeniserSequence):
     """
     def __init__(self, marker: BoundaryMarker):
         super().__init__([
-            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
             WhitespacePretokeniser(destructive=True),
             MapperAsPretokeniser(PseudoByteMapping()),
             AddWordBoundary(marker),
             IsolateDigits(),
-            PunctuationPretokeniser(PunctuationPretokeniser.HyphenMode.ONLY),
+            PunctuationPretokeniser(HyphenMode.ONLY),
             EnglishApostrophes(do_nt=True)
         ])
 

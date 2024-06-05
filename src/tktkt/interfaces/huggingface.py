@@ -1,5 +1,7 @@
 """
 Interfaces to make tokenisers that are compatible with the HuggingFace suite.
+Indeed, these are interfaces that TkTkT tokenisers hold to (like all the other TkTkT interfaces),
+in this case with the goal of becoming HuggingFace-compatible.
 """
 import warnings
 from typing import List, Optional, Tuple, Mapping

@@ -9,7 +9,7 @@ from tktkt.preparation.mappers import *
 phoneme_pretokeniser = PretokeniserSequence([
     WhitespacePretokeniser(),
     PunctuationPretokeniser(
-        hyphen_mode=PunctuationPretokeniser.HyphenMode.INCLUDED,
+        hyphen_mode=HyphenMode.INCLUDED,
         protect_apostrophes_without_spaces=True
     )
 ])

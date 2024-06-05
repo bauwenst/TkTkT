@@ -1,5 +1,68 @@
 # TkTkT
-A collection of Pythonic subword tokenisers and preprocessing tools.
+A collection of Pythonic subword tokenisers and text preprocessing tools, with full
+backwards- *and* forwards-compatibility with HuggingFace `tokenizers`.
+
+## Features
+### Supported tokenisers
+All subword tokenisers are defined under `tktkt.models`. Currently, the package implements:
+- Byte-pair encoding (BPE) tokenisers:
+  - Classical BPE ([Sennrich et al., 2016](https://aclanthology.org/P16-1162/)), with added support for *n*-ary merges (byte-tuple encoding, BTE).
+  - BPE-dropout ([Provilkov et al., 2020](https://aclanthology.org/2020.acl-main.170/))
+  - BPE-knockout (Bauwens & Delobelle, 2024)
+  - Trimmed BPE ([Cognetta et al., 2024](https://arxiv.org/abs/2404.00397))
+- Unigram language model (ULM), dubbed *KudoPiece* in TkTkT ([Kudo, 2018](https://aclanthology.org/P18-1007/)):
+  - Wrapper around the [SentencePiece](https://github.com/google/sentencepiece) package
+  - Native implementation in TkTkT
+- Greedy tokenisers ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289)):
+  - Left-to-right and right-to-left
+  - Random-access, dubbed "FLOTA" by [Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/).
+- Derivative leverager (DeL) ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)).
+  - Segmentation
+  - Trainer
+- Character/byte N-grams.
+- Randomised segmentation from a vocabulary.
+- Viterbi family (work in progress).
+- Coming soon: Morfessor family
+
+Many of these can be instantiated without much background knowledge using the builders in `tktkt.builders`.
+
+
+Any HuggingFace tokeniser can be wrapped into a TkTkT tokeniser, and any TkTkT tokeniser can be wrapped into a HuggingFace tokeniser.
+
+### Evaluation metrics
+TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
+- Fertility statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
+- Morphological boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
+  position in a word.
+
+### Visualisers
+The following tokenisation procedures can be visualised:
+- BPE/BTE: the final merge tree (in regular LaTeX), as well as an animated progression of the merges (in LaTeX Beamer).
+
+## Architecture
+The goal of TkTkT is to provide a straightforward Pythonic interface for everything-tokenisation, and to be as 
+object-oriented as possible. The main interfaces are found under `tktkt.interfaces`. 
+
+Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
+
+- The `Tokeniser` class has two important methods: 
+  - `.tokenise(pretoken: str) -> List[str]`: segments a string as-is into parts.
+  - `.prepareAndTokenise(text: str) -> List[str]`: applies the tokeniser's preprocessor and then tokenises each pre-token separately.
+
+- The `Preprocessor` class is a pipeline of three components: 
+  1. a non-invertible text mapping
+  2. an invertible text mapping
+  3. a pretokeniser that splits strings into smaller strings.
+
+To map tokens (string segments) to identifiers (integers) for indexing into an embedding matrix, three interfaces are
+supported:
+- `TokeniserWithFiniteIdRange`: tokenisers with a finite range of IDs, but an infinite domain of tokens that map into that range.
+  An example is a hashing vocabulary.
+- `TokeniserWithFiniteTypeDomain`: same as above, but only supports mapping a predetermined set of unique tokens (types).
+  No assumption is made about how this mapping happens. HuggingFace's `PreTrainedTokenizer` is an example of these.
+- `TokeniserWithVocabDict`: same as above, but the mapping is made by an explicit dictionary.
+
+TkTkT also has wrapper classes (in `tktkt.wrappers`) to extend existing tokenisers with an ID mapping.
 
 ## Installation
 ### Non-editable (recommended)
@@ -18,75 +81,122 @@ pip install -e .[github]
 ```
 where the same caveat applies about the `[github]` suffix.
 
-## Architecture
-The goal of TkTkT is to provide a straightforward Pythonic interface for everything-tokenisation, and to be as object-oriented
-as possible. The main interfaces are found under `tktkt.interfaces`. 
-
-Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
-
-- The `Tokeniser` class has two important methods: 
-  - `.tokenise(pretoken: str) -> List[str]`: segments a string as-is into parts.
-  - `.prepareAndTokenise(text: str) -> List[str]`: applies the tokeniser's preprocessor and then tokenises each pre-token separately.
-
-- The `Preprocessor` class is a pipeline of three components: a non-invertible text mapping, an invertible text mapping, 
-  and a pretokeniser that splits strings into smaller strings.
-
 ## Examples
-### KudoPiece (ULM)
-Let's say you want to train and load an English ULM tokeniser, which is notorious for being a convoluted process. 
-In TkTkT, that would go like this (note that ULM is called "KudoPiece" in TkTkT because it is a less ambiguous name):
+### Basic usage
+Let's first instantiate a toy preprocessor in TkTkT:
+```python
+from tktkt.preparation.instances import Preprocessor, KudoSpaceMarker, \
+    Lowercaser, Replace, \
+    PretokeniserSequence, WhitespacePretokeniser, PunctuationPretokeniser, AddWordBoundary
 
+toy_preprocessor = Preprocessor(
+    Lowercaser(),
+    Replace("!", "."),
+    PretokeniserSequence([
+        WhitespacePretokeniser(),
+        PunctuationPretokeniser(),
+        AddWordBoundary(KudoSpaceMarker)
+    ])
+)
+
+print(toy_preprocessor.do("This example will be preprocessed (even without a tokeniser)!"))
+```
+Now we instantiate a greedy TkTkT tokeniser with that preprocessor:
+```python
+from tktkt.models.greedy.directional import L2R_Greedy
+
+tokeniser = L2R_Greedy(
+    preprocessor=toy_preprocessor,
+    vocab={"a": 0, "b": 1, "c": 2, "d": 3, "ab": 4, "ba": 5, ".": 6, ",": 7, "▁": 8}
+)
+
+print(tokeniser.prepareAndTokenise("A bad cab, ABBA!"))
+print(tokeniser.tokenise("abc."))
+```
+There are many more preprocessing classes available, some pre-made. Check out the `CommonsensePreprocessor` 
+for typical modern use-cases.
+
+### HuggingFace compatibility
+In the example below, a BPE tokeniser is loaded from the HuggingFace hub as a `PreTrainedTokenizerFast` and converted into a TkTkT `Tokeniser` object.
+Then, this object is itself converted into a HuggingFace `PreTrainedTokenizer` again.
+```python
+# Backwards-compatibility:
+from transformers import AutoTokenizer
+from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
+
+hf_roberta = AutoTokenizer.from_pretrained("roberta-base")
+tktkt_roberta = HuggingFaceTokeniser(hf_roberta)
+
+###
+sentence = " That's so supercalifragilisticexpialidocious, Raphaël!"
+print("Full tokenisation pipeline:")
+print("\tHF Tk:", hf_roberta.tokenize(sentence))  # Note the lack of autocompletion on this.
+print("\tTkTkT:", tktkt_roberta.prepareAndTokenise(sentence))
+print("Only the preprocessing:")
+print("\tTkTkT:", tktkt_roberta.preprocessor.do(sentence))
+###
+
+# Forwards-compatibility:
+from tktkt.interfaces.huggingface import TktktToHuggingFace
+
+hf_tktkt_roberta = TktktToHuggingFace(tktkt_roberta, specials_from=hf_roberta)
+print(hf_tktkt_roberta.tokenize(sentence))
+```
+
+### KudoPiece (ULM)
+Let's say you want to train and load an English ULM tokeniser. You are, of course, scared of the `sentencepiece` library
+because its Python interface is a thin wrapper around a command-line call, not allowing autocompletion in your IDE.
+In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in TkTkT because it is more technically accurate).
+
+First we call the trainer with relevant training arguments:
+```python
+from tktkt.models.kudopiece.training import *
+from string import ascii_letters
+
+sentence_corpus: Iterable[str] = ...
+
+
+args_alpha = KudoPieceArguments_Alphabet(
+    required_chars=list(ascii_letters),
+    byte_fallback=True,
+    character_coverage=0.9995
+)
+
+args_algo = KudoPieceArguments_Algorithm()
+
+trainer = KudoPieceTrainer(
+    word_boundary_location=BoundaryMarkerLocation.START,
+    final_vocab_size=40_000,
+    alphabet_arguments=args_alpha,
+    algorithm_arguments=args_algo,
+    file_stem="kudopiece_en"
+)
+model_path = trainer.train_from_iterator(sentence_corpus, strings_need_space_splitting=True)
+```
+Once the final model is stored to disk, we can load it as an object (and give it a basic preprocessor).
+Note that all models are stored under `tktkt.files.paths.DataPaths.pathToModels()`.
 ```python
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
 from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
 
+# If you need to recover the path:
+# from tktkt.files.paths import DataPaths
+# model_path = DataPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_xxxx-yy-zz_aa-bb-cc.model"
 
-def load(model_path: Path):
-    preprocessor = Preprocessor(
-        IdentityMapper(),
-        AppendSpace(front_not_back=True),
-        IdentityPretokeniser()
-    )
-    return KudoPieceTokeniser(preprocessor, model_path)
+preprocessor = Preprocessor(
+    IdentityMapper(),
+    AppendSpace(front_not_back=True),
+    IdentityPretokeniser()
+)
+tokeniser = KudoPieceTokeniser(preprocessor=preprocessor, model_file=model_path)
 
-
-from tktkt.models.kudopiece.training import *
-from string import ascii_letters
-
-
-def train(sentence_corpus: Iterable[str]):
-    args_alpha = KudoPieceArguments_Alphabet(
-        required_chars=[l for l in ascii_letters],
-        byte_fallback=True,
-        character_coverage=0.9995
-    )
-    args_algo = KudoPieceArguments_Algorithm()
-
-    trainer = KudoPieceTrainer(
-        word_boundary_location=BoundaryMarkerLocation.START,
-        final_vocab_size=40_000,
-        alphabet_arguments=args_alpha,
-        algorithm_arguments=args_algo,
-        file_stem="kudopiece_en"
-    )
-    return trainer.train_from_iterator(sentence_corpus, strings_need_space_splitting=True)
-
-
-if __name__ == "__main__":
-    your_corpus = ...
-
-    model_path = train(your_corpus)
-    ## The location of your model will look like this:
-    # from tktkt.files.paths import DataPaths
-    # model_path = DataPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_xxxx-yy-zz_aa-bb-cc.model"
-    tk = load(model_path)
-
-    print(tk.prepareAndTokenise("Hello there, my good friend!"))
+print(tokeniser.prepareAndTokenise("Hello there, my good friend!"))
 ```
 
 ## Why does this exist if we have HuggingFace `tokenizers`?
-First of all, note that *TkTkT* has backwards compatibility with HuggingFace `tokenizers`. There are wrapper classes for
-tokenisers and pretokenisers under `tktkt.models.huggingface`.
+First of all, note again that TkTkT has backwards compatibility with HuggingFace `tokenizers`. 
+There are wrapper classes for tokenisers under `tktkt.models.huggingface` and for normalisers/pretokenisers under
+`tktkt.preparation.huggingface`.
 
 Here's a non-exhaustive list of reasons:
 - The HuggingFace `tokenizers` library has horrifically un(der)documented Python interfaces. Some classes even accept 
@@ -117,6 +227,6 @@ Here's a non-exhaustive list of reasons:
   implement all of them in C++ is rather low.
 
 ## Pronunciation
-The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast and with beatbox hi-hats
+The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast, like a beatboxer mimicking hi-hats
 (kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.
 If you are Brazilian, you may pronounce it "tuca tuca" while playing [the official TkTkT theme song](https://open.spotify.com/track/2aX7w5bdbES8A9H5FDydSA).

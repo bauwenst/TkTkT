@@ -107,6 +107,12 @@ class IdentityPretokeniser(Pretokeniser):
         return pretokens
 
 
+class HyphenMode(Enum):
+    ONLY     = 1
+    EXCLUDED = 2
+    INCLUDED = 3
+
+
 class PunctuationPretokeniser(Pretokeniser):
     """
     Split on punctuation and conserve it.
@@ -122,18 +128,13 @@ class PunctuationPretokeniser(Pretokeniser):
     preceded by a space. What matters to any downstream model is the former, not the latter.
     """
 
-    class HyphenMode(Enum):
-        ONLY     = 1
-        EXCLUDED = 2
-        INCLUDED = 3
-
-    def __init__(self, hyphen_mode: "PunctuationPretokeniser.HyphenMode", protect_apostrophes_without_spaces: bool=True,
+    def __init__(self, hyphen_mode: HyphenMode=HyphenMode.INCLUDED, protect_apostrophes_without_spaces: bool=True,
                  group_adjacent_spaces_with_punctuation: BoundaryMarkerLocation=BoundaryMarkerLocation.ISOLATED):
         punctuation = PunctuationPretokeniser.buildPunctuationString(hyphen_mode)
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
         punctuation_escaped_no_accent = punctuation_escaped.replace("'", "")
 
-        if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
+        if hyphen_mode == HyphenMode.ONLY:
             pattern = "[" + punctuation_escaped + "]+"
         else:
             if protect_apostrophes_without_spaces:
@@ -168,7 +169,7 @@ class PunctuationPretokeniser(Pretokeniser):
     @staticmethod
     def buildPunctuationString(hyphen_mode: HyphenMode=HyphenMode.INCLUDED):
         punctuation_hyphens_only = "-–_"
-        if hyphen_mode == PunctuationPretokeniser.HyphenMode.ONLY:
+        if hyphen_mode == HyphenMode.ONLY:
             punctuation = punctuation_hyphens_only
         else:
             punctuation = BASIC_PUNCTUATION + "€£…‘’“”„«»"      # Add some European punctuations.
@@ -176,7 +177,7 @@ class PunctuationPretokeniser(Pretokeniser):
             for hyphen in punctuation_hyphens_only:
                 punctuation = punctuation.replace(hyphen, "")  # Note: Not all of these will have effect, but some will.
 
-            if hyphen_mode == PunctuationPretokeniser.HyphenMode.INCLUDED:
+            if hyphen_mode == HyphenMode.INCLUDED:
                 for hyphen in punctuation_hyphens_only:
                     punctuation = hyphen + punctuation  # Note: All of these will have effect.
 
@@ -196,7 +197,7 @@ class DistinctPunctuation(Pretokeniser):
     """
 
     def __init__(self):
-        self.punctuation = PunctuationPretokeniser.buildPunctuationString(PunctuationPretokeniser.HyphenMode.INCLUDED)
+        self.punctuation = PunctuationPretokeniser.buildPunctuationString(HyphenMode.INCLUDED)
         self.punctuation_group = re.compile(" ?[" + self.punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-") + "]+ ?")
 
     def split(self, text: str) -> List[str]:
