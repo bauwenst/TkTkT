@@ -12,7 +12,7 @@ from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab
 def possibleSegmentations(vocab: Vocab, pretoken: str) -> int:
     """
     Computes how many possible segmentations a vocabulary allows for a given string.
-    Forward Viterbi because ... obviously.
+    Forward Viterbi algorithm, which is O(n^2) instead of O(2^n) even though there are O(2^n) segmentations.
     """
     options_to_get_before_char = [0 for _ in range(len(pretoken)+1)]
     options_to_get_before_char[0] = 1

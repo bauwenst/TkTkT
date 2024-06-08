@@ -15,7 +15,7 @@ Also, any HuggingFace tokeniser can be wrapped into a TkTkT tokeniser, and any T
 
 Currently, the package implements:
 - Byte-pair encoding (BPE) tokenisers:
-  - Classical BPE ([Sennrich et al., 2016](https://aclanthology.org/P16-1162/)), with added support for *n*-ary merges (byte-tuple encoding, BTE).
+  - Classical BPE ([Sennrich et al., 2016](https://aclanthology.org/P16-1162/)), with added support for *n*-ary merges (byte-tuple encoding, BTE) and any word boundary marker (start-of-words like GPT-2 and end-of-words like Sennrich).
   - BPE-dropout ([Provilkov et al., 2020](https://aclanthology.org/2020.acl-main.170/))
   - BPE-knockout (Bauwens & Delobelle, 2024)
   - Trimmed BPE ([Cognetta et al., 2024](https://arxiv.org/abs/2404.00397))
