@@ -53,6 +53,17 @@ class Builder_English_BPE(TokeniserBuilder):
         return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
+class Builder_English_BPE_native(TokeniserBuilder):
+    def buildTokeniser(self) -> Tokeniser:
+        files = getEnglishBpeFiles()
+        return ClassicBPE(
+            preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
+            vocab=files.loadVocabulary(),
+            merges=files.loadMerges(),
+            boundary_marker=RobertaSpaceMarker
+        )
+
+
 class Builder_English_BPEKnockout(TokeniserBuilder):
     def buildTokeniser(self) -> Tokeniser:
         files = getEnglishBpeFiles()
