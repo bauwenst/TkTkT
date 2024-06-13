@@ -64,14 +64,23 @@ class DataPaths:
 
     @staticmethod
     def pathToModels() -> Path:
+        """
+        For final tokeniser models.
+        """
         return DataPaths._extendOutput(["models"])
 
     @staticmethod
     def pathToCheckpoints() -> Path:
+        """
+        For checkpoints of models trained with gradient descent.
+        """
         return DataPaths._extendOutput(["checkpoints"])
 
     @staticmethod
     def pathToEvaluations() -> Path:
+        """
+        For numerical results.
+        """
         return DataPaths._extendOutput(["evaluations"])
 
     @staticmethod

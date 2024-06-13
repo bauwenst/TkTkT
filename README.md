@@ -253,6 +253,9 @@ Here's a non-exhaustive list of reasons:
     whilst there exist many more in the literature, and the likelihood that someone who knows the literature comes along to
     implement all of them in C++ is rather low.
 
+There is also the [pyonmttok](https://github.com/OpenNMT/Tokenizer) package which has better design, but also sticks to
+BPE and KudoPiece.
+
 ## Pronunciation
 The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast, like a beatboxer mimicking hi-hats
 (kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.

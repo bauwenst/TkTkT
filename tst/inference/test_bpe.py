@@ -3,6 +3,8 @@ from transformers import AutoTokenizer
 from tktkt.evaluation.morphological import morphologyGenerator
 from tktkt.models.bpe.base import ClassicBPE
 from tktkt.models.bpe.guided import GuidedBPEDropout, ConstantCharacterClassifier
+from tktkt.models.bpe.ensure import EnsuredBPE
+from tktkt.util.printing import lprint
 
 
 def test_classicbpe():
@@ -38,6 +40,35 @@ def test_guidedbpe():
         assert tokens1 == tokens2, f"{word} becomes {tokens1} versus {tokens2}"
 
 
+def test_ensuredbpe():
+    word = " antidisestablishmentarianism"
+
+    classic_bpe: ClassicBPE = EnsuredBPE.fromHuggingFace(AutoTokenizer.from_pretrained("roberta-base"))
+    print("Original vocab:", len(classic_bpe.vocab))
+    print("Original tokenisation:", classic_bpe.prepareAndTokenise(word))
+    print("Original last 7:")
+    lprint(classic_bpe.merge_graph.merges[-7:], indent=1)
+
+    ensured_bpe = EnsuredBPE(
+        preprocessor=classic_bpe.preprocessor,
+        boundary_marker=classic_bpe.boundary_marker,
+        vocab=classic_bpe.vocab,
+        merges=classic_bpe.merge_graph.getRawMerges(),
+
+        ensure_strings=[word],
+        forbid_strings=[],
+        forbid_forming=[],
+        do_preprocess_these=True,
+        do_expand_vocabulary=False,
+        do_binary_merges=True
+    )
+    print("New vocab:", len(ensured_bpe.vocab))
+    print("New tokenisation:", ensured_bpe.prepareAndTokenise(word))
+    print("New last 7:")
+    lprint(ensured_bpe.merge_graph.merges[-7:], indent=1)
+
+
 if __name__ == "__main__":
     # test_classicbpe()
-    test_guidedbpe()
+    # test_guidedbpe()
+    test_ensuredbpe()

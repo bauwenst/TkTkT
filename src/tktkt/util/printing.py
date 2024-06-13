@@ -9,11 +9,13 @@ def dprint(d: dict):
         print(k, ":", v)
 
 
-def lprint(l: Iterable):
+def lprint(l: Iterable, indent: int=0):
     """
     Print list elements.
     """
     for e in l:
+        if indent:
+            print("\t"*indent, end="")
         print(e)
 
 
