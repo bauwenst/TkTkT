@@ -1,5 +1,8 @@
 """
 Simplified version of the GuidedBPEDropout implementation, to speed it up.
+
+FIXME: Because the BTE class has caching enabled on .tokenise, it's quite possible that dropout actually doesn't work
+       (since the same string will default to the same tokenisation).
 """
 from typing import List, Iterable
 

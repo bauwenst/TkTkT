@@ -4,6 +4,7 @@ from tktkt.evaluation.morphological import morphologyGenerator
 from tktkt.models.bpe.base import ClassicBPE
 from tktkt.models.bpe.guided import GuidedBPEDropout, ConstantCharacterClassifier
 from tktkt.models.bpe.ensure import EnsuredBPE
+from tktkt.models.bpe.shuffle import ShuffledBPE
 from tktkt.util.printing import lprint
 
 
@@ -68,7 +69,38 @@ def test_ensuredbpe():
     lprint(ensured_bpe.merge_graph.merges[-7:], indent=1)
 
 
+def test_shuffledbpe():
+    example = " discombobulated"
+
+    classic: ClassicBPE = ShuffledBPE.fromHuggingFace(AutoTokenizer.from_pretrained("roberta-base"))
+    print("Old |V|:", len(classic.vocab))
+    print("Old |M|:", len(classic.merge_graph.merges))
+    print(classic.prepareAndTokenise(example))
+    print()
+
+    shuffled = ShuffledBPE(
+        preprocessor=classic.preprocessor,
+        boundary_marker=classic.boundary_marker,
+        unk_type=classic.unk,
+
+        vocab=classic.vocab,
+        merges=classic.merge_graph.getRawMerges(),
+
+        constrained=True
+    )
+    print("New |V|:", len(shuffled.vocab))
+    print("New |M|:", len(shuffled.merge_graph.merges))
+    print(shuffled.prepareAndTokenise(example))
+
+    print("Old disabled:", len(classic.getDisabledTypes()))
+    print("New disabled:", len(shuffled.getDisabledTypes()))
+
+    print(classic.tokenise("Ġand"))
+    print(shuffled.tokenise("Ġand"))
+
+
 if __name__ == "__main__":
     # test_classicbpe()
     # test_guidedbpe()
-    test_ensuredbpe()
+    # test_ensuredbpe()
+    test_shuffledbpe()
