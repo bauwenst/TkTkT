@@ -1,7 +1,47 @@
 from typing import List, Union, Tuple, Iterable
 from abc import ABC, abstractmethod
 
+import numpy as np
+
 from ...models.bpe.base import BTE
+
+
+class NormalisationFunction(ABC):
+
+    @abstractmethod
+    def normalise(self, value: float, all_values: List[float]):
+        pass
+
+
+class IdentityNormalisation(NormalisationFunction):
+
+    def normalise(self, value: float, all_values: List[float]):
+        return value
+
+
+class LinearNormalisation(NormalisationFunction):
+
+    def normalise(self, value: float, all_values: List[float]):
+        return value / sum(all_values)
+
+
+class SoftmaxNormalisation(NormalisationFunction):
+
+    def __init__(self, temperature: float=1.0, scale_beforehand: bool=False):
+        self.tau = temperature
+        self.do_scale = scale_beforehand
+
+    def normalise(self, value: float, all_values: List[float]):
+        all_values = np.array(all_values)
+        if self.do_scale:
+            denominator = np.sum(all_values)
+            value      = value / denominator
+            all_values = all_values / denominator
+
+        shift = np.max(all_values)  # (implementation detail for better softmaxes)
+        exp_value      =        np.exp(1/self.tau * (value - shift))
+        sum_exp_values = np.sum(np.exp(1/self.tau * (all_values - shift)))
+        return exp_value / sum_exp_values
 
 
 class VisualWeightingFunction(ABC):
@@ -12,9 +52,21 @@ class VisualWeightingFunction(ABC):
     (Cannot pinpoint exact tokens because there is no way to do that.)
     """
 
+    def __init__(self, normaliser: NormalisationFunction=IdentityNormalisation()):
+        self.normaliser = normaliser
+
     @abstractmethod
     def getTokenWeight(self, token: str, depth: int, is_leaf: bool) -> float:
+        """
+        Get the weight for the given token given only the other arguments as context.
+        """
         pass
+
+    def getTokenWeightGivenAll(self, all_tree_weights: List[float], token: str, depth: int, is_leaf: bool) -> float:
+        """
+        Get the weight given all weights in whatever tree this token is visualised inside of.
+        """
+        return self.normaliser.normalise(value=self.getTokenWeight(token, depth, is_leaf), all_values=all_tree_weights)
 
 
 class ExponentialDepthWeighting(VisualWeightingFunction):
@@ -33,22 +85,41 @@ class ExponentialDepthWeighting(VisualWeightingFunction):
         return 2**(-2*depth - 1 + is_leaf)
 
 
-
 class BpeTree:
     """
     Tracker for historically applied merges. Also renders the actual visualisation.
     """
 
     def __init__(self, token: str, children: List["BpeTree"]=None):
-        self.token = token
-        self.children = children
+        self.token: str = token
+        self.children: List[BpeTree] = children or []
 
-    def toForest(self, indent=0, weighting_function: VisualWeightingFunction=None):
-        s = "[" + (self.token if weighting_function is None else r"$\underset{\color{black!35}" + f"{weighting_function.getTokenWeight(self.token, indent, not self.children):.3f}" + r"\vphantom{{}^0}}{\smash{\text{" + self.token + r"}}}$")  # The vphantom is to create enough space between the token and the subscript. The smash is to prevent more space in case the token has a descender (e.g. the letter p).
-        if self.children is not None:
+    def toForest(self, weighting_function: VisualWeightingFunction=None):
+        raw_weights = None if weighting_function is None else self._getRawWeights(weighting_function, depth=0)
+        return self._toForest(depth=0, weighting_function=weighting_function, all_tree_weights=raw_weights)
+
+    def _getRawWeights(self, weighting_function: VisualWeightingFunction, depth: int) -> List[float]:
+        """
+        For this tree, compute the list of results gained from applying the weighting function recursively (before any normalisation).
+        """
+        results = [weighting_function.getTokenWeight(token=self.token, depth=depth, is_leaf=not self.children)]
+        for child in self.children:
+            results.extend(child._getRawWeights(weighting_function, depth+1))
+        return results
+
+    def _toForest(self, depth: int, weighting_function: VisualWeightingFunction=None, all_tree_weights: List[float]=None):
+        if weighting_function is None:
+            content = self.token
+        else:
+            content = r"$\underset{\color{black!35}" + \
+                      f"{weighting_function.getTokenWeightGivenAll(all_tree_weights, self.token, depth=depth, is_leaf=not self.children):.3f}" + \
+                      r"\vphantom{{}^0}}{\smash{\text{" + self.token + r"}}}$"  # The vphantom is to create enough space between the token and the subscript. The smash is to prevent more space in case the token has a descender (e.g. the letter p).
+
+        s = "[" + content
+        if self.children:
             s += "\n"
             for child in self.children:
-                s += "".join(["\t" + line + "\n" for line in child.toForest(indent + 1, weighting_function).split("\n")])
+                s += "".join(["\t" + line + "\n" for line in child._toForest(depth+1, weighting_function, all_tree_weights).split("\n")])
         s += "]"
         return s
 
