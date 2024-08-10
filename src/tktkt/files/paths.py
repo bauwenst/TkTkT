@@ -46,7 +46,12 @@ def from_pretrained_absolutePath(cls, absolute_path: Path):
     return cls.from_pretrained(relativeToCwd(absolute_path).as_posix())
 
 
-class DataPaths:
+class PathManager:
+
+    def __init__(self, project_name: str=""):
+        self.project = project_name.replace(".", "").replace("/", "") or "tktkt"
+
+    # Define general path operations as if paths are lists:
 
     @staticmethod
     def append(base_path: Path, part: str) -> Path:
@@ -62,33 +67,35 @@ class DataPaths:
         full_path.mkdir(exist_ok=True, parents=True)
         return full_path
 
-    @staticmethod
-    def pathToModels() -> Path:
-        """
-        For final tokeniser models.
-        """
-        return DataPaths._extendOutput(["models"])
+    # Define typical paths in any ML context:
 
-    @staticmethod
-    def pathToCheckpoints() -> Path:
+    def pathToModels(self) -> Path:
+        """
+        For final tokeniser (or other) models.
+        """
+        return self._extendOutput(["models"])
+
+    def pathToCheckpoints(self) -> Path:
         """
         For checkpoints of models trained with gradient descent.
         """
-        return DataPaths._extendOutput(["checkpoints"])
+        return self._extendOutput(["checkpoints"])
 
-    @staticmethod
-    def pathToEvaluations() -> Path:
+    def pathToEvaluations(self) -> Path:
         """
         For numerical results.
         """
-        return DataPaths._extendOutput(["evaluations"])
+        return self._extendOutput(["evaluations"])
 
-    @staticmethod
-    def _homeDirectory() -> Path:
-        out = PATH_OUTPUT / "tktkt"
+    # Methods for automatically providing arguments to append/extend:
+
+    def _homeDirectory(self) -> Path:
+        out = PATH_OUTPUT / self.project
         out.mkdir(parents=True, exist_ok=True)
         return out
 
-    @staticmethod
-    def _extendOutput(parts: List[str]) -> Path:
-        return DataPaths.extend(DataPaths._homeDirectory(), parts)
+    def _extendOutput(self, parts: List[str]) -> Path:
+        return PathManager.extend(self._homeDirectory(), parts)
+
+
+DataPaths = PathManager()
