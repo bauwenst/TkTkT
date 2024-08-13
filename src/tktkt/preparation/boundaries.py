@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Tuple
 
 
-class BoundaryMarkerLocation(Enum):
+class BoundaryMarkerLocation(str, Enum):  # The str parent allows JSON serialisation: https://stackoverflow.com/a/51976841/9352077
     ISOLATED = 1
     START = 2
     END = 3

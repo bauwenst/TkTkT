@@ -104,23 +104,23 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
         kwargs.update(specials_from.special_tokens_map)
         super().__init__(**kwargs)
 
-    def _tokenize(self, text, **kwargs):
+    def _tokenize(self, text, **kwargs) -> List[str]:
         return self.backend.tokenise(text, **kwargs)
 
     @property
-    def vocab_size(self):
+    def vocab_size(self) -> int:
         return self.backend.getVocabSize()
 
-    def get_vocab(self):
-        return self.backend.getVocabMapping()
+    def get_vocab(self) -> Mapping[str,int]:
+        return {t: self.backend.typeToId(t) for t in self.types()}
 
-    def _convert_token_to_id(self, token: str):
+    def _convert_token_to_id(self, token: str) -> int:
         try:  # try-except is the fastest method to check+return a key in use cases where most lookups are valid (https://stackoverflow.com/a/28860508/9352077). Additionally, you don't pre-evaluate the unk ID, which otherwise causes an infinite loop since self.unk_token_id is actually a method call that itself calls _convert_token_to_id to get the ID of UNK (and assumes that this exists). Hence, you should only evaluate self.unk_token_id when you actually need it, not just any call.
             return self.backend.typeToId(token)
         except:
             return self.unk_token_id
 
-    def _convert_id_to_token(self, index: int):
+    def _convert_id_to_token(self, index: int) -> str:
         return self.backend.idToType(index)
 
     def tokenize(self, text: str, **kwargs) -> List[str]:

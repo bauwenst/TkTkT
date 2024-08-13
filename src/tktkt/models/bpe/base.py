@@ -43,14 +43,13 @@ class ClassicBPE(BTE):
         """
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         marker = detectBoundaryMarker(hf_bpe_tokenizer)
-        # byte_based = detectByteBased(tokenizer)
         return ClassicBPE(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
 
             vocab=vocab_and_merges.loadVocabulary(),
             merges=vocab_and_merges.loadMerges(),
             boundary_marker=marker,
-            # byte_based=byte_based
+
             unk_type=hf_bpe_tokenizer.unk_token
         )
 
