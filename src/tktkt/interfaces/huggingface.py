@@ -3,12 +3,12 @@ Interfaces to make tokenisers that are compatible with the HuggingFace suite.
 Indeed, these are interfaces that TkTkT tokenisers hold to (like all the other TkTkT interfaces),
 in this case with the goal of becoming HuggingFace-compatible.
 """
-import warnings
-from typing import List, Optional, Tuple, Mapping
+from typing import List, Optional, Tuple, Mapping, Dict, Iterable
 from abc import ABC, abstractmethod
-import json
 from pathlib import Path
 
+import warnings
+import json
 from transformers import PreTrainedTokenizer, SpecialTokensMixin
 
 from .tokeniser import TokeniserWithFiniteTypeDomain
@@ -87,8 +87,11 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     which we want to avoid (the entire raison d'être of TkTkT...).
     """
 
-    def __init__(self, backend: TokeniserWithFiniteTypeDomain, specials_from: SpecialTokensMixin, **kwargs):
+    def __init__(self, backend: TokeniserWithFiniteTypeDomain, specials_from: SpecialTokensMixin=None, **kwargs):
         self.backend = backend
+
+        if specials_from is None:
+            specials_from = detectSpecials(self.backend.types())
 
         # TODO: Since this constructor is given the specials that we want, you can actually quite safely add them to
         #       the vocab if it's a dictionary. You don't let HF do it because HF can't be trusted with making new IDs, but we can.
@@ -152,3 +155,53 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
             return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
         else:
             return [self.bos_token_id] + token_ids_0 + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
+
+
+def detectSpecials(types: Iterable[str]) -> SpecialTokensMixin:
+    """
+    Attempt to find all the special types in the given domain (e.g. [CLS], [SEP], etc...).
+    Delimiters cannot be mixed (e.g. not both [CLS] and </s>, or [UNK] and <mask>, etc...).
+    """
+    DELIMITERS = {0: ("[", "]"), 1: ("<", ">")}
+
+    special_families = {i: [] for i in DELIMITERS}
+    for t in types:
+        for i, (left, right) in DELIMITERS.items():
+            if t[0] == left and t[-1] == right:
+                special_families[i].append(t)
+
+    i, found_types = sorted(special_families.items(), key=lambda t: len(t[1]), reverse=True)[0]
+    mixin = SpecialTokensMixin()
+    for t in found_types:
+        t_lower = t.lower()
+        if "bos" in t_lower:
+            mixin.bos_token    = t
+            # mixin.bos_token_id = vocab[t]
+        elif "eos" in t_lower:
+            mixin.eos_token    = t
+            # mixin.eos_token_id = vocab[t]
+        elif "cls" in t_lower:
+            mixin.cls_token    = t
+            # mixin.cls_token_id = vocab[t]
+        elif "sep" in t_lower:
+            mixin.sep_token    = t
+            # mixin.sep_token_id = vocab[t]
+        elif "pad" in t_lower:
+            mixin.pad_token    = t
+            # mixin.pad_token_id = vocab[t]
+        elif "unk" in t_lower:
+            mixin.unk_token    = t
+            # mixin.unk_token_id = vocab[t]
+        elif "msk" in t_lower or "mask" in t_lower:
+            mixin.mask_token    = t
+            # mixin.mask_token_id = vocab[t]
+        elif "/s" in t_lower:
+            mixin.eos_token    = t
+            # mixin.eos_token_id = vocab[t]
+        elif "s" in t_lower:
+            mixin.bos_token    = t
+            # mixin.bos_token_id = vocab[t]
+        else:
+            print("Found special-seeming but unrecognisable type:", t)
+
+    return mixin
