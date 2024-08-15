@@ -23,7 +23,7 @@ def test_segmentationAmount():
     tk = ClassicBPE.fromHuggingFace(AutoTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base"))
     with KnockoutDataConfiguration(setupDutch()):
         for obj in morphologyGenerator():
-            word = obj.lemma()
+            word = obj.word
             print(word, len(word))
             assert len(generateSegmentationIndices_exponentialSpace(word, tk.vocab)) == possibleSegmentations(tk.vocab, word)
 

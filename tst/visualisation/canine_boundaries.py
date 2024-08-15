@@ -32,9 +32,9 @@ def celex_errors():
 
     with KnockoutDataConfiguration(setupEnglish()):
         for obj in morphologyGenerator(verbose=False):
-            word = obj.lemma()
+            word = obj.word
 
-            reference = obj.morphSplit()
+            reference = " ".join(obj.segment())
             viterbi   = " ".join(tokeniseAndDecode(word, canine_viterbi)).strip()
 
             if reference != viterbi:
@@ -70,7 +70,7 @@ def celex_probabilityDistribution():
         histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
         if histo.needs_computation:
             for obj in morphologyGenerator():
-                histo.addMany("predictions", getPredictionProbabilities(classifier, obj.lemma()).tolist())
+                histo.addMany("predictions", getPredictionProbabilities(classifier, obj.word).tolist())
 
         histo.commit_histplot(binwidth=0.05, relative_counts=True, x_lims=(-0.025,1.025), x_tickspacing=0.1,
                               x_label="Predicted boundary probability", y_label="Proportion of words")

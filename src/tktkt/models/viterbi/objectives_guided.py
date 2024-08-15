@@ -433,14 +433,14 @@ class GoldSplits(CharacterClassifier):
     def __init__(self, pretokeniser: WhitespaceAndMarkerPretokeniser):
         self.pretokeniser = pretokeniser
         self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == BoundaryMarkerLocation.START)
-        self.gold_segmentations = {obj.lemma(): obj.morphSplit() for obj in morphologyGenerator()}
+        self.gold_segmentations = {obj.word: obj.segment() for obj in morphologyGenerator()}
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         labels = np.zeros(len(pretoken), dtype=np.float32)
 
         word, _ = self.pretokeniser.marker.isolate(pretoken)
         if word in self.gold_segmentations:
-            tokens = self.gold_segmentations[word].split()
+            tokens = self.gold_segmentations[word]
             split_positions = np.cumsum([len(t) for t in tokens[:-1]]) - 1
             split_positions += self.pretoken_shift  # If "word" is shown to the character model as "Ġword", the suggested split indices should shift by 1.
 

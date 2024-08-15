@@ -1,12 +1,12 @@
 """
 Taken from the BPE knockout repo.
 """
-from typing import Callable, Dict, Optional, List, Tuple, Iterable, Union
+from typing import Callable, Dict, List, Tuple, Iterable, Union
 from dataclasses import dataclass
 
-from bpe_knockout.datahandlers.morphology import MorphologyVisitor, MorphSplit, LexSplit, LemmaMorphology
 from bpe_knockout.datahandlers.holdout import Holdout
 from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
+from modest.interfaces.morphologies import MorphologyVisitor, WordSegmentation, MorphSplit, FreeMorphSplit
 
 from ..util.printing import wprint
 from ..files.paths import DataPaths
@@ -122,16 +122,16 @@ def tokeniseAndDecode(string: str, tokeniser: Tokeniser) -> List[str]:
 
 
 def morphologyVersusTokenisation(
-        morphological_generator: Iterable[LemmaMorphology], morphology_method: MorphologyVisitor,
+        morphological_generator: Iterable[WordSegmentation], morphology_method: MorphologyVisitor,
         tokeniser: Tokeniser,
         weights: Dict[str, float]=None, holdout: Holdout=None,  # Experiment parameters
         do_write_fusions: bool=False, quiet: bool=False, display_confusion_matrix: bool=False, log_name: str="log"  # Display
     ) -> Tuple[ConfusionMatrix, ConfusionMatrix]:
     # Optional stuff
     weighted = weights is not None
+    log = None
     if do_write_fusions:
-        output_dir = DataPaths.pathToEvaluations()
-        log = open(output_dir / f"{log_name}_morpheme-fusions_{morphology_method.__name__}.txt", "w", encoding="utf-8")
+        log = open(DataPaths.pathToEvaluations() / f"{log_name}_morpheme-fusions_{morphology_method.__name__}.txt", "w", encoding="utf-8")
 
     # Result storage
     cm   = ConfusionMatrix()
@@ -141,10 +141,10 @@ def morphologyVersusTokenisation(
         holdout = Holdout(0.0)  # 0% is in the training set, 100% in the test set.
 
     for obj in holdout(morphological_generator, test=True):
-        lemma = obj.lemma()
+        lemma = obj.word
 
         tokeniser_segmentation = " ".join(tokeniseAndDecode(lemma, tokeniser=tokeniser)).strip()
-        reference_segmentation = morphology_method(obj)
+        reference_segmentation = " ".join(morphology_method(obj))
 
         # print(reference_segmentation, "->", tokeniser_segmentation)
 
@@ -243,7 +243,7 @@ def intrinsicEvaluation(tokenisers: Iterable[Union[Tokeniser, TokeniserWithFinit
             if verbose:
                 wprint("\tLemmatic split accuracy:")
             cm2, cm2_w = morphologyVersusTokenisation(morphologyGenerator(verbose=verbose),
-                                                      LexSplit(), tokeniser=t,
+                                                      FreeMorphSplit(), tokeniser=t,
                                                       weights=lemma_weights, holdout=holdout,
                                                       do_write_fusions=False, log_name=name, quiet=not verbose)
         else:

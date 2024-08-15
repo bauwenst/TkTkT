@@ -17,7 +17,7 @@ def test_classicbpe():
 
     from tktkt.evaluation.morphological import morphologyGenerator
     for obj in morphologyGenerator():
-        word = obj.lemma()
+        word = obj.word
         tokens1 = roberta_hf.tokenize(word)
         tokens2 = roberta_tktkt.prepareAndTokenise(word)
         assert tokens1 == tokens2, f"{word} becomes {tokens1} versus {tokens2}"
@@ -35,7 +35,7 @@ def test_guidedbpe():
     )
 
     for obj in morphologyGenerator():
-        word = obj.lemma()
+        word = obj.word
         tokens1 = base.prepareAndTokenise(word)
         tokens2 = guided_bpe.prepareAndTokenise(word)
         assert tokens1 == tokens2, f"{word} becomes {tokens1} versus {tokens2}"

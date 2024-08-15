@@ -72,14 +72,14 @@ TkTkT also has wrapper classes (in `tktkt.wrappers`) to extend existing tokenise
 ### Non-editable (recommended)
 Simply run
 ```shell
-pip install "tktkt[github] @ git+https://github.com/bauwenst/TkTkT.git"
+pip install "tktkt[github] @ git+https://github.com/bauwenst/TkTkT"
 ```
 where you should leave out the `[github]` suffix if you have an editable installation of [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout).
 
 ### Editable
 If you want to keep TkTkT out of your `site-packages` for easy editing, an editable install is always possible:
 ```shell
-git clone https://github.com/bauwenst/TkTkT.git
+git clone https://github.com/bauwenst/TkTkT
 cd TkTkT
 pip install -e .[github]
 ```

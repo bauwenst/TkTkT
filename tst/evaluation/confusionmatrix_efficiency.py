@@ -1,7 +1,7 @@
 import re
 
-from src.tktkt.util.timing import timeit
-from src.tktkt.evaluation.morphological import compareSplits_cursors
+from tktkt.util.timing import timeit
+from tktkt.evaluation.morphological import compareSplits_cursors
 
 from bpe_knockout.project.config import morphologyGenerator
 

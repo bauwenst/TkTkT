@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tktkt"
-version = "2024.06.01"
+version = "2024.08.01"
 requires-python = ">= 3.9"
 authors = [
   {name = "Thomas Bauwens", email = "thomas.bauwens@kuleuven.be"}
@@ -33,6 +33,7 @@ dependencies = [
 # These are not optional, but if you have these packages as editable install, you don't want to let pip install them again!
 [project.optional-dependencies]
 github = [
+    "modest[github]       @ git+https://github.com/bauwenst/MoDeST",
     "bpe_knockout[github] @ git+https://github.com/bauwenst/BPE-knockout",
     "fiject               @ git+https://github.com/bauwenst/fiject",
     "clavier              @ git+https://github.com/MaxHalford/clavier"

@@ -36,7 +36,7 @@ def compareDeprectatedProduct():
     tk2 = RA_Product(pre, vocab)
 
     for obj in morphologyGenerator():
-        word = obj.lemma()
+        word = obj.word
 
         tokens1 = tk1.prepareAndTokenise(word)
         tokens2 = tk2.prepareAndTokenise(word)
