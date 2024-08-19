@@ -11,33 +11,41 @@ Quick navigation:
 ## Features
 ### Supported tokenisers
 All subword tokenisers are defined under `tktkt.models`. Many of these can be instantiated without much background knowledge using the builders in `tktkt.builders`.
-Also, any HuggingFace tokeniser can be wrapped into a TkTkT tokeniser, and any TkTkT tokeniser can be wrapped into a HuggingFace tokeniser.
+Also, **any HuggingFace tokeniser** can be wrapped into a TkTkT tokeniser, and **any TkTkT tokeniser** can be wrapped into a HuggingFace tokeniser.
 
 Currently, the package implements:
 - Byte-pair encoding (BPE) tokenisers:
-  - Classical BPE ([Sennrich et al., 2016](https://aclanthology.org/P16-1162/)), with added support for *n*-ary merges (byte-tuple encoding, BTE) and any word boundary marker (start-of-words like GPT-2 and end-of-words like Sennrich).
-  - BPE-dropout ([Provilkov et al., 2020](https://aclanthology.org/2020.acl-main.170/))
-  - BPE-knockout (Bauwens & Delobelle, 2024)
-  - Trimmed BPE ([Cognetta et al., 2024](https://arxiv.org/abs/2404.00397))
-- Unigram language model (ULM), dubbed *KudoPiece* in TkTkT ([Kudo, 2018](https://aclanthology.org/P18-1007/)):
+  - Classical **BPE** ([Sennrich et al., 2016](https://aclanthology.org/P16-1162/)), with added support for *n*-ary merges (byte-tuple encoding, BTE) and any word boundary marker (start-of-words like GPT-2 and end-of-words like Sennrich).
+  - **BPE-dropout** ([Provilkov et al., 2020](https://aclanthology.org/2020.acl-main.170/))
+  - **BPE-knockout** ([Bauwens & Delobelle, 2024](https://aclanthology.org/2024.naacl-long.324/))
+  - **TrimmedBPE** ([Cognetta et al., 2024](https://arxiv.org/abs/2404.00397))
+  - Other variants:
+    - **EnsuredBPE**: BPE where the last merges have been replaced by the merges necessary to ensure that a given list of strings is in the vocabulary.
+    - **ShuffledBPE**: BPE but with merge priorities shuffled, although types are never shuffled to a priority before the ancestors in their merge tree.
+- **Unigram language model (ULM)**, dubbed *KudoPiece* in TkTkT ([Kudo, 2018](https://aclanthology.org/P18-1007/)):
   - Wrapper around the [SentencePiece](https://github.com/google/sentencepiece) package
   - Native implementation in TkTkT
-- Greedy tokenisers ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289)):
+- **Greedy** tokenisers ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289)):
   - Left-to-right and right-to-left
   - Random-access, dubbed "FLOTA" by [Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/).
-- Derivative leverager (DeL) ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)).
+- **Derivative leverager (DeL)** ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)).
   - Segmentation
   - Trainer
-- Character/byte N-grams.
-- Randomised segmentation from a given subword vocabulary.
-- A family of Viterbi-driven tokenisers (work in progress).
-- Coming soon: Morfessor family
+- Character/byte **N-grams**.
+- **Randomised** segmentation from a given subword vocabulary.
+
+Currently work in progress:
+- A family of Viterbi-driven tokenisers.
+- Morfessor family
 
 ### Evaluation metrics
 TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
 - Fertility statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
 - Morphological boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
   position in a word.
+- Richness of token contexts with accessor variety.
+- Entropy-based measures.
+- Comparison between two tokenisers: how much they tokenise words exactly the same, and how much their split points overlap.
 
 ### Visualisers
 The following tokenisation procedures can be visualised:
@@ -150,7 +158,7 @@ print(hf_tktkt_roberta.tokenize(sentence))
 ### KudoPiece (ULM)
 Let's say you want to train and load an English ULM tokeniser. You are, of course, scared of the `sentencepiece` library
 because its Python interface is a thin wrapper around a command-line call, not allowing autocompletion in your IDE.
-In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in TkTkT because it is more technically accurate).
+In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in TkTkT because many tokenisers are based on a language model of unigrams).
 
 First we call the trainer with relevant training arguments:
 ```python

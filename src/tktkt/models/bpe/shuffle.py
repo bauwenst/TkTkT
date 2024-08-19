@@ -7,7 +7,7 @@ from .base import *
 RNG = npr.default_rng(0)
 
 
-class ShuffledBPE(ClassicBPE):
+class ShuffledBPE(DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
                  vocab: Vocab, merges: MergeList, unk_type: str=None,
@@ -19,7 +19,9 @@ class ShuffledBPE(ClassicBPE):
             unk_type=unk_type,
 
             vocab=vocab,
-            merges=merges
+            merges=merges,
+
+            do_morphemic_knockout=False
         )
 
         if constrained:
@@ -28,7 +30,7 @@ class ShuffledBPE(ClassicBPE):
             self.shuffleMerges_naive()
 
     def shuffleMerges_naive(self):
-        self.initialiseGraph(self.vocab, [" ".join(m.parts) for m in RNG.permutation(self.merge_graph.merges)])
+        self._initialiseGraph(self.vocab, [" ".join(m.parts) for m in RNG.permutation(self.merge_graph.merges)])
 
     def shuffleMerges_constrained(self):
         """
@@ -61,7 +63,7 @@ class ShuffledBPE(ClassicBPE):
             if (len(new_merges)+1) % logging_step == 0:
                 print(f"\tShuffled {len(new_merges)} merges...")
 
-        self.initialiseGraph(vocab=self.vocab, mergelist=[" ".join(m.parts) for m in new_merges])
+        self._initialiseGraph(vocab=self.vocab, mergelist=[" ".join(m.parts) for m in new_merges])
 
     def shuffleMerges_leafConstrained(self):
         """

@@ -4,7 +4,7 @@ vocabulary in their entirety.
 
 TODO: What isn't possible currently is path insurance, where you can ensure that a merge a+b->ab is added first
       and then expect a string a b c d to (somehow) become abcd VIA that merge a+b, because the merge b+c->bc could be
-      in the tokeniser already.
+      in the tokeniser already. The reason that would be powerful is that you could e.g. force compounds to be merged from constituents.
 """
 import warnings
 from typing import Iterable, Tuple
@@ -16,7 +16,7 @@ from .base import *
 from ...util.lists import keepFirst, mapExtend
 
 
-class EnsuredBPE(ClassicBPE):
+class EnsuredBPE(DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
                  vocab: Vocab, merges: MergeList, ensure_strings: Iterable[str], forbid_strings: Iterable[str], forbid_forming: Iterable[str], unk_type: str=None,
@@ -40,7 +40,9 @@ class EnsuredBPE(ClassicBPE):
 
             vocab=vocab,
             merges=merges,
-            unk_type=unk_type
+            unk_type=unk_type,
+
+            do_morphemic_knockout=False
         )
 
         self.ensured   = list(keepFirst(mapExtend(self.preprocessor.do, ensure_strings) if do_preprocess_these else ensure_strings))
@@ -64,7 +66,7 @@ class EnsuredBPE(ClassicBPE):
             # Find all merges that need to be protected against trimming from the end.
             protected_merge_priorities = set()
             for ensured_string in self.ensured:
-                _, index_to_priority = self.tokenise_diagnostic(ensured_string)
+                _, index_to_priority = self._tokenise_diagnostic(ensured_string)
                 protected_merge_priorities.update(index_to_priority.values())
 
             deletable_merge_stack = sorted(filter(lambda m: m.priority not in protected_merge_priorities, self.merge_graph.merges))
@@ -124,7 +126,7 @@ class EnsuredBPE(ClassicBPE):
                 total_merges_added += 1
 
         # Now that you're going to call .tokenise() in the next iteration, synchronise the tokeniser with the new knowledge.
-        self.syncWithGraph()
+        self._syncWithGraph()
 
         # Finally, prune away as many types as you added (minus the amount you know you're already going to prune anyway).
         if self._fixed_size:
@@ -140,7 +142,7 @@ class EnsuredBPE(ClassicBPE):
         for forbidden in self.forbidden:
             if forbidden in self.vocab:
                 self.merge_graph.knockout(type_to_delete=forbidden)
-        self.syncWithGraph()
+        self._syncWithGraph()
 
         ### PART 3: Special strings ###
         for special in self.special:
@@ -150,6 +152,6 @@ class EnsuredBPE(ClassicBPE):
                 self.merge_graph.knockout(type_to_delete=special)
 
             self.merge_graph.addVertex(type_to_add=special, suggested_id=id_to_use)
-        self.syncWithGraph()
+        self._syncWithGraph()
 
         self._trained = True

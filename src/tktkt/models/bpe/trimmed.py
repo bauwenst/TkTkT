@@ -4,16 +4,26 @@ from collections import Counter
 from .base import *
 
 
-class TrimmedBPETokeniser(ClassicBPE):
+class TrimmedBPETokeniser(DeterministicBPETokeniser):
     """
     Implementation of Yuval Pinter's TrimmedBPE tokeniser, which first applies BPE like normal, and then
     recursively undoes applied merges until all tokens are NOT in a predefined set of illegal types.
     """
 
     def __init__(self, preprocessor: Preprocessor, marker: BoundaryMarker,
-                 vocab: Vocab, merges: List[str]):
-        super().__init__(preprocessor, marker, vocab, merges)
+                 vocab: Vocab, merges: List[str],
+                 word_corpus: Counter[str], keep_type_if_above: int):
+        super().__init__(
+            preprocessor=preprocessor,
+            boundary_marker=marker,
+
+            vocab=vocab,
+            merges=merges,
+
+            do_morphemic_knockout=False
+        )
         self.disabled = set()
+        self.trim(word_corpus, keep_type_if_above)
 
     def tokenise(self, pretoken: str) -> List[str]:
         # Do BPE
@@ -26,7 +36,7 @@ class TrimmedBPETokeniser(ClassicBPE):
         return new_tokens
 
     def recursivelyDecompose(self, token: str) -> List[str]:
-        if token not in self.vocab:
+        if token not in self.vocab:  # Might be a problem considering that BTE doesn't automatically convert unknown characters to [UNK].
             raise ValueError(f"Cannot decompose token that doesn't have a type in the vocabulary: {token}")
 
         if token not in self.disabled:
@@ -56,6 +66,9 @@ class TrimmedBPETokeniser(ClassicBPE):
                     self._disableType(t)
                 except:  # t is part of the alphabet.
                     pass
+
+        # Reset cache
+        self._syncWithGraph()
 
     def _disableType(self, type_to_disable: str):
         if type_to_disable not in self.vocab or not self.merge_graph.merges_of[type_to_disable]:

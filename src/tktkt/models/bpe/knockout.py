@@ -8,9 +8,6 @@ from langcodes import Language
 from typing import Union
 import warnings
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupDutch, setupEnglish, setupGerman
-from bpe_knockout.knockout.core import BTE, BteInitConfig, RefMode, ReifyMode, ByteBasedMode
-
 from .base import *
 
 
@@ -31,10 +28,10 @@ def langstringToLanguage(language: str) -> Language:
             raise ValueError(f"Language cannot be recognised: {language}")
 
 
-class BPEKnockout(BTE):
+class BPEKnockout(DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
-                 vocab: Vocab, merges: MergeList, language: Union[Language, str]):
+                 vocab: Vocab, merges: MergeList, language: Union[Language, str], unk_type: str=None):
         # Impute language
         if isinstance(language, str):
             language = langstringToLanguage(language)
@@ -47,22 +44,21 @@ class BPEKnockout(BTE):
         # Run knockout in the context of that language
         with KnockoutDataConfiguration(config):
             super().__init__(
-                BteInitConfig(knockout=RefMode.MORPHEMIC),
-                starting_vocab=vocab, starting_mergelist=merges,
-
                 preprocessor=preprocessor,
                 boundary_marker=boundary_marker,
+                unk_type=unk_type,
 
-                autorun_modes=True,
-                quiet=True,
-                holdout=None
+                vocab=vocab,
+                merges=merges,
+
+                do_morphemic_knockout=True
             )
 
-    @staticmethod
-    def fromHuggingFace(hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str]) -> "BPEKnockout":
+    @classmethod
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str]) -> Self:
         """
         Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
-        (rather than wrapping it), then apply knockout using the given language.
+        (rather than wrapping it), and *also* apply knockout using the given language.
         """
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         marker = detectBoundaryMarker(hf_bpe_tokenizer)
@@ -70,6 +66,7 @@ class BPEKnockout(BTE):
         return BPEKnockout(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
             boundary_marker=marker,
+            unk_type=hf_bpe_tokenizer.unk_token,
 
             vocab=vocab_and_merges.loadVocabulary(),
             merges=vocab_and_merges.loadMerges(),

@@ -1,4 +1,5 @@
 from typing import List, Iterable, MutableSequence, Union, Optional
+from typing_extensions import Self
 
 import numpy.random as npr
 from math import exp, log, inf
@@ -8,7 +9,7 @@ from transformers import PreTrainedTokenizerFast
 from ...preparation.boundaries import BoundaryMarker
 from ...interfaces.tokeniser import Preprocessor
 from ..viterbi.objectives_guided import CharacterClassifier
-from .base import Vocab, MergeList, ClassicBPE
+from .base import Vocab, MergeList, NonDeterministicBPETokeniser
 
 
 class ConstantCharacterClassifier(CharacterClassifier):
@@ -20,7 +21,7 @@ class ConstantCharacterClassifier(CharacterClassifier):
         return [self.logp for _ in range(len(pretoken))]
 
 
-class GuidedBPEDropout(ClassicBPE):
+class GuidedBPEDropout(NonDeterministicBPETokeniser):
     """
     Generalisation of BPE-dropout which varies the probability of every merge being applied in the given string based on
     a classifier that predicts whether the split that would be removed by the merge should be kept (e.g. because it is
@@ -55,6 +56,8 @@ class GuidedBPEDropout(ClassicBPE):
             # Prep
             preprocessor=preprocessor,
             boundary_marker=boundary_marker,
+
+            do_morphemic_knockout=False
         )
 
         self.classifier = dropout_probability if not isinstance(dropout_probability, float) else ConstantCharacterClassifier(dropout_probability)
@@ -62,15 +65,15 @@ class GuidedBPEDropout(ClassicBPE):
         self.deterministic_threshold = always_dropout_above
         self.rng = npr.default_rng(0)
 
-    @staticmethod
-    def fromHuggingFace(hf_bpe_tokenizer: PreTrainedTokenizerFast,
-                        dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None) -> "GuidedBPEDropout":
+    @classmethod
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast,
+                        dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None) -> Self:
         classic_implementation = super().fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
-        return GuidedBPEDropout(
+        return cls(
             preprocessor=classic_implementation.preprocessor,
             vocab=classic_implementation.vocab,
             merges=classic_implementation.merge_graph.getRawMerges(),
-            boundary_marker=classic_implementation.boundary_marker,
+            boundary_marker=classic_implementation._boundary_marker,
             unk_type=classic_implementation.unk,
 
             dropout_probability=dropout_probability,
