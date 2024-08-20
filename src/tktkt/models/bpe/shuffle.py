@@ -50,7 +50,7 @@ class ShuffledBPE(DeterministicBPETokeniser):
 
         while open_set:
             # Decide which merge comes next
-            next_merge = open_set.pop(RNG.choice(len(open_set)))
+            next_merge = open_set.pop(RNG.integers(len(open_set)))
             next_type  = next_merge.childType()
             new_merges.append(next_merge)
             closed_set.add(next_type)

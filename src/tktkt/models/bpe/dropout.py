@@ -122,7 +122,7 @@ class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
             if n == 0:
                 break
 
-            random_merge, index_in_buffer = possible_merges[self.rng.choice(n)]
+            random_merge, index_in_buffer = possible_merges[self.rng.integers(n)]
             buffer = buffer[:index_in_buffer] + random_merge[2] + buffer[index_in_buffer + len(random_merge[1]):]
 
         return buffer[1:-1].split(" ")
@@ -170,7 +170,7 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
                             valid_splits.append(i)
 
                     # Sample from these breakdowns
-                    chosen_i = valid_splits[self.rng.choice(len(valid_splits))]
+                    chosen_i = valid_splits[self.rng.integers(len(valid_splits))]
 
                     # Push these to the stack of tokens to be processed (left one on top of right one)
                     left  = token_to_breakdown[:chosen_i+1]

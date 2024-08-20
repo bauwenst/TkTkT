@@ -83,8 +83,12 @@ def iprint(integer: int, sep=" "):
     print(intsep(integer, sep))
 
 
-def intsep(integer: int, sep=" "):
+def intsep(integer: int, sep=" ") -> str:
     return f"{integer:,}".replace(",", sep)
+
+
+def percent(num: int, denom: int, decimals: int=2) -> str:
+    return (f"{round(100*num/denom, decimals)}" if denom != 0 else "???") + "%"
 
 
 def sgnprint(number: float):

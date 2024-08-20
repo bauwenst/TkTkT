@@ -96,4 +96,16 @@ class ClassicBPE(DeterministicBPETokeniser):
     BPE with binary merges (that's what the P stands for).
     Technically the constructor allows merges with more than two types.
     """
-    pass
+
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, boundary_marker: BoundaryMarker,
+                 unk_type: str=None):
+        super().__init__(
+            preprocessor=preprocessor,
+            boundary_marker=boundary_marker,
+
+            vocab=vocab,
+            merges=merges,
+            unk_type=unk_type,
+
+            do_morphemic_knockout=False
+        )

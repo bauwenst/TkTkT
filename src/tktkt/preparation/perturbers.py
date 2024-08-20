@@ -82,7 +82,7 @@ class FixedUniformSampler(PerturbationPointSampler):
 
     def sample(self, characters: str) -> Iterable[int]:
         N = len(characters)
-        n = RNG.choice(range(min(N,self.min), min(N,self.max)+1))
+        n = RNG.integers(range(min(N,self.min), min(N,self.max)+1))
         return RNG.choice(N, size=n, replace=False)
 
 
@@ -252,4 +252,4 @@ class ParallelPerturber(Perturber):
         self.pool = list(perturbations)
 
     def perturb(self, text: str) -> str:
-        return self.pool[RNG.choice(len(self.pool))].perturb(text)
+        return self.pool[RNG.integers(len(self.pool))].perturb(text)

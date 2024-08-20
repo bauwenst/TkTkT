@@ -1,4 +1,4 @@
-from typing import Any, List, Iterable, Callable
+from typing import Any, List, Iterable, Callable, Generator
 from pathlib import Path
 
 
@@ -72,3 +72,17 @@ def count(iterable: Iterable):
     for _ in iterable:
         total += 1
     return total
+
+
+def drop(n: int, iterable: Iterable) -> Generator:
+    for i, thing in enumerate(iterable):
+        if i < n:
+            continue
+        yield thing
+
+
+def take(n: int, iterable: Iterable) -> Generator:
+    for i, thing in enumerate(iterable):
+        if i >= n:
+            break
+        yield thing
