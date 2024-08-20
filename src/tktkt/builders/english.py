@@ -1,12 +1,10 @@
 """
 Evaluate any tokeniser on English morphology.
 """
-from typing import Type, Optional
-
 from transformers import CanineTokenizer, CanineForTokenClassification, AutoTokenizer
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
+from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯, defaultTokeniserFiles
 from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath
 
 from ..preparation.instances import *
@@ -17,9 +15,8 @@ from ..models.bpe.knockout import BPEKnockout
 from ..models.bpe.guided import GuidedBPEDropout
 from ..models.ngram.alphabet import UnicodeTokeniser
 from ..files.paths import relativeToCwd, DataPaths
-from ..interfaces.tokeniser import Tokeniser
 
-from .base import TokeniserBuilder
+from .base import TokeniserBuilder, T
 
 
 PATH_CANINE_FOR_MBR_EN = relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_MBR-en_2024-02-12_19-35-28")
@@ -31,7 +28,7 @@ def getEnglishBpeFiles() -> BpeTokeniserPath:
     other constructors are unaffected.
     """
     with KnockoutDataConfiguration(setupEnglish()):
-        return Pℛ𝒪𝒥ℰ𝒞𝒯.config.base_tokeniser
+        return defaultTokeniserFiles()
 
 
 def getEnglishKudo() -> AlbertTokenizerFast:
@@ -47,14 +44,14 @@ def getEnglishCANINE() -> CharacterClassifier:
     )
 
 
-class Builder_English_BPE(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_BPE(TokeniserBuilder[HuggingFaceTokeniser]):
+    def buildTokeniser(self) -> T:
         english_bpe = getEnglishBpeFiles().toFastBPE()  # HuggingFace automatically sets a ByteBased tokenizers.pretokeniser on all RobertaTokenizerFast instances, which also implicitly adds a start-of-word Ġ as replacement for spaces.
         return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
-class Builder_English_BPE_native(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_BPE_native(TokeniserBuilder[ClassicBPE]):
+    def buildTokeniser(self) -> T:
         files = getEnglishBpeFiles()
         return ClassicBPE(
             preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
@@ -64,8 +61,8 @@ class Builder_English_BPE_native(TokeniserBuilder):
         )
 
 
-class Builder_English_BPEKnockout(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_BPEKnockout(TokeniserBuilder[BPEKnockout]):
+    def buildTokeniser(self) -> T:
         files = getEnglishBpeFiles()
         return BPEKnockout(
             preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
@@ -76,14 +73,14 @@ class Builder_English_BPEKnockout(TokeniserBuilder):
         )
 
 
-class Builder_English_KudoPiece(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_KudoPiece(TokeniserBuilder[HuggingFaceTokeniser]):
+    def buildTokeniser(self) -> T:
         tk = getEnglishKudo()
         return HuggingFaceTokeniser(tk, for_single_words=True)
 
 
-class Builder_English_LeastToken_BPE(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_LeastToken_BPE(TokeniserBuilder[LeastTokenViterbi]):
+    def buildTokeniser(self) -> T:
         english_bpe = getEnglishBpeFiles().toFastBPE()
         return LeastTokenViterbi(
             preprocessor=HuggingFacePreprocessorForWords(english_bpe),
@@ -92,8 +89,8 @@ class Builder_English_LeastToken_BPE(TokeniserBuilder):
         )
 
 
-class Builder_English_LeastToken_BPEKnockout(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_LeastToken_BPEKnockout(TokeniserBuilder[LeastTokenViterbi]):
+    def buildTokeniser(self) -> T:
         files = getEnglishBpeFiles()
         only_for_vocabulary = BPEKnockout(
             preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),
@@ -109,8 +106,8 @@ class Builder_English_LeastToken_BPEKnockout(TokeniserBuilder):
         )
 
 
-class Builder_English_LeastToken_ULM(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_LeastToken_ULM(TokeniserBuilder[LeastTokenViterbi]):
+    def buildTokeniser(self) -> T:
         hf_english_ulm = getEnglishKudo()
         return LeastTokenViterbi(
             HuggingFacePreprocessorForWords(hf_english_ulm),
@@ -119,8 +116,8 @@ class Builder_English_LeastToken_ULM(TokeniserBuilder):
         )
 
 
-class Builder_English_CanineViterbi_BPE(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_CanineViterbi_BPE(TokeniserBuilder[HFPointViterbi]):
+    def buildTokeniser(self) -> T:
         english_bpe = getEnglishBpeFiles().toFastBPE()
         return HFPointViterbi(
             # HuggingFacePreprocessorForWords(robbert_tokenizer),  # The preprocessor that maps any string into the space of the vocabulary used.
@@ -140,7 +137,7 @@ class Builder_English_CanineViterbi_BPE(TokeniserBuilder):
         )
 
 
-class Builder_English_CanineViterbi_ULM(TokeniserBuilder):
+class Builder_English_CanineViterbi_ULM(TokeniserBuilder[HFPointViterbi]):
 
     def __init__(self,
         generator: Type[ScoreGeneratorUsingCharacterClassifier]=BoundaryScoresChosen,
@@ -151,7 +148,7 @@ class Builder_English_CanineViterbi_ULM(TokeniserBuilder):
         self.score_transform = score_transform
         self.constraint = constraint
 
-    def buildTokeniser(self) -> Tokeniser:
+    def buildTokeniser(self) -> T:
         english_ulm = getEnglishKudo()
 
         return HFPointViterbi(
@@ -170,10 +167,10 @@ class Builder_English_CanineViterbi_ULM(TokeniserBuilder):
         )
 
 
-class Builder_English_LeastTokenThenHF_ULM(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_LeastTokenThenHF_ULM(TokeniserBuilder[LeastTokenViterbiWithProbabilityTiebreaker]):
+    def buildTokeniser(self) -> T:
         kudo: HuggingFaceTokeniser = Builder_English_KudoPiece().buildTokeniser()
-        vocab = kudo.getVocabMapping()
+        vocab = kudo.backend.get_vocab()
         assert isinstance(vocab, dict)
 
         classifier = getEnglishCANINE()
@@ -185,10 +182,10 @@ class Builder_English_LeastTokenThenHF_ULM(TokeniserBuilder):
         )
 
 
-class Builder_English_HfThenLeastToken_ULM(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_HfThenLeastToken_ULM(TokeniserBuilder[ProbabilityViterbiWithLeastTokenTiebreaker]):
+    def buildTokeniser(self) -> T:
         kudo: HuggingFaceTokeniser = Builder_English_KudoPiece().buildTokeniser()
-        vocab = kudo.getVocabMapping()
+        vocab = kudo.backend.get_vocab()
         assert isinstance(vocab, dict)
 
         classifier = getEnglishCANINE()
@@ -200,12 +197,12 @@ class Builder_English_HfThenLeastToken_ULM(TokeniserBuilder):
         )
 
 
-class Builder_English_CanineBPEdropout(TokeniserBuilder):
+class Builder_English_CanineBPEdropout(TokeniserBuilder[GuidedBPEDropout]):
 
     def __init__(self, deterministic_threshold: float=None):
         self.threshold = deterministic_threshold
 
-    def buildTokeniser(self) -> Tokeniser:
+    def buildTokeniser(self) -> T:
         english_bpe_files = getEnglishBpeFiles()
         english_canine_mbr = getEnglishCANINE()
 
@@ -221,6 +218,6 @@ class Builder_English_CanineBPEdropout(TokeniserBuilder):
         )
 
 
-class Builder_English_Character(TokeniserBuilder):
-    def buildTokeniser(self) -> Tokeniser:
+class Builder_English_Character(TokeniserBuilder[UnicodeTokeniser]):
+    def buildTokeniser(self) -> T:
         return UnicodeTokeniser(preprocessor=IdentityPreprocessor)

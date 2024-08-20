@@ -162,6 +162,13 @@ def detectSpecials(types: Iterable[str]) -> SpecialTokensMixin:
     Attempt to find all the special types in the given domain (e.g. [CLS], [SEP], etc...).
     Delimiters cannot be mixed (e.g. not both [CLS] and </s>, or [UNK] and <mask>, etc...).
     """
+    def warnIfAlreadyAssigned(should_be_none, value) -> bool:
+        if should_be_none is None:
+            return True
+        else:
+            warnings.warn(f"Value '{value}' was not assigned to a variable since it already contained the value '{should_be_none}'.")
+            return False
+
     DELIMITERS = {0: ("[", "]"), 1: ("<", ">")}
 
     special_families = {i: [] for i in DELIMITERS}
@@ -175,33 +182,36 @@ def detectSpecials(types: Iterable[str]) -> SpecialTokensMixin:
     for t in found_types:
         t_lower = t.lower()
         if "bos" in t_lower:
-            mixin.bos_token    = t
-            # mixin.bos_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.bos_token, t):
+                mixin.bos_token = t
         elif "eos" in t_lower:
-            mixin.eos_token    = t
-            # mixin.eos_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.eos_token, t):
+                mixin.eos_token = t
         elif "cls" in t_lower:
-            mixin.cls_token    = t
-            # mixin.cls_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.cls_token, t):
+                mixin.cls_token = t
         elif "sep" in t_lower:
-            mixin.sep_token    = t
-            # mixin.sep_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.sep_token, t):
+                mixin.sep_token = t
         elif "pad" in t_lower:
-            mixin.pad_token    = t
-            # mixin.pad_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.pad_token, t):
+                mixin.pad_token = t
         elif "unk" in t_lower:
-            mixin.unk_token    = t
-            # mixin.unk_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.unk_token, t):
+                mixin.unk_token = t
         elif "msk" in t_lower or "mask" in t_lower:
-            mixin.mask_token    = t
-            # mixin.mask_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.mask_token, t):
+                mixin.mask_token = t
         elif "/s" in t_lower:
-            mixin.eos_token    = t
-            # mixin.eos_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.eos_token, t):
+                mixin.eos_token = t
         elif "s" in t_lower:
-            mixin.bos_token    = t
-            # mixin.bos_token_id = vocab[t]
+            if warnIfAlreadyAssigned(mixin.bos_token, t):
+                mixin.bos_token = t
+        elif "<|endoftext|>" in t_lower:
+            if warnIfAlreadyAssigned(mixin.eos_token, t):
+                mixin.eos_token = t
         else:
-            print("Found special-seeming but unrecognisable type:", t)
+            warnings.warn(f"Found special-seeming but unrecognisable type: {t}")
 
     return mixin
