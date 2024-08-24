@@ -1,7 +1,14 @@
+"""
+Analytic function prescriptions.
+"""
 import numpy as np
 
 
-def softmax(x: np.ndarray, temperature: float=1.0):
+def relu(x: float) -> float:
+    return max(x,0)
+
+
+def softmax(x: np.ndarray, temperature: float=1.0) -> np.ndarray:
     """
     Shifts to a maximum of 0 first, for numerical stability of the exponential (which is apparently more important
     than the numerical stability of a subtraction).
@@ -11,9 +18,15 @@ def softmax(x: np.ndarray, temperature: float=1.0):
     return exps / np.sum(exps)
 
 
-def normalise_then_softmax(x: np.ndarray, temperature: float=1.0):
+def ln_then_softmax(x: np.ndarray, temperature: float=1.0) -> np.ndarray:
+    """Note: only supports positive inputs."""
+    return softmax(np.log(x), temperature)
+
+
+def normalise_then_softmax(x: np.ndarray, temperature: float=1.0) -> np.ndarray:
     return softmax(x / np.sum(x), temperature)
 
 
-def relu(x: float) -> float:
-    return max(x,0)
+def normalise_then_ln_then_softmax(x: np.ndarray, temperature: float=1.0) -> np.ndarray:
+    """Note: only supports positive inputs."""
+    return softmax(np.log(x / np.sum(x)), temperature)

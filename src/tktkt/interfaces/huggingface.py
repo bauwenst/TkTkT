@@ -162,14 +162,14 @@ def detectSpecials(types: Iterable[str]) -> SpecialTokensMixin:
     Attempt to find all the special types in the given domain (e.g. [CLS], [SEP], etc...).
     Delimiters cannot be mixed (e.g. not both [CLS] and </s>, or [UNK] and <mask>, etc...).
     """
+    DELIMITERS = {0: ("[", "]"), 1: ("<", ">")}
+
     def warnIfAlreadyAssigned(should_be_none, value) -> bool:
         if should_be_none is None:
             return True
         else:
             warnings.warn(f"Value '{value}' was not assigned to a variable since it already contained the value '{should_be_none}'.")
             return False
-
-    DELIMITERS = {0: ("[", "]"), 1: ("<", ">")}
 
     special_families = {i: [] for i in DELIMITERS}
     for t in types:

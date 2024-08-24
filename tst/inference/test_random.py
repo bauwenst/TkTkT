@@ -1,11 +1,11 @@
-from tktkt.models.random.randomfromvocab import RandomVocabSegmentation_GeneratorBased, segmentUsingIndices, generateSegmentationIndices_exponentialSpace
+from tktkt.models.random.randomfromvocab import RandomVocabSegmentation_GenerateAll, segmentUsingIndices, generateSegmentationIndices_exponentialSpace
 from tktkt.preparation.instances import IdentityPreprocessor
 
 
 def test_word():
     word = "reanimatie"
     vocab = {"re": 0, "anim": 1, "atie": 2, "reanim": 3, "at": 4, "ie": 5, "a": 6, "ean": 7, "r": 8}
-    tk = RandomVocabSegmentation_GeneratorBased(IdentityPreprocessor, vocab)
+    tk = RandomVocabSegmentation_GenerateAll(IdentityPreprocessor, vocab)
 
     print([segmentUsingIndices(word, seg) for seg in generateSegmentationIndices_exponentialSpace(word, vocab)])
     print(tk.tokenise(word))

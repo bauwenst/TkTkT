@@ -1,3 +1,5 @@
+from typing import List
+
 
 def indent(level: int, multiline_string: str, tab: str=" "*4) -> str:
     """
@@ -23,3 +25,11 @@ def alignCharacter(multiline_string: str, character_to_align: str) -> str:
         lines[i] = line[:loc] + " "*(move_character_to - loc) + line[loc:]
 
     return "\n".join(lines)
+
+
+def segmentUsingIndices(text: str, starts_of_tokens: List[int]) -> List[str]:
+    return [text[start_idx:end_idx] for start_idx, end_idx in zip(starts_of_tokens, starts_of_tokens[1:] + [len(text)])]
+
+
+def segmentUsingBitmap(text: str, bitmap: str) -> List[str]:
+    return segmentUsingIndices(text, starts_of_tokens=[0] + [i+1 for i,c in enumerate(bitmap) if c == "1"])

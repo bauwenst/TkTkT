@@ -1,7 +1,7 @@
 from typing import List, Any, Tuple, Iterable
 
 from ..interfaces.tokeniser import TokeniserWithVocabDict
-from ..util.lists import foldSpans
+from ..util.iterables import foldSpans
 
 
 class TokeniserWithByteFallback(TokeniserWithVocabDict):
@@ -59,7 +59,7 @@ class TokeniserWithByteFallback(TokeniserWithVocabDict):
             return final_tokens
 
     def decodeUnks(self, pretoken: str, tokens: List[str]) -> Tuple[Iterable[str], Iterable[bool]]:
-        tokens = foldSpans(tokens, self.unk)
+        tokens = list(foldSpans(tokens, self.unk))
 
         # Align tokens with string to find out where the UNK(s) are.
         # - Viterbi for alignment: you have N characters to traverse, and a list of T-U normal tokens and U [UNK] tokens.

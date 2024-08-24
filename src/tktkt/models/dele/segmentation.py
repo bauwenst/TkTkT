@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 
 from ...interfaces.preparation import Preprocessor
 from ...interfaces.tokeniser import Tokeniser
-from ...util.lists import fileToList
+from ...util.iterables import fileToList
 
 DEL_DATA = Path(__file__).resolve().parent / "data"
 

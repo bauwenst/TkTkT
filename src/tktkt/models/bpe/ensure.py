@@ -13,7 +13,7 @@ from bpe_knockout.knockout.core import Merge
 from tktkt.util.functions import relu
 
 from .base import *
-from ...util.lists import keepFirst, mapExtend
+from ...util.iterables import keepFirst, mapExtend
 
 
 class EnsuredBPE(DeterministicBPETokeniser):

@@ -1,16 +1,33 @@
-from typing import List, Iterable
+"""
+FIXME: All of these tokenisers have a precondition that there exists at least one segmentation, otherwise they will break in some way.
+    - The generator-based one will generate nothing and choose a number between 0 and 0 not including 0.
+    - The rejection-sampling-based one will sample forever.
+    - The Markov-based one will hit a node during decoding which has 0 incoming edges and hence you're stuck.
+    |
+    There are many ways to solve this, most obviously using pseudobytes (they won't be interpretable but at least your
+    tokeniser doesn't crash), and otherwise by checking beforehand if at least all characters are in the vocab and if
+    not you return the characters and let them be [UNK]'ed.
+"""
+from typing import List, Iterable, Tuple
 
 import numpy.random as npr
 import itertools
+
 from tqdm.auto import tqdm
 
-from tktkt.util.functions import relu
-
-from ...util.printing import intsep
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
+from ...evaluation.fertility import possibleSegmentations
+from ...util.iterables import drop
+from ...util.functions import relu
+from ...util.printing import intsep
+from ...util.strings import segmentUsingIndices
 
 
-class RandomSegmentationFromVocab(TokeniserWithVocabDict):
+class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabDict):
+    """
+    Computes how many segmentations the given string has under the vocabulary constraint, selects a random number
+    between 0 and that amount, generates that many segmentations deterministically and then returns the next one.
+    """
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None):
         super().__init__(preprocessor, vocab, unk_type)
@@ -18,13 +35,16 @@ class RandomSegmentationFromVocab(TokeniserWithVocabDict):
 
     def tokenise(self, pretoken: str) -> List[str]:
         """
-        Get a random segmentation that is possible using the tokeniser's vocabulary.
+        Takes at least O(N²) time, and needs an additional O(2^{max(N-k,0)}/2) on average afterward.
         """
-        segmentations = generateSegmentationIndices_exponentialSpace(pretoken, self.vocab)
-        return segmentUsingIndices(pretoken, segmentations[self.rng.choice(len(segmentations))])
+        total_segmentations = possibleSegmentations(self.vocab, pretoken)  # This is O(N²), which is endlessly cheaper than the O(2^{N-k}) worst-case of generateSegmentationIndices
+        segmentation_generator = generateSegmentationIndices_fixedSpace(pretoken, self.vocab, max_prefix_length=22)
+        return segmentUsingIndices(pretoken, next(drop(self.rng.integers(total_segmentations), segmentation_generator)))
 
 
-def generateSegmentationIndices_exponentialSpace(text: str, vocab: Vocab) -> List[List[int]]:
+SegmentationIndices = List[int]
+
+def generateSegmentationIndices_exponentialSpace(text: str, vocab: Vocab) -> List[SegmentationIndices]:
     """
     We have a function possibleSegmentations() somewhere that gives the AMOUNT of possible segmentations, but not
     what they are. A very similar Viterbi algorithm works here, except the history you store is not an integer but
@@ -35,9 +55,6 @@ def generateSegmentationIndices_exponentialSpace(text: str, vocab: Vocab) -> Lis
     algorithm takes O(2^n) space in the worst case, and to construct that, you also need O(2^n) time. However, if you
     are lucky, space and time stay lower than exponential.
     """
-    # TODO: What should happen is that you should have a beam size of the maximal amount of segmentations you can tolerate,
-    #       and once you reach that in the trellis, you don't create new lists, only extend old ones, and warn that you will
-    #       receive an approximation.
     if len(text) > 27:
         raise RuntimeWarning(f"You better not generate all segmentations of the string '{text}' (length {len(text)}): that's up to {intsep(2**(len(text)-1))} lists!")
 
@@ -53,16 +70,7 @@ def generateSegmentationIndices_exponentialSpace(text: str, vocab: Vocab) -> Lis
     return [seg for seg in unique_segmentations_up_to[-1]]
 
 
-def segmentUsingIndices(text: str, starts_of_tokens: List[int]) -> List[str]:
-    return [text[start_idx:end_idx] for start_idx, end_idx in zip(starts_of_tokens, starts_of_tokens[1:] + [len(text)])]
-
-
-def generateSegmentations(text: str, vocab: Vocab) -> List[List[str]]:
-    return [segmentUsingIndices(text, indices)
-            for indices in generateSegmentationIndices_exponentialSpace(text, vocab)]
-
-
-def generateSegmentationIndices_exponentialTime(text: str, vocab: Vocab) -> Iterable[List[int]]:
+def generateSegmentationIndices_exponentialTime(text: str, vocab: Vocab) -> Iterable[SegmentationIndices]:
     """
     Naive implementation that just checks every possible one of the 2^{N-1} possible segmentations and outputs
     the valid ones. It has guaranteed O(2^n) time complexity, but it also has O(1) space complexity.
@@ -78,7 +86,7 @@ def generateSegmentationIndices_exponentialTime(text: str, vocab: Vocab) -> Iter
                 yield indices
 
 
-def generateSegmentationIndices_fixedSpace(text: str, vocab: Vocab, max_prefix_length: int=22) -> Iterable[List[int]]:
+def generateSegmentationIndices_fixedSpace(text: str, vocab: Vocab, max_prefix_length: int=22, verbose: bool=False) -> Iterable[SegmentationIndices]:
     """
     Hybrid approach: use Viterbi to reduce a bunch of segmentation possibilities, store the results in lists, and use
     them as starting points for generating segmentations on-the-fly.
@@ -102,13 +110,13 @@ def generateSegmentationIndices_fixedSpace(text: str, vocab: Vocab, max_prefix_l
                 for seg in unique_segmentations_up_to[from_this_char]:
                     unique_segmentations_up_to[to_this_char].append(seg + [from_this_char])
 
-    # Part 2: Exponential  TODO: Seems to produce more segmentations than there actually are... Probably the inner two loops are fucked.
+    # Part 2: Exponential
     if remaining == 0:
         yield from unique_segmentations_up_to[-1]
     else:
         text = original_text
-        for prefix_length, segs_of_this_length in tqdm(enumerate(unique_segmentations_up_to), desc="Prefixes", total=len(unique_segmentations_up_to)):
-            for segmentation in tqdm(segs_of_this_length, desc=f"Segmentations for prefix {prefix_length+1}"):
+        for prefix_length, segs_of_this_length in tqdm(enumerate(unique_segmentations_up_to), desc="Prefixes", total=len(unique_segmentations_up_to), disable=not verbose):
+            for segmentation in tqdm(segs_of_this_length, desc=f"Segmentations for prefix {prefix_length+1}", disable=not verbose):
                 segmentation = segmentation + [prefix_length]  # The whole point of segmentations_up_to is that the boundary at a given index is valid, but isn't included in the segmentation up to that index.
                 for n_splits in range(remaining):
                     for c in itertools.combinations(range(max_prefix_length+1, len(text)), r=n_splits):  # A step to be in front of the character at max_prefix_length has already been attempted by the trellis, so we don't have to check for it anymore.
