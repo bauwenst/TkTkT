@@ -91,8 +91,12 @@ def percent(num: int, denom: int, decimals: int=2) -> str:
     return (f"{round(100*num/denom, decimals)}" if denom != 0 else "???") + "%"
 
 
-def sgnprint(number: float):
+def sgnprint(number: float) -> str:
     return f"+"*(number >= 0) + number.__repr__()
+
+
+def pluralise(number: int, singular: str, plural_suffix: str="s") -> str:
+    return f"{number} {singular}" + plural_suffix*(number > 1)
 
 
 def logger(msg: str):
