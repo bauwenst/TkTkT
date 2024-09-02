@@ -20,8 +20,8 @@ DO_LOG = False
 with KnockoutDataConfiguration(setupEnglish()):
     counts = lexiconWeights(override_reweighter=lambda x: x)
     print("\nBPE")
-    dprint(makeSegmentationStats(make_English_BPE(), raw_words=(o.word for o in morphologyGenerator()), counts=counts,
-                                 exclude_words_over_length=MAX, do_log_segmentations=DO_LOG).__dict__)
+    dprint(getVocabStats(make_English_BPE(), raw_words=(o.word for o in morphologyGenerator()), counts=counts,
+                         exclude_words_over_length=MAX, do_log_segmentations=DO_LOG).__dict__)
     print("\nKudoPiece")
-    dprint(makeSegmentationStats(make_English_KudoPiece(), raw_words=(o.word for o in morphologyGenerator()), counts=counts,
-                                 exclude_words_over_length=MAX, do_log_segmentations=DO_LOG).__dict__)
+    dprint(getVocabStats(make_English_KudoPiece(), raw_words=(o.word for o in morphologyGenerator()), counts=counts,
+                         exclude_words_over_length=MAX, do_log_segmentations=DO_LOG).__dict__)

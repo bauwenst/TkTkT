@@ -6,7 +6,7 @@ from typing import Tuple, Iterable, Dict
 from dataclasses import dataclass
 from numpy import log2
 
-from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab
+from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab, Tokeniser
 
 
 def possibleSegmentations(vocab: Vocab, pretoken: str) -> int:
@@ -24,7 +24,12 @@ def possibleSegmentations(vocab: Vocab, pretoken: str) -> int:
 
 
 @dataclass
-class SegmentationStatistics:
+class VocabularyFertility:
+    """
+    How many segmentations a vocabulary supports, normalised by a variety of metrics, averaged across a word corpus,
+    weighed (or not) by word frequency.
+    The weighted variants are equivalent to computing the unweighted variants but in a corpus where each word type is duplicated by its count.
+    """
     vocab_size: int
 
     segmentations_per_word_type: float          # [1/sum_w 1] * [sum_w seg(w)]
@@ -41,9 +46,25 @@ class SegmentationStatistics:
     segmentations_per_token_max_macro: float   # [1/sum_w f(w)] * [sum_w f(w)*seg(w)/maxseg(w)]
 
 
-def makeSegmentationStats(prep_and_vocab: TokeniserWithVocabDict,
-                          raw_words: Iterable[str], counts: Dict[str, float]=None,
-                          do_measure_original_word_length: bool=False, exclude_words_over_length: int=100, do_log_segmentations: bool=False) -> SegmentationStatistics:
+@dataclass
+class InferenceFertility:
+    """
+    Statistics about the segmentations that are actually made in practice by a tokeniser, not how many it hypothetically supports.
+    """
+    vocab_size: int
+
+    tokens_per_word_type: float        # [1/sum_w 1] * [sum_w len(tk(w))]
+    tokens_per_word_token: float       # [1/sum_w f(w)] * [sum_w f(w)*len(tk(w))]
+
+    chars_per_word_type_token_micro: float   # [sum_w len(w)]/[sum_w len(tk(w))]
+    chars_per_word_token_token_micro: float  # [sum_w f(w)*len(w)]/[sum_w f(w)*len(tk(w))]
+    chars_per_word_type_token_macro: float   # [1/sum_w 1] * [sum_w len(w)/len(tk(w))]
+    chars_per_word_token_token_macro: float  # [1/sum_w f(w)] * [sum_w f(w)*len(w)/len(tk(w))]
+
+
+def getVocabStats(prep_and_vocab: TokeniserWithVocabDict,
+                  raw_words: Iterable[str], counts: Dict[str, float]=None,
+                  do_measure_original_word_length: bool=False, exclude_words_over_length: int=100, do_log_segmentations: bool=False) -> VocabularyFertility:
     """
     Note: if the preprocessor of the tokeniser adds characters that are supposed to be token-building units yet consist
     of multiple characters (like </w>), this function's results are wrong.
@@ -51,7 +72,6 @@ def makeSegmentationStats(prep_and_vocab: TokeniserWithVocabDict,
     if counts is None:
         counts = dict()
 
-    # The "weighted" variants can be computed as unweighted variants in a corpus where each word type is duplicated by its count.
     sum_one          = 0
     sum_one_weighted = 0
     sum_seg          = 0
@@ -115,7 +135,7 @@ def makeSegmentationStats(prep_and_vocab: TokeniserWithVocabDict,
         sum_seg_on_maxseg_weighted += seg_to_maxseg_ratio*f_w
         # print(raw_word, "\t\t", segs, "of", max_segs, "or", max_segs_restricted)
 
-    return SegmentationStatistics(
+    return VocabularyFertility(
         vocab_size=len(prep_and_vocab.vocab),
 
         segmentations_per_word_type =sum_seg/sum_one,
@@ -130,4 +150,55 @@ def makeSegmentationStats(prep_and_vocab: TokeniserWithVocabDict,
         segmentations_per_token_max_micro=sum_seg_weighted/sum_maxseg_weighted,
         segmentations_per_type_max_macro =sum_seg_on_maxseg/sum_one,
         segmentations_per_token_max_macro=sum_seg_on_maxseg_weighted/sum_one_weighted
+    )
+
+
+def getInferenceStats(tokeniser: Tokeniser,
+                      raw_words: Iterable[str], counts: Dict[str, float]=None,
+                      do_measure_original_word_length: bool=False, exclude_words_over_length: int=100) -> InferenceFertility:
+    if counts is None:
+        counts = dict()
+
+    sum_one          = 0
+    sum_one_weighted = 0
+    sum_tk          = 0
+    sum_tk_weighted = 0
+
+    sum_len          = 0
+    sum_len_weighted = 0
+    sum_len_on_tk          = 0
+    sum_len_on_tk_weighted = 0
+
+    for raw_word in raw_words:
+        if len(raw_word) > exclude_words_over_length:
+            continue
+
+        tokens = tokeniser.prepareAndTokenise(raw_word)
+
+        chars = len(raw_word) if do_measure_original_word_length else sum(map(len, tokens))
+        tk = len(tokens)
+        char_to_token_ratio = chars/tk
+
+        # Accumulate
+        f_w = counts.get(raw_word, 1)
+
+        sum_one          += 1
+        sum_one_weighted += 1*f_w
+        sum_tk          += tk
+        sum_tk_weighted += tk*f_w
+        sum_len          += chars
+        sum_len_weighted += chars*f_w
+        sum_len_on_tk          += char_to_token_ratio
+        sum_len_on_tk_weighted += char_to_token_ratio*f_w
+
+    return InferenceFertility(
+        vocab_size=tokeniser.getVocabSize(),
+
+        tokens_per_word_type=sum_tk/sum_one,
+        tokens_per_word_token=sum_tk_weighted/sum_one_weighted,
+
+        chars_per_word_type_token_micro=sum_len/sum_tk,
+        chars_per_word_token_token_micro=sum_len_weighted/sum_tk_weighted,
+        chars_per_word_type_token_macro=sum_len_on_tk/sum_one,
+        chars_per_word_token_token_macro=sum_len_on_tk_weighted/sum_one_weighted
     )
