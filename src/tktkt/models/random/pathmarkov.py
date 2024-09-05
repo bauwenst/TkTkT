@@ -8,8 +8,8 @@ from typing import List, Tuple
 import numpy as np
 import numpy.random as npr
 
-from .randomfromvocab import TokeniserWithVocabDict, Preprocessor, Vocab
-from ...util.arrays import BatchNormalisation, IdentityBatchNormalisation
+from .generationbased import TokeniserWithVocabDict, Preprocessor, Vocab
+from ...util.arrays import *
 from ...util.strings import segmentUsingIndices
 
 
@@ -67,3 +67,6 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
         probabilities = [[options_to_get_before_char[backpointer]/options_to_get_before_char[node] for backpointer in backpointers[node]]
                          for node in range(len(pretoken)+1)]
         return backpointers, probabilities
+
+    def getName(self):
+        return "GRaMPa"

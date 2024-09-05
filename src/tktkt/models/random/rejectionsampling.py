@@ -1,7 +1,7 @@
 from typing import List
 import numpy.random as npr
 
-from .randomfromvocab import TokeniserWithVocabDict, Vocab, Preprocessor
+from .generationbased import TokeniserWithVocabDict, Vocab, Preprocessor
 from ...util.strings import segmentUsingBitmap, segmentUsingIndices
 
 

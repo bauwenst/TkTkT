@@ -51,8 +51,6 @@ class InferenceFertility:
     """
     Statistics about the segmentations that are actually made in practice by a tokeniser, not how many it hypothetically supports.
     """
-    vocab_size: int
-
     tokens_per_word_type: float        # [1/sum_w 1] * [sum_w len(tk(w))]
     tokens_per_word_token: float       # [1/sum_w f(w)] * [sum_w f(w)*len(tk(w))]
 
@@ -192,8 +190,6 @@ def getInferenceStats(tokeniser: Tokeniser,
         sum_len_on_tk_weighted += char_to_token_ratio*f_w
 
     return InferenceFertility(
-        vocab_size=tokeniser.getVocabSize(),
-
         tokens_per_word_type=sum_tk/sum_one,
         tokens_per_word_token=sum_tk_weighted/sum_one_weighted,
 

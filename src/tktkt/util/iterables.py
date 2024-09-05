@@ -1,3 +1,6 @@
+"""
+Operations that can stream an input and output a stream in return.
+"""
 from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union
 from pathlib import Path
 

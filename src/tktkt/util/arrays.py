@@ -6,6 +6,8 @@ import numpy as np
 
 from .functions import *
 
+__all__ = ["BatchNormalisation", "IdentityBatchNormalisation", "LinearNormalisation", "SoftmaxNormalisation", "PowerNormalisation"]
+
 
 class BatchNormalisation(ABC):
 
@@ -20,7 +22,7 @@ class IdentityBatchNormalisation(BatchNormalisation):
         return values
 
 
-class LinearBatchNormalisation(BatchNormalisation):
+class LinearNormalisation(BatchNormalisation):
 
     def normalise(self, values: np.ndarray) -> np.ndarray:
         return values / np.sum(values)  # Faster than Pythonic sum() for Numpy arrays: https://stackoverflow.com/q/10922231/9352077

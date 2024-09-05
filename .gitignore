@@ -1,6 +1,7 @@
 .idea
 draft/
 data/
+*.pdn
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,4 +1,4 @@
-from tktkt.models.random.randomfromvocab import RandomVocabSegmentation_GenerateAll, segmentUsingIndices, generateSegmentationIndices_exponentialSpace
+from tktkt.models.random.generationbased import RandomVocabSegmentation_GenerateAll, segmentUsingIndices, generateSegmentationIndices_exponentialSpace
 from tktkt.preparation.instances import IdentityPreprocessor
 
 
