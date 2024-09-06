@@ -9,6 +9,7 @@ class RandomVocabSegmentation_RejectionSampling(TokeniserWithVocabDict):
     """
     Splits the given string at random positions and checks if all resulting tokens are in the given vocab.
     Retries until the answer is yes.
+    Biased towards not segmenting because otherwise you mostly get small-token segmentations.
     """
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None):

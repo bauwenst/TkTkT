@@ -1,60 +1,31 @@
 """
 Very reduced version of the train() function to fine-tune CANINE,
 to load an already fine-tuned model and test it on the entire dataset.
+
+FIXME: This entire file should really be replaced by an evaluation-only LaMoTO script.
+       We'll need a special flag in LaMoTO that can set the eval dataset to all three splits.
+           eval_dataset=datasetdict["test"] if only_testset else concatenate_datasets([datasetdict["train"], datasetdict["valid"], datasetdict["test"]])
+       It would actually make some sense to have a .evaluate() method in LaMoTO tasks.
 """
 from tst.preamble import *
 
-from tst.evaluation.english_morphology import make_CanineViterbiBPE
-
-from tktkt.models.neural.canine_finetuning import datasetOutOfContext, dataloaderFromIterable, compute_metrics, MAX_INPUT_LENGTH_CANINE, tokenizer
+from lamoto.trainer.hyperparameters import *
+from lamoto.tasks.mbr import MBR, SUGGESTED_HYPERPARAMETERS_MBR
 from tktkt.models.viterbi.instances import HuggingFaceCharacterModelForTokenClassification, VocabularyConstraintExact, ScoreGeneratorUsingCharacterClassifier
+from tktkt.builders.english import Builder_English_CanineViterbi_BPE
 
-from datasets import concatenate_datasets
-from transformers import DataCollatorForTokenClassification, Trainer, TrainingArguments
-
-# Get model from another test script.
-canine_viterbi = make_CanineViterbiBPE()
+# Model setup  TODO: I wonder how we can support loading completely custom models in LaMoTO.
+canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()
 generator: VocabularyConstraintExact = canine_viterbi.objectives[0].score_generator
 nested_generator: ScoreGeneratorUsingCharacterClassifier = generator.nested_generator
 classifier: HuggingFaceCharacterModelForTokenClassification = nested_generator.logprob_classifier
 model = classifier.model
 model.to("cuda")
 
+# Hyperparameters
+hp = SUGGESTED_HYPERPARAMETERS_MBR
+hp.HARD_STOPPING_CONDITION = AfterNEpochs(epochs=0, effective_batch_size=SUGGESTED_HYPERPARAMETERS_MBR.EXAMPLES_PER_EFFECTIVE_BATCH)
 
-##################################
-
-
-def evaluate(only_testset=False):
-    BATCH_SIZE = 32
-
-    # Get dataset
-    datasetdict = dataloaderFromIterable(datasetOutOfContext())
-    collator = DataCollatorForTokenClassification(tokenizer, padding="longest", max_length=MAX_INPUT_LENGTH_CANINE)
-
-    print(datasetdict)
-
-    # Useless training arguments that will be used for nothing.
-    training_args = TrainingArguments(
-        output_dir=".",
-        per_device_eval_batch_size=BATCH_SIZE,
-
-        # Artifacts
-        report_to="none",   # Disables weights-and-biases login requirement
-        logging_strategy="no",
-        push_to_hub=False
-    )
-
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-
-        data_collator=collator,
-        # train_dataset=datasetdict["train"],  # Might crash, dunno
-        eval_dataset=datasetdict["test"] if only_testset else concatenate_datasets([datasetdict["train"], datasetdict["valid"], datasetdict["test"]]),
-        compute_metrics=compute_metrics
-    )
-    print(trainer.evaluate())
-
-
-if __name__ == "__main__":
-    evaluate(only_testset=False)
+# "Train", which is just an evaluation.
+mbr = MBR(dataset_out_of_context=True)
+mbr.train()

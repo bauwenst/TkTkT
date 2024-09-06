@@ -10,7 +10,7 @@ from collections import Counter
 from math import factorial, comb
 from operator import mul
 
-from .iterables import keepFirst
+from .iterables import keepFirst, T
 
 # There are four canonical ways to represent the segmentation of a known string:
 #     - A list of token strings;
@@ -25,7 +25,7 @@ TokenStartIndices = Sequence[int]
 SplitMask = Sequence[bool]
 
 
-def permutations_no_repeat(sequence: Sequence):
+def permutations_no_repeat(sequence: Sequence[T]) -> Generator[Sequence[T],None,None]:
     """
     O(n!) way of generating multiset permutations, i.e. the unique permutations of a sequence that can contain duplicate elements,
     because we consider duplicate elements to be identical and hence swapping them is meaningless.
