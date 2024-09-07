@@ -59,7 +59,7 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
         backpointers = [[] for _ in range(len(pretoken)+1)]
         for i in range(len(pretoken)):
             for j in range(i+1, len(pretoken)+1):
-                if (j-i >= self.min_len or not backpointers[j]) and pretoken[i:j] in self.vocab:  # not j+1 because we step to BEFORE character j, so it is an exclusive bound
+                if (j-i >= self.min_len or not backpointers[j]) and self.hasType(pretoken[i:j]):  # not j+1 because we step to BEFORE character j, so it is an exclusive bound
                     options_to_get_before_char[j] += options_to_get_before_char[i]
                     backpointers[j].append(i)
 
@@ -69,4 +69,8 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
         return backpointers, probabilities
 
     def getName(self):
-        return "GRaMPa"
+        return f"GRaMPa(l={self.min_len}" + \
+                (f",S(t={self.renormalisation.tau})" if isinstance(self.renormalisation, SoftmaxNormalisation)
+            else f",P(t={self.renormalisation.tau})" if isinstance(self.renormalisation, PowerNormalisation)
+            else "") + \
+        ")"

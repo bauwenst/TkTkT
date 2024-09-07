@@ -66,6 +66,8 @@ class TokeniserWithVocabDict(TokeniserWithFiniteTypeDomain):
         self.reverse_vocab = {v:k for k,v in vocab.items()}
         self.unk = unk_type
 
+        self._accept_all_types = False  # if True, overrides hasType() by always returning True.
+
         if self.unk is not None and not self.hasType(self.unk):
             raise ValueError(f"The given vocabulary does not have an ID defined for the given UNK type '{unk_type}'.")
         if len(self.vocab) != len(self.reverse_vocab):
@@ -86,7 +88,17 @@ class TokeniserWithVocabDict(TokeniserWithFiniteTypeDomain):
         return self.vocab.keys()
 
     def hasType(self, t: str) -> bool:
-        return t in self.vocab
+        return self._accept_all_types or t in self.vocab
+
+    def enableInfiniteDomain(self, enable: bool):
+        """
+        If set to True, .types() and .ids() will still output the actual domain and range of the dictionary vocab,
+        but .hasType() will always return True.
+
+        This is technically incorrect, but has its uses. In particular, use this if you want to test the behaviour of a
+        TokeniserWithVocabDict when its output isn't constrained.
+        """
+        self._accept_all_types = enable
 
     ########################################################
 
