@@ -11,15 +11,15 @@ from ..preparation.instances import *
 from ..models.viterbi.instances import *
 from ..models.huggingface.wrapper import HuggingFaceTokeniser
 from ..models.bpe.base import ClassicBPE
-from ..models.bpe.knockout import BPEKnockout
+from ..models.bpe.knockout import BPEKnockout, ReBPE
 from ..models.bpe.guided import GuidedBPEDropout
 from ..models.ngram.alphabet import UnicodeTokeniser
-from ..files.paths import relativeToCwd, DataPaths
+from ..files.paths import relativeToCwd, TkTkTPaths
 
 from .base import TokeniserBuilder, T
 
 
-PATH_CANINE_FOR_MBR_EN = relativeToCwd(DataPaths.pathToCheckpoints() / "CANINE-C_MBR-en_2024-02-12_19-35-28")
+PATH_CANINE_FOR_MBR_EN = relativeToCwd(TkTkTPaths.pathToCheckpoints() / "CANINE-C_MBR-en_2024-02-12_19-35-28")
 
 
 def getEnglishBpeFiles() -> BpeTokeniserPath:
@@ -70,6 +70,25 @@ class Builder_English_BPEKnockout(TokeniserBuilder[BPEKnockout]):
             merges=files.loadMerges(),
             language="English",
             boundary_marker=RobertaSpaceMarker
+        )
+
+
+class Builder_English_ReBPE(TokeniserBuilder[ReBPE]):
+    def __init__(self, iterations: int, reduced: bool=False):
+        self.its = iterations
+        self.bc = reduced
+
+    def buildTokeniser(self) -> T:
+        files = getEnglishBpeFiles()
+        return ReBPE(
+            preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
+            vocab=files.loadVocabulary(),
+            merges=files.loadMerges(),
+            language="English",
+            boundary_marker=RobertaSpaceMarker,
+
+            iterations=self.its,
+            backwards_compatible=self.bc
         )
 
 
@@ -138,6 +157,12 @@ class Builder_English_CanineViterbi_BPE(TokeniserBuilder[HFPointViterbi]):
 
 
 class Builder_English_CanineViterbi_ULM(TokeniserBuilder[HFPointViterbi]):
+    """
+    Build a Viterbi tokeniser with an underlying CANINE boundary probability model while choosing:
+        - The grid generator that uses these probabilities;
+        - The transformation applied to these probabilities;
+        - The constraint put on steps afterwards, using the ULM vocabulary.
+    """
 
     def __init__(self,
         generator: Type[ScoreGeneratorUsingCharacterClassifier]=BoundaryScoresChosen,
@@ -221,3 +246,21 @@ class Builder_English_CanineBPEdropout(TokeniserBuilder[GuidedBPEDropout]):
 class Builder_English_Character(TokeniserBuilder[UnicodeTokeniser]):
     def buildTokeniser(self) -> T:
         return UnicodeTokeniser(preprocessor=IdentityPreprocessor)
+
+
+class Builder_English_CanineViterbiMultiplicative_ULM(TokeniserBuilder[MultiplicativeBalanceViterbi]):
+    def __init__(self, score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
+        self.transform = score_transform
+
+    def buildTokeniser(self):
+        english_ulm        = getEnglishKudo()
+        english_canine_mbr = getEnglishCANINE()
+
+        return MultiplicativeBalanceViterbi(
+            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            vocab=english_ulm.get_vocab(),
+            max_step=20,
+
+            logprob_classifier=english_canine_mbr,
+            transform=self.transform
+        )

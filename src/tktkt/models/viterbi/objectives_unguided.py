@@ -7,13 +7,6 @@ from .framework import *
 class RandomScoreGenerator(ViterbiStepScoreGenerator):
     """
     Dummy score generator with random step scores.
-
-    Has one application though: if you apply a VocabularyConstraint on top of this, you have technically designed an
-    O(N²) algorithm for sampling a random valid segmentation for a string of length N. When the probability distribution
-    is actually given, you can't do this easily; best you can do is sample the nbest paths with a O(N²) Viterbi algorithm,
-    but none of the low-probability paths (or, if you minimise probability instead, one of the paths in between the two
-    extremes). For this you would normally generate all the possible segmentations with Viterbi, which is worst-case
-    exponential, and then sample from that set.
     """
 
     def __init__(self, min: float=0, max: float=1):

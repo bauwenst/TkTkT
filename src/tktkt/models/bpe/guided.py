@@ -55,9 +55,7 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
 
             # Prep
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
-
-            do_morphemic_knockout=False
+            boundary_marker=boundary_marker
         )
 
         self.classifier = dropout_probability if not isinstance(dropout_probability, float) else ConstantCharacterClassifier(dropout_probability)

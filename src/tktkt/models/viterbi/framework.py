@@ -16,15 +16,12 @@ Here's how you would implement all the Viterbi variants I have thought of in thi
     - Neural probability generators:
         - Autoregressive transformer: run the string through a decoder character-by-character to produce an embedding
                                       for each character.
-        - Masked transformer: give the string through an encoder N times. For repeat n, replace characters n:n+k by a
+        - Masked transformer: send the string through an encoder N times. At time n, replace characters n:n+K by a
                               generic mask token, then generate embeddings. Each time, only store the embedding at
-                              position n and throw out the rest, giving O(n) storage and O(n³) complexity.
-        At the end of both of these, you have n embeddings. Send each through a linear+softmax layer. Position (n,k) in
-        the Viterbi grid is what the nth softmax produces for subword string[n:n+k]. The combination function is *.
-        Alternatively, take the ln() of the grid and have the combination function be +.
-
-TODO: You can probably extend this framework to non-invertible segmentations by also storing a string for every step.
-      Rather than backtracing by taking substrings, you backtrace and map the step's (n,k) to a string.
+                              position n and throw out the rest, giving O(N) storage and O(N³) complexity.
+        At the end of both of these, you have n embeddings. Send each through a linear+softmax layer of size h x |V|.
+        Position (n,k) in the Viterbi grid is what the nth softmax produces for subword string[n:n+k]. The combination
+        function is *. Alternatively, take the ln() of the grid and have the combination function be +.
 
 Deciding whether a substring doesn't belong to the vocabulary, and hence a step can't be taken, should NOT be done in
 the Viterbi decoder, but rather in the scoring grid. The grid might map the step to a different string, e.g.
@@ -56,7 +53,20 @@ class ViterbiStepScores:
 
     def __repr__(self):
         with np.printoptions(linewidth=200):
-            return self.grid.T.__repr__()
+            return self.grid.T.__repr__()  # Print transpose because we are used to seeing strings horizontally.
+
+    def getEffectiveK(self) -> int:
+        """
+        Assuming that all Viterbi accumulators that accumulate with +/-INFTY also return +/-INFTY and that this is the
+        least desirable score, that means that if after a certain k the grid consists of +/-INFTY values entirely for
+        all n, paths with steps bigger than that k don't even need to be considered.
+        """
+        # ks_with_full_inf = np.nonzero(np.all(np.isinf(self.grid), axis=0))[0]  # This is actually not what you need because it is possible that k1 has all-inf steps while k2 > k1 does not!
+        ks_with_any_noninf = np.nonzero(np.any(np.isfinite(self.grid), axis=0))[0]  # Last one of these is the last index you need to support.
+        try:
+            return int(ks_with_any_noninf[-1]) + 1
+        except:
+            return self.grid.shape[1]
 
 
 class ViterbiStepScoresWithTokens(ViterbiStepScores):
@@ -146,21 +156,30 @@ class ViterbiTokeniser(Tokeniser):
     """
 
     def __init__(self, preprocessor: Preprocessor, max_stepsize: int,
-                 objectives: ViterbiObjectives, degenerate: bool=False):
+                 objectives: ViterbiObjectives, degenerate: bool=False, trimmed: bool=True):
         """
-        :param degenerate: Whether or not the first objective has a generator that produces its own tokens AND you want
+        :param degenerate: Whether the first objective has a generator that produces its own tokens AND you want
                            to use those when tokenising.
                            When true, you hence likely cannot concatenate the produced tokens to reconstruct the input.
                            When false, you can still use a degenerate objective, but its suggestions will not be used.
                            That might mean you cannot convert the produced tokens to IDs, but you can concatenate them.
+        :param trimmed: Whether to limit the step size to the largest step size for which all objectives have at least one
+                        non-infinite score starting from some character. In other words: if even just one objective has an infinite
+                        score for a certain step size at all characters, then all objectives can only make steps smaller than that step.
+                        This means you can e.g. put a vocabulary constraint on one objective and it applies to all automatically.
+                        Time complexity becomes O(L x N x K') for L objectives and for some K' <= K,
+                        space complexity stays O(L x N x K).
         """
         super().__init__(preprocessor)
+        if not objectives:
+            raise ValueError("At least one Viterbi objective is needed to construct a trellis.")
+        if degenerate and not isinstance(objectives[0].score_generator,ViterbiStepScoreGeneratorWithTokens):
+            raise ValueError("To support degenerate tokenisation, the first objective must generate a token grid too.")
+
         self.objectives = objectives
         self.K = max_stepsize
         self.degenerate_output = degenerate
-
-        if degenerate and (len(objectives) == 0 or not isinstance(objectives[0].score_generator, ViterbiStepScoreGeneratorWithTokens)):
-            raise ValueError("To support degenerate tokenisation, the first objective must generate a token grid too.")
+        self.trim_fully_infinite_steps = trimmed
 
     def tokenise(self, string: str):
         N = len(string)
@@ -168,6 +187,8 @@ class ViterbiTokeniser(Tokeniser):
 
         # 1. There is a different set of edge weights per objective and per string. Generate these for the given string.
         graphs = [o.score_generator.generateGrid(string, K) for o in self.objectives]
+        if self.trim_fully_infinite_steps:
+            K = min(graph.getEffectiveK() for graph in graphs)  # We assume that this cannot be larger than the K we already had. You're in trouble otherwise.
 
         # 2. Walk forwards through the graphs.
         t = ViterbiTrellis(N+1, self.objectives)  # N+1 because there is a node (node index N) after the whole string.

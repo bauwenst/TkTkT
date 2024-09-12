@@ -14,7 +14,8 @@ from abc import abstractmethod
 
 import numpy as np
 import torch
-from math import exp
+from math import exp, sin, pi, asin
+from math import log as ln
 
 from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞𝒯
 
@@ -157,6 +158,123 @@ class PiecewisePT(ProbabilityTransform):
         return self.__class__.__name__ + f"({sgnprint(self.a)},{sgnprint(self.b)})" + ("_NegComp")*self.negate_as_complement
 
 
+class MultiplicativelyBalancedProbabilityTransform(ProbabilityTransform):
+    """
+    A subset of the probability transforms f(p) that satisfy
+        1. f(p) * f(1-p) = 1
+        2. lim_{p->0.5+} f(p) = lim_{p->0.5-} f(p) = 1, that is, there is no discontinuity at p = 0.5.
+
+    Both of these can be achieved by taking any function g(x) for which
+        1. g(0) = 1
+        2. g(p) is monotonously increasing for p in [0,0.5]
+    and then taking the piecewise function
+        x > 0.5: f(x) = g(x - 0.5)
+        x < 0.5: f(x) = 1/g(0.5 - p)
+    
+    An example of a function that has a discontinuity would be f(p) = 1/(1-p) for p > 0.5 and f(p) = p otherwise.
+    """
+
+    def probabilityToScore(self, p: float) -> float:
+        return 1/self.isOneAtZero(0.5 - p) if p < 0.5 else self.isOneAtZero(p - 0.5)
+
+    def scoreToProbability(self, s: float) -> float:
+        return 0.5 - self.isOneAtZero_inv(1/s) if s < 1 else 0.5 + self.isOneAtZero_inv(s)
+
+    @abstractmethod
+    def isOneAtZero(self, x: float) -> float:
+        pass
+
+    @abstractmethod
+    def isOneAtZero_inv(self, y: float) -> float:
+        pass
+
+
+class PowerMBPT(MultiplicativelyBalancedProbabilityTransform):
+    """
+    Models g(x) = 1 + c*x^p.
+    Also, the case p = 1 has almost the same resulting f(x) as g(x) = 1 + c*ln(1+x) and g(x) = 1 + c*tan(x), hence we
+    don't have a subclass for those.
+    """
+
+    def __init__(self, power: float, scale: float, negate_as_complement: bool=False):
+        super().__init__(negate_as_complement=negate_as_complement)
+        assert power != 0 and scale != 0
+        self.scale = scale
+        self.power = power
+
+    def isOneAtZero(self, x: float) -> float:
+        return 1 + self.scale*pow(x, self.power)
+
+    def isOneAtZero_inv(self, y: float) -> float:
+        return pow((y-1)/self.scale, 1/self.power)
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"(c={self.scale},p={sgnprint(self.power)})"
+
+
+class DoublingMBPT(PowerMBPT):
+    """
+    Models g(x) = 1 + 2*x, which is one specific case of PowerMBPT that is easy to compute.
+    It turns P = 100% into a factor 2x and turns P = 0% into a factor 1/2x.
+    """
+
+    def __init__(self):
+        super().__init__(power=1, scale=2)
+
+    def isOneAtZero(self, x: float) -> float:
+        return 1 + 2*x
+
+    def isOneAtZero_inv(self, y: float) -> float:
+        return (y-1)/2
+
+    def __repr__(self):
+        return f"PowerMBPT(c={self.scale},p={sgnprint(self.power)})"
+
+
+class ExponentialMBPT(MultiplicativelyBalancedProbabilityTransform):
+    """
+    Models g(x) = exp(c*x).
+    """
+
+    def __init__(self, scale: float, negate_as_complement: bool=False):
+        super().__init__(negate_as_complement=negate_as_complement)
+        assert scale != 0
+        self.scale = scale
+
+    def isOneAtZero(self, x: float) -> float:
+        return exp(self.scale*x)
+
+    def isOneAtZero_inv(self, y: float) -> float:
+        return ln(y)/self.scale
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"(c={self.scale})"
+
+
+class SineMBPT(MultiplicativelyBalancedProbabilityTransform):
+    """
+    Models g(x) = 1 + c/4 * (1 + sin(2*pi*(x - 1/4))) which has the same extrema as PowerMBPT of the same c and p = 1,
+    but a different flow.
+    """
+
+    def __init__(self, scale: float, negate_as_complement: bool=False):
+        super().__init__(negate_as_complement=negate_as_complement)
+        assert scale != 0
+        self.scale = scale
+
+    def isOneAtZero(self, x: float) -> float:
+        return 1 + 0.25*self.scale*(1 + sin(2*pi*(x - 0.25)))
+
+    def isOneAtZero_inv(self, y: float) -> float:
+        return 1/(2*pi) * asin((y-1)*4/self.scale - 1) + 0.25
+
+    def __repr__(self):
+        return self.__class__.__name__ + f"(c={self.scale})"
+
+
+########################################################################################################################
+
+
 class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
     """
     Stores a model that generates log(probability) values.
@@ -191,9 +309,9 @@ class ScoreGeneratorUsingCharacterClassifierAndTransform(ScoreGeneratorUsingChar
         super().__init__(point_model)
         self.T = transform
 
-    def getBoundaryScores(self, string: str):
+    def getBoundaryScores(self, string: str) -> List[float]:
         boundary_scores = list(map(self.T.probabilityToScore, map(exp, self.logprob_classifier.getPointLogProbabilities(string))))  # one entry for each character
-        boundary_scores[-1] = 0  # Score you get from walking to the end is 0. I.e.: it's a good idea, unless you can do better by splitting.
+        boundary_scores[-1] = self.T.probabilityToScore(0.5)  # Score you get from walking straight to the end is indifferent. I.e.: doing it is not punished so much you take other bad splits, but it's not rewarded so much you don't go looking for better splits.
         return boundary_scores
 
     def __repr__(self):
@@ -257,8 +375,8 @@ class BoundaryScoresAll(ScoreGeneratorUsingCharacterClassifierAndTransform):
     There's a funky equivalence here: you could convert the CharacterClassifier into a SubstringClassifier first, and
     then use that SubstringClassifier with its usual grid generator.
 
-    TODO: As it turns out, for symmetric scores, this is mathematically equivalent to only considering boundaries. Given the preferred score
-          at position i, you can either choose to split there or not. You get the score at that position when you do.
+    TODO: As it turns out, for symmetric scores (not regular probabilities), this is mathematically equivalent to only considering chosen boundaries.
+          Given the preferred score at position i, you can either choose to split there or not. You get the score at that position when you do.
             - If it's not a split and you do split, you receive a score, but it's negative.
             - If it's not a split and you don't split, you don't receive a score, which is +1 over the alternative decision.
             - If it's a split and you don't split, you don't receive a score.
@@ -316,7 +434,7 @@ class BoundaryScoresAll(ScoreGeneratorUsingCharacterClassifierAndTransform):
         return scores
 
 
-###########################################################################################
+########################################################################################################################
 
 
 class HardBoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifier):
@@ -418,7 +536,7 @@ class HardBoundaryAndNonBoundaryPrefixLengthExtended(ScoreGeneratorUsingCharacte
         return scores
 
 
-###########################################################################################
+########################################################################################################################
 
 
 class GoldSplits(CharacterClassifier):
@@ -480,7 +598,7 @@ class HuggingFaceCharacterModelForTokenClassification(CharacterClassifier):
         return logprobabilities.cpu().numpy()  # Always need to go to CPU to cast down to numpy.
 
 
-###########################################################################################
+########################################################################################################################
 
 
 class ScoreGeneratorUsingSubstringClassifier(ViterbiStepScoreGenerator):

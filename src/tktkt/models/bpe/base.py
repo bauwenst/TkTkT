@@ -18,14 +18,28 @@ MergeList = List[str]
 
 class SimplifiedBTEInterface(BTE):
     """
-    Wrapper class around the BPE-knockout library for easier usage.
+    Wrapper class around the BPE-knockout library that abstracts away the config.
     """
 
     def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
-                 vocab: Vocab, merges: MergeList, do_morphemic_knockout: bool, unk_type: str=None):
+                 vocab: Vocab, merges: MergeList,
+                 do_morphemic_knockout: bool=False, do_reification: bool=False, backwards_compatible: bool=False, iterations: int=1,
+                 unk_type: str=None):
+        """
+        :param backwards_compatible: Whether to stay within the same initial vocab or not. Knockout always does, reification doesn't.
+        """
+        config = BteInitConfig(iterations=iterations)
+        if do_morphemic_knockout:
+            config.knockout = RefMode.MORPHEMIC
+        if do_reification:
+            if backwards_compatible:
+                config.reify = ReifyMode.BACKWARDS_COMPATIBLE
+            else:
+                config.reify = ReifyMode.ALL
+
         super().__init__(
             # Init
-            BteInitConfig() if not do_morphemic_knockout else BteInitConfig(knockout=RefMode.MORPHEMIC),
+            init_config=config,
             starting_vocab=vocab, starting_mergelist=merges,
             unk_type=unk_type,
 
@@ -44,6 +58,9 @@ class SimplifiedBTEInterface(BTE):
         """
         Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
         (rather than wrapping it).
+
+        TODO: Not sure if this specific implementation belongs here or rather under ClassicBPE.
+              There may be some subclasses that have the same exact constructor signature as SimplifiedBTEInterface though.
         """
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         marker = detectBoundaryMarker(hf_bpe_tokenizer)
@@ -55,7 +72,8 @@ class SimplifiedBTEInterface(BTE):
             boundary_marker=marker,
 
             unk_type=hf_bpe_tokenizer.unk_token,
-            do_morphemic_knockout=False
+            do_morphemic_knockout=False,
+            do_reification=False
         )
 
     def getName(self):
@@ -107,5 +125,6 @@ class ClassicBPE(DeterministicBPETokeniser):
             merges=merges,
             unk_type=unk_type,
 
-            do_morphemic_knockout=False
+            do_morphemic_knockout=False,
+            do_reification=False
         )

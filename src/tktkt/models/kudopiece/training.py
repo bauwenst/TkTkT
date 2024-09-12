@@ -12,7 +12,7 @@ import sentencepiece
 from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter, iterateWordsFile
 
 from ...preparation.boundaries import BoundaryMarkerLocation
-from ...files.paths import DataPaths
+from ...files.paths import TkTkTPaths
 
 MAXIMUM_SENTENCE_LENGTH = 4192
 
@@ -119,7 +119,7 @@ class KudoPieceTrainer:
 
     def train_from_iterator(self, string_iterator: Iterable[str], is_wordfile: bool=False,
                             strings_need_space_splitting: bool=False) -> Path:
-        output_folder = DataPaths.append(DataPaths.pathToModels(), self.stem)
+        output_folder = TkTkTPaths.append(TkTkTPaths.pathToModels(), self.stem)
         output_prefix = output_folder / (self.stem + time.strftime("_%F_%X").replace(":", "-"))
 
         sentencepiece.SentencePieceTrainer.Train(

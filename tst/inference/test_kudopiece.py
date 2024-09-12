@@ -2,10 +2,10 @@ from tst.preamble import *
 
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
 from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
-from tktkt.files.paths import DataPaths
+from tktkt.files.paths import TkTkTPaths
 
 prep = Preprocessor(IdentityMapper(), AppendSpace(front_not_back=True), IdentityPretokeniser())
-tk = KudoPieceTokeniser(prep, DataPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_2024-02-27_16-09-37.model")
+tk = KudoPieceTokeniser(prep, TkTkTPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_2024-02-27_16-09-37.model")
 
 # s = " This is an example sentence."
 s = " a to of in is I on it as be or at by an we my A To Of In Is On It As Be Or At By An We My"

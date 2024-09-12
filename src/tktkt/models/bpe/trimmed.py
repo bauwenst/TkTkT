@@ -18,9 +18,7 @@ class TrimmedBPETokeniser(DeterministicBPETokeniser):
             boundary_marker=marker,
 
             vocab=vocab,
-            merges=merges,
-
-            do_morphemic_knockout=False
+            merges=merges
         )
         self.disabled = set()
         self.trim(word_corpus, keep_type_if_above)

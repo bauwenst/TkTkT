@@ -9,7 +9,7 @@ from .segmentation import EnglishDerivator, Derivator
 from ...interfaces.tokeniser import TokeniserWithFiniteIdRange, TokeniserWithFiniteTypeDomain
 from ...util.iterables import fileToList
 from ...util.timing import datetimeDashed
-from ...files.paths import DataPaths
+from ...files.paths import TkTkTPaths
 
 FILESTEM_PREFICES = "prefices"
 FILESTEM_SUFFICES = "suffices"
@@ -39,7 +39,7 @@ class DelTrainer:
         )
 
     def save(self, prefices: Iterable[str], suffices: Iterable[str], stems: Iterable[str], stem_suffix: str=""):
-        model_folder = DataPaths.pathToModels() / "del" / (
+        model_folder = TkTkTPaths.pathToModels() / "del" / (
                 "del_"
                 + f"{self.model_class.__name__}+{self.tokeniser.__class__.__name__}_"
                 + (f"{stem_suffix}_" if stem_suffix else "")

@@ -1,21 +1,25 @@
+from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
+from tktkt.util.strings import segmentUsingIndices
 from tst.preamble import *
-from tst.evaluation.english_morphology import make_CanineViterbiBPE, KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
+from tst.evaluation.english_morphology import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
+from tktkt.builders.english import Builder_English_CanineViterbi_BPE
 from tktkt.evaluation.morphological import tokeniseAndDecode, morphologyGenerator
 from tktkt.visualisation.neural.splitpoints_probabilities import *
 
 from fiject import MultiHistogram, CacheMode
 
 
-def some_examples():
-    # Classifier setup
-    from tktkt.files.paths import from_pretrained_absolutePath, DataPaths
+def test_probabilityVisualisation():
+    # Classifier setup (this is only for illustration purposes; normally you would use a Builder for this!).
+    from tktkt.files.paths import from_pretrained_absolutePath, TkTkTPaths
     from tktkt.models.viterbi.objectives_guided import HuggingFaceCharacterModelForTokenClassification, CanineTokenizer, CanineForTokenClassification
     tk = CanineTokenizer.from_pretrained("google/canine-c")
     core = from_pretrained_absolutePath(CanineForTokenClassification,
-                                        DataPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28")
+                                        TkTkTPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28")
     classifier = HuggingFaceCharacterModelForTokenClassification(tk, core)
 
+    # Visualise the following words
     words = [" establishmentarianism", " rainbow-coloured", " superbizarre", " algebraically", " ascertainably",
              " barelegged", " behaviourism", " chauvinistically", " maladministration",
              " ethnographically", " good-neighbourliness", " heavy-handedness",
@@ -25,10 +29,13 @@ def some_examples():
         print(visualisePredictedBoundaries(classifier, word))
 
 
-def celex_errors():
-    # Easier way of getting the classifier, which is also set up for inputs of length < 4, unlike the above.
-    canine_viterbi = make_CanineViterbiBPE()
+def test_visualiseCelexMismatches():
+    """
+    Print Viterbi predictions that don't match CELEX boundaries.
+    """
+    canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()  # Easier way of getting the classifier, which is also set up for inputs of length < 4, unlike the above.
     classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
+    vocab = canine_viterbi.objectives[0].score_generator.vocab
 
     with KnockoutDataConfiguration(setupEnglish()):
         for obj in morphologyGenerator(verbose=False):
@@ -39,6 +46,7 @@ def celex_errors():
 
             if reference != viterbi:
                 print(word)
+                word = canine_viterbi.preprocessor.do(word)[0]
                 print("\tGold reference:  ", reference)
                 print("\tProbabilities:   ", visualisePredictedBoundaries(classifier, word))
                 print("\tViterbi decision:", viterbi)
@@ -47,8 +55,8 @@ def celex_errors():
                         map(canine_viterbi.preprocessor.undo_per_token,
                             sorted(
                                 filter(lambda segmentation: not any(len(t) == 1 for t in segmentation[1:]),
-                                    canine_viterbi.objectives[0].score_generator.getAllPossibleSegmentations(
-                                        canine_viterbi.preprocessor.do(word)[0], max_k=20
+                                    map(lambda idcs: segmentUsingIndices(word, idcs),
+                                        generateSegmentationIndices_fixedSpace(word, vocab)
                                     )
                                 ),
                                 reverse=True
@@ -58,17 +66,18 @@ def celex_errors():
                 ))
 
 
-def celex_probabilityDistribution():
+def test_uncertaintyOfPredictions():
     """
     Produces a histogram of all the predictions made by the character classifier.
     This way, we can visually verify whether most decisions are certain or whether most decisions are ambiguous.
     """
-    canine_viterbi = make_CanineViterbiBPE()
-    classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
-
     with KnockoutDataConfiguration(setupEnglish()):
         histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
+
         if histo.needs_computation:
+            canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()
+            classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
+
             for obj in morphologyGenerator():
                 histo.addMany("predictions", getPredictionProbabilities(classifier, obj.word).tolist())
 
@@ -77,5 +86,5 @@ def celex_probabilityDistribution():
 
 
 if __name__ == "__main__":
-    # celex_errors()
-    celex_probabilityDistribution()
+    # test_visualiseCelexMismatches()
+    test_uncertaintyOfPredictions()

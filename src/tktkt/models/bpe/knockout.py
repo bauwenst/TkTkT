@@ -1,8 +1,3 @@
-"""
-Wrapper around the BPE-knockout tokeniser implementation, to make it easier to work with language configs.
-Note that the BTE class itself is already a TkTkT tokeniser, and has more options, but you'll have to know
-how to set the language config.
-"""
 import langcodes
 from langcodes import Language
 from typing import Union
@@ -28,10 +23,15 @@ def langstringToLanguage(language: str) -> Language:
             raise ValueError(f"Language cannot be recognised: {language}")
 
 
-class BPEKnockout(DeterministicBPETokeniser):
+class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
+    """
+    Wrapper around the BPE-knockout tokeniser implementation that not only abstracts away the initialisation config, but
+    also the language config.
+    """
 
     def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
-                 vocab: Vocab, merges: MergeList, language: Union[Language, str], unk_type: str=None):
+                 vocab: Vocab, merges: MergeList,
+                 language: Union[Language, str], iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False, unk_type: str=None):
         # Impute language
         if isinstance(language, str):
             language = langstringToLanguage(language)
@@ -51,8 +51,31 @@ class BPEKnockout(DeterministicBPETokeniser):
                 vocab=vocab,
                 merges=merges,
 
-                do_morphemic_knockout=True
+                do_morphemic_knockout=do_knockout,
+                do_reification=do_reify,
+                backwards_compatible=backwards_compatible,
+                iterations=iterations
             )
+
+
+class BPEKnockout(DeterministicBPETokeniserWithLanguage):
+
+    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+                 vocab: Vocab, merges: MergeList, language: Union[Language, str], unk_type: str=None):
+        super().__init__(
+            preprocessor=preprocessor,
+            boundary_marker=boundary_marker,
+
+            vocab=vocab,
+            merges=merges,
+            unk_type=unk_type,
+
+            language=language,
+
+            do_knockout=True,
+            do_reify=False,
+            iterations=1
+        )
 
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str]) -> Self:
@@ -63,7 +86,7 @@ class BPEKnockout(DeterministicBPETokeniser):
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         marker = detectBoundaryMarker(hf_bpe_tokenizer)
         # byte_based = detectByteBased(tokenizer)
-        return BPEKnockout(
+        return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
             boundary_marker=marker,
             unk_type=hf_bpe_tokenizer.unk_token,
@@ -72,4 +95,44 @@ class BPEKnockout(DeterministicBPETokeniser):
             merges=vocab_and_merges.loadMerges(),
 
             language=language
+        )
+
+
+class ReBPE(DeterministicBPETokeniserWithLanguage):
+
+    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+                 vocab: Vocab, merges: MergeList,
+                 language: Union[Language, str], iterations: int, backwards_compatible: bool=False, unk_type: str=None):
+        super().__init__(
+            preprocessor=preprocessor,
+            boundary_marker=boundary_marker,
+
+            vocab=vocab,
+            merges=merges,
+            unk_type=unk_type,
+
+            language=language,
+
+            do_knockout=True,
+            do_reify=True,
+            iterations=iterations,
+            backwards_compatible=backwards_compatible
+        )
+
+    @classmethod
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str], iterations: int, backwards_compatible: bool) -> Self:
+        vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
+        marker = detectBoundaryMarker(hf_bpe_tokenizer)
+        return cls(
+            preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
+            boundary_marker=marker,
+            unk_type=hf_bpe_tokenizer.unk_token,
+
+            vocab=vocab_and_merges.loadVocabulary(),
+            merges=vocab_and_merges.loadMerges(),
+
+            language=language,
+
+            iterations=iterations,
+            backwards_compatible=backwards_compatible
         )

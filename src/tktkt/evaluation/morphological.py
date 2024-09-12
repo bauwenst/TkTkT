@@ -9,7 +9,7 @@ from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 from modest.interfaces.morphologies import MorphologyVisitor, WordSegmentation, MorphSplit, FreeMorphSplit
 
 from ..util.printing import wprint
-from ..files.paths import DataPaths
+from ..files.paths import TkTkTPaths
 from ..interfaces.tokeniser import Tokeniser, TokeniserWithFiniteIdRange
 
 
@@ -131,7 +131,7 @@ def morphologyVersusTokenisation(
     weighted = weights is not None
     log = None
     if do_write_fusions:
-        log = open(DataPaths.pathToEvaluations() / f"{log_name}_morpheme-fusions_{morphology_method.__name__}.txt", "w", encoding="utf-8")
+        log = open(TkTkTPaths.pathToEvaluations() / f"{log_name}_morpheme-fusions_{morphology_method.__name__}.txt", "w", encoding="utf-8")
 
     # Result storage
     cm   = ConfusionMatrix()

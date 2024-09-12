@@ -77,8 +77,8 @@ class DiscretiseScores(NestedScoreGenerator):
         bucket_ids = np.digitize(nested_scores.grid, self.bucket_thresholds)
         new_grid: np.ndarray = self.min + self.bucket_to_value_factor*(bucket_ids-1)
 
-        # Reset whatever falls out of range, which numpy maps to 0 and len(boundaries) == len(buckets)+1.
-        # Note: self.max also counts as falling out of the interval, but that doesn't matter because it should be discretised to itself anyway, so copying it is fine too.
+        # Reset whatever falls out of range (in particular: existing INFs), which numpy maps to 0 (too low) or len(boundaries) == len(buckets)+1 (too high).
+        # Note: self.max also counts as falling out of the interval, but because we want it to just be self.max anyway, copying it is fine.
         reset_mask = (bucket_ids < 1) + (bucket_ids > self.levels+1)
         new_grid[reset_mask] = nested_scores.grid[reset_mask]
 
@@ -111,20 +111,6 @@ class VocabularyConstraintExact(VocabularyConstraint):
                     nested_scores.set(n, k, self.default)
                 elif string[n:n+(k+1)] not in self.vocab:
                     nested_scores.set(n, k, self.default)
-
-    def getAllPossibleSegmentations(self, string: str, max_k: int) -> List[List[str]]:
-        N = len(string)
-        segmentations_to_here = [[] for _ in range(N+1)]
-        segmentations_to_here[0].append("")
-        for n in range(N):
-            for segmentation_so_far in segmentations_to_here[n]:
-                K = min(max_k, N-n)  # K is the amount of steps. When you're in front of character n == N-1, i.e. the last character, there is N-n == 1 more step.
-                for k in range(K):
-                    step = string[n:n+(k+1)]
-                    if step in self.vocab:
-                        segmentations_to_here[n+k+1].append(segmentation_so_far + " "*(segmentation_so_far != "") + step)
-
-        return [segmentation.split(" ") for segmentation in segmentations_to_here[N]]
 
 
 from ...util.trie import TrieNode

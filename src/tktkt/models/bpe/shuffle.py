@@ -19,9 +19,7 @@ class ShuffledBPE(DeterministicBPETokeniser):
             unk_type=unk_type,
 
             vocab=vocab,
-            merges=merges,
-
-            do_morphemic_knockout=False
+            merges=merges
         )
 
         if constrained:

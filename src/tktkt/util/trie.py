@@ -1,8 +1,3 @@
-"""
-TODO: Two operations to support. I know the string that follows at the point I'm at. Now,
-    x For concatenable Viterbi: for each prefix in that string, I need to get it if it exists in the vocabulary.
-    - For non-concatenable Viterbi: for each prefix in that string, I need to get all subwords that start with that prefix.
-"""
 from typing import Dict, List, Optional
 
 
@@ -12,8 +7,8 @@ class TrieNode:
     """
 
     def __init__(self, root: str=""):
-        self.compiled = False
-        self.compiledroots = False
+        self._compiled = False
+        self._compiledroots = False
 
         self.root = root
         self.count = 0
@@ -25,7 +20,7 @@ class TrieNode:
         """
         Add a count to the current node and to a word path starting UNDER this node.
         """
-        if self.compiled:
+        if self._compiled:
             raise RuntimeError("Tried to a alter a compiled trie.")
 
         self.count += count
@@ -46,10 +41,10 @@ class TrieNode:
         that the current Trie should own its grandchildren as children.
         Compilation happens from deep to shallow nodes so that we know the inherited grandchildren aren't themselves redundant.
         """
-        if self.compiledroots:
+        if self._compiledroots:
             raise RuntimeError("Cannot compile trie after compiling its roots. Reverse the order of these two operations.")
 
-        if self.compiled:
+        if self._compiled:
             return
 
         for child_root, child in dict(self.branches).items():
@@ -64,14 +59,20 @@ class TrieNode:
 
         self.lexicographic_branch_keys = sorted(self.branches, key=lambda key: (len(key), key))
 
-        self.compiled = True
+        self._compiled = True
         self._assertBidirectionalAssociation()
 
     def compileRoots(self):
+        """
+        By default, the trie stores string segments in its nodes such that the string that leads to a node is only
+        obtained by SUMMING across all string segments on the path from the root to that node.
+
+        This transformation instead stores those full strings in each node.
+        """
         for child in self.branches.values():
             child.root = self.root + child.root
             child.compileRoots()
-        self.compiledroots = True
+        self._compiledroots = True
 
     def _assertBidirectionalAssociation(self):
         for stored_root, child in self.branches.items():
@@ -85,7 +86,7 @@ class TrieNode:
 
     def get(self, prefix: str) -> Optional["TrieNode"]:
         """
-        Get the node corresponding to the given child path.
+        Get the descendant node you would get by walking down the children of this node recursively matching the given string.
         """
         if not prefix:
             return self
@@ -96,9 +97,10 @@ class TrieNode:
 
         return None
 
-    def getNodesOfPrefices(self, word: str):
+    def getNodesOfPrefices(self, word: str) -> List["TrieNode"]:
         """
         Get the list of existing trie nodes that correspond to a prefix of the given word.
+        For example, "abcde" can return the nodes for "a", "ab", "abc", "abcd" and "abcde".
         """
         nodes = []
         for i in range(len(word)):
@@ -109,15 +111,15 @@ class TrieNode:
 
     def getNodesWithPrefix(self, word: str, only_first: bool=False) -> List["TrieNode"]:
         """
-        In the compiled trie, it's possible that a word abc isn't included, but a word abcde for which it is a prefix is.
-        Let's find those words.
+        Return the nodes that start with the given string.
+        For example, if "abc" is given, the node for "abcd" and "abce" might be returned, even if "abc" itself doesn't
+        have its own node.
         """
         nodes = []
         if not word:  # The word is exactly in the trie.
             nodes.append(self)
-            if only_first:
-                return nodes
-            nodes.extend(self.getDescendantNodes())
+            if not only_first:
+                nodes.extend(self.getDescendantNodes())
             return nodes
 
         for key in self.lexicographic_branch_keys:

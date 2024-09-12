@@ -21,9 +21,7 @@ class BPEDropout(NonDeterministicBPETokeniser):
             unk_type=unk_type,
 
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
-
-            do_morphemic_knockout=False
+            boundary_marker=boundary_marker
         )
         self.p = dropout_probability
         self.rng = npr.default_rng(0)
@@ -95,9 +93,7 @@ class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
             unk_type=unk_type,
 
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
-
-            do_morphemic_knockout=False
+            boundary_marker=boundary_marker
         )
         self.rng = npr.default_rng(0)
 
@@ -141,9 +137,7 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
             unk_type=unk_type,
 
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
-
-            do_morphemic_knockout=False
+            boundary_marker=boundary_marker
         )
         self.rng = npr.default_rng(0)
         self.p = breakdown_probability

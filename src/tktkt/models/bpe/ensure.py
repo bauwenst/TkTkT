@@ -40,9 +40,7 @@ class EnsuredBPE(DeterministicBPETokeniser):
 
             vocab=vocab,
             merges=merges,
-            unk_type=unk_type,
-
-            do_morphemic_knockout=False
+            unk_type=unk_type
         )
 
         self.ensured   = list(keepFirst(mapExtend(self.preprocessor.do, ensure_strings) if do_preprocess_these else ensure_strings))

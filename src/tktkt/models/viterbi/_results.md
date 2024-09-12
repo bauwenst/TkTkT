@@ -1,12 +1,16 @@
 # Evaluation results
 
 ## English morphology
-To beat is BPE-knockout, which does Pr=53%, Re=75%, F1=62% on morphs.
+The dataset for this are the morph segmentations in [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout)'s version 
+of CELEX with the `legacy` flag turned *on*.
+
+The baseline to beat is BPE-knockout, which does Pr=53%, Re=75%, F1=62% on morphs.
 
 ### BPE vocabulary
 #### Probability-based
 **CANINE with boundary-only symmetric probabilities** (2*P-1) and English BPE vocabulary as constraint:
 ```
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
     Precision: 0.5707395498392283
     Recall:    0.8034367141659682
     F1:        0.6673861579167247
@@ -16,6 +20,7 @@ which is respectively +4%, +5%, +4% on BPE-knockout.
 The vocabulary does matter a lot. The character model by itself does 92% on all metrics, and if you switch to a Dutch
 vocabulary (RobBERT's) with the same objective, you get
 ```
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
     Precision: 0.43320889909887733
     Recall:    0.8851913942442023
     F1:        0.5817243690381102
@@ -24,13 +29,14 @@ which is respectively -10%, +13% and -4% over English BPE-knockout, clearly over
 bigger meaningful tokens are unknown to it.
 
 We have three model alternatives:
-    - Symmetric probabilities but using the joint (i.e. also counting the non-boundaries);
-    - Boundary-only log probabilities
-    - Joint log probabilities
+- Symmetric probabilities but using the joint (i.e. also counting the non-boundaries);
+- Boundary-only log probabilities
+- Joint log probabilities
 Strangely, the first one changes 0 of the predicted splits.
 
 When you use log probabilities WITHOUT the joint, performance tanks.
 ```
+HFPointViterbi(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
     Precision: 0.5128729963008631
     Recall:    0.5810841017043867
     F1:        0.5448519779931884
@@ -41,6 +47,7 @@ When you use log probabilities WITHOUT the joint, performance tanks.
 
 Using joint log probabilities, which is probabilistically the most sound, actually produces the best tokeniser so far!
 ```
+HFPointViterbi(BoundaryScoresAll(LogPT) + VocabularyConstraintExact)
     Precision: 0.5703759458067583
     Recall:    0.8045822855546242
     F1:        0.6675321062636191
@@ -71,6 +78,7 @@ in whole-word boundary recall by 5%:
 #### Probability-based
 Using **CANINE with symmetric probability** (joint or not) and a ULM vocabulary:
 ```
+HFPointViterbi(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
     Precision: 0.583957433992571
     Recall:    0.8126292260407936
     F1:        0.6795724049301947
@@ -83,6 +91,7 @@ Using **CANINE with symmetric probability** (joint or not) and a ULM vocabulary:
 
 The joint log probability has a lower precision and F1 this time:
 ```
+HFPointViterbi(BoundaryScoresAll(LogPT) + VocabularyConstraintExact)
     Precision: 0.5824413277045277
     Recall:    0.8133836267113719
     F1:        0.6788075223560411
@@ -90,6 +99,7 @@ The joint log probability has a lower precision and F1 this time:
 
 And again, scores are worst for boundary-only log probabilities:
 ```
+HFPointViterbi(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
     Precision: 0.5452460090819718
     Recall:    0.6508521933500978
     F1:        0.5933869981658856
@@ -98,13 +108,14 @@ And again, scores are worst for boundary-only log probabilities:
 Using the **AtLeastAll constraint with symmetric probability objective** unsurprisingly gives a result that is
 at least as good as with an exact vocabulary:
 ```
-		Precision: 0.6577800897327525
-		Recall:    0.8479463537300922
-		F1:        0.7408546632978139
+HFPointViterbi(BoundaryScoresAll(LogPT) + VocabularyConstraintAtLeastAll)
+    Precision: 0.6577800897327525
+    Recall:    0.8479463537300922
+    F1:        0.7408546632978139
 
-		WW-Precision: 0.14153499360599953
-		WW-Recall:    0.9452808338158657
-		WW-F1:        0.2462060514657366
+    WW-Precision: 0.14153499360599953
+    WW-Recall:    0.9452808338158657
+    WW-F1:        0.2462060514657366
 ```
 Indeed, this blows the above 58%, 81%, 68% of the exact constraint out of the water, at the cost of concatenability. 
 Precision could be better though; seems to be oversegmenting (finds 84% of real splits but only 66% of proposed splits are real).
@@ -175,7 +186,7 @@ That means we no longer need to consider NegComp, and we now also know that symm
 considering all boundaries.
 
 Also notice the only two real BoundaryScoresAll results are *the same* regardless of LinearPT or PiecewisePT. What's more:
-they stay equal when varying the punishment, *and are equal across punishments*.
+they are *equal across punishments*.
 ```
 HFPointViterbi(BoundaryScoresAll(LinearPT(-0.25,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084
@@ -373,6 +384,8 @@ ProbabilityViterbiWithLeastTokenTiebreaker
 ```
 
 #### Hard-boundary-prefix-based
+Prefix-based objectives give a higher score when they include a larger portion of the start of a gold token.
+
 For exact vocabulary constraint, we are looking to beat 58%, 81%, 68%:
 ```
 HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintExact)
@@ -441,6 +454,52 @@ HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstr
     WW-Recall:    0.9363057324840764
     WW-F1:        0.24033441709242917
 ```
+
+#### Multiplicative
+Rather than summing symmetric probabilities, you can also multiply raw probabilities. The issue with this is that if
+you don't take into account the unchosen boundaries (if you do, then you get `BoundaryScoresAll` with summing and `LogPT`),
+you disincentivise making more splits by default since multiplying by nothing is better than 0.9999.
+
+We have come up with transformations that fix this. The power transform `1 + c (x-0.5)` slash `1/(1 + c (0.5 - x))` 
+seems to do really well! Precision is consistently 58.7% which is higher than anything we've seen, and F1 is highly
+competitive.
+```
+MultiplicativeBalanceViterbi(BoundaryScoresChosen(PowerMBPT(c=0.25,p=+1)) + VocabularyConstraintExact)
+    Precision: 0.587749218337597
+    Recall:    0.8122615039281706
+    F1:        0.6820034395834806
+
+MultiplicativeBalanceViterbi(BoundaryScoresChosen(PowerMBPT(c=0.5,p=+1)) + VocabularyConstraintExact)
+    Precision: 0.5877086124984773
+    Recall:    0.8122053872053872
+    F1:        0.681956322001555
+
+MultiplicativeBalanceViterbi(BoundaryScoresChosen(PowerMBPT(c=0.75,p=+1)) + VocabularyConstraintExact)
+    Precision: 0.5876179843702426
+    Recall:    0.8122615039281706
+    F1:        0.6819150815617455
+
+MultiplicativeBalanceViterbi(BoundaryScoresChosen(PowerMBPT(c=1.0,p=+1)) + VocabularyConstraintExact)
+    Precision: 0.5875512440638064
+    Recall:    0.812317620650954
+    F1:        0.681889912146407
+
+MultiplicativeBalanceViterbi(BoundaryScoresChosen(PowerMBPT(c=1.1,p=+1)) + VocabularyConstraintExact)
+    Precision: 0.5875489539579148
+    Recall:    0.8124298540965208
+    F1:        0.6819279094688004
+
+MultiplicativeBalanceViterbi(BoundaryScoresChosen(PowerMBPT(c=1.25,p=+1)) + VocabularyConstraintExact)
+    Precision: 0.5875131888645402
+    Recall:    0.8124298540965208
+    F1:        0.6819038198860158
+        
+MultiplicativeBalanceViterbi(BoundaryScoresChosen(PowerMBPT(c=2,p=+1)) + VocabularyConstraintExact)
+    Precision: 0.5873608209787657
+    Recall:    0.812598204264871
+    F1:        0.6818604541655385
+```
+With increasing `c`, i.e. a more extreme transform, precision drops a little and recall rises a little.
 
 #### Unguided
 Using **least-token** Viterbi with ULM vocabulary:

@@ -2,23 +2,24 @@ from tst.preamble import *
 
 from typing import Optional
 
-from tktkt.interfaces.tokeniser import Vocab
-from tktkt.preparation.instances import RobertaPreprocessor, Preprocessor, IdentityPreprocessor
-
 from tktkt.models.viterbi import *
-from tst.evaluation.english_morphology import make_CanineViterbiBPE, english_bpe
+from tktkt.preparation.instances import RobertaPreprocessor, IdentityPreprocessor
+from tktkt.builders.english import Builder_English_CanineViterbi_BPE, getEnglishBpeFiles
+from tktkt.interfaces.tokeniser import Vocab, Preprocessor
 
-canine_viterbi = make_CanineViterbiBPE()
+
+canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()
 classifier: CharacterClassifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
-vocab = english_bpe.get_vocab()  # Determines how you should format the below example.
+vocab = getEnglishBpeFiles().loadVocabulary()  # Determines how you should format the below example.
 word = "Ġhorseshoe"
 # word = "Ġsupercalifragilistic"
 
 
 class TestDegenerateViterbi(ViterbiTokeniser):
     """
-    Quick testing class that I can change objectives in to check several score grids and vocab constraints.
+    Quick testing class that I can change objectives in
+    to check several score grids and vocab constraints.
     """
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int]):
@@ -26,9 +27,9 @@ class TestDegenerateViterbi(ViterbiTokeniser):
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 initial_score=0,
-                score_generator=VocabularyConstraintExact(HardBoundaryAndNonBoundaryPrefixLengthExtended(classifier),
+                score_generator=VocabularyConstraintExact(BoundaryScoresChosen(classifier, transform=DoublingMBPT()),
                                                           vocab, reset_value=-INFTY),
-                score_combiner=ScoreSum()
+                score_combiner=ScoreProduct()
             ),
             ViterbiObjective(
                 initial_score=0,
@@ -40,7 +41,7 @@ class TestDegenerateViterbi(ViterbiTokeniser):
 
 def tst_verify_scoregrid():
     # Tokenise
-    tk = TestDegenerateViterbi(IdentityPreprocessor, english_bpe.get_vocab(), max_step=None)
+    tk = TestDegenerateViterbi(IdentityPreprocessor, getEnglishBpeFiles().loadVocabulary(), max_step=None)
     print(tk.prepareAndTokenise(word))
 
     # Show score grid
@@ -64,10 +65,10 @@ def tst_verify_scoregrid():
 
 def tst_verify_that_nonboundary_does_something():
     """
-    Is the score grid different for the below two classes?
-    If yes, it explained why they look mathematically equivalent.
+    Is the score grid different for BoundaryScoresChosen vs BoundaryScoresAll?
+    If yes, that explains why they look mathematically equivalent.
 
-    TODO: They're actually functioning exactly as designed, RIP xD
+    Answer: They're actually functioning exactly as designed, RIP.
     """
     symmetric_transform = LinearPT(-1, +1, negate_as_complement=False)
     g1 = VocabularyConstraintExact(BoundaryScoresChosen(classifier, symmetric_transform), vocab, reset_value=-INFTY)
@@ -95,5 +96,5 @@ def tst_compare_to_robbert():
 
 
 if __name__ == "__main__":
-    # tst_verify_scoregrid()
-    tst_verify_that_nonboundary_does_something()
+    tst_verify_scoregrid()
+    # tst_verify_that_nonboundary_does_something()

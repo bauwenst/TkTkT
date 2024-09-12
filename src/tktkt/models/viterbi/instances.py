@@ -1,16 +1,12 @@
 """
 Some examples of common Viterbi objectives.
-
-TODO:
-  Another idea: try multiplying probabilities but anything over 50% is flipped to the denominator and complemented.
-  That way, getting a *1% is cancelled by getting a *99% (equivalent to a factor *1/(1-0.99)).
 """
 from typing import Type, Optional
 
 from transformers import PreTrainedTokenizer, PreTrainedModel
 
-from ...interfaces.tokeniser import Preprocessor, Vocab
 from ..viterbi import *
+from ...interfaces.tokeniser import Preprocessor, Vocab
 
 
 class LeastTokenViterbi(ViterbiTokeniser):
@@ -114,7 +110,7 @@ class LeastTokenViterbiWithProbabilityTiebreaker(ViterbiTokeniser):
 
 class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniser):
     """
-    Maximises boundary probabilities with minimal tokens as tiebreaker, swapping the above objectives.
+    Maximises semi-hard* boundaries, with minimal tokens as tiebreaker, swapping the above objectives.
 
     The idea of why you want to swap the objectives: there are possibly many solutions with minimal tokens amounts, but
     that doesn't mean any of them are actually any good, whether you tiebreak for boundary probability or not. On the
@@ -122,9 +118,12 @@ class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniser):
     minimising the amount of tokens, you will still get something that hits all boundaries whilst expanding the tokens
     as much as possible within those boundaries.
 
-    We clip probabilities because if not, it's useless to have a tiebreaker: indeed, if you have possible boundaries
-    [0.000001, 0.95, 0.0000001, 0.000001, 0.00001, 0.95, 0.000001], it is always technically better to grab all probabilities.
-    We have 3 discretisation levels since sometimes your model really is 50/50 undecided.
+    In other words: you get something that competes with character segmentation by also having all desired boundaries,
+    but with (hopefully) bigger tokens than characters.
+
+    *We clip probabilities because if not, it's useless to have a tiebreaker: indeed, if you have possible boundaries
+     [0.000001, 0.95, 0.0000001, 0.000001, 0.00001, 0.95, 0.000001], it is always technically better to grab all probabilities.
+     We have 3 discretisation levels since sometimes your model really is 50/50 undecided.
     """
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
@@ -137,7 +136,7 @@ class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniser):
                     VocabularyConstraintExact(
                         DiscretiseScores(
                             BoundaryScoresChosen(
-                                logprob_classifier, IdentityPT()
+                                logprob_classifier, IdentityPT()  # No transformation of the probabilities. We want them raw to discretise them.
                             ),
                             minimum_score=0, maximum_score=1, discretisation_levels=discretisation_steps
                         ),
@@ -151,3 +150,37 @@ class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniser):
                 score_combiner=ScoreSubtract()
             )
         ])
+
+
+class MultiplicativeBalanceViterbi(ViterbiTokeniser):
+    """
+    The idea is this: if you have a boundary model that gives you probabilities at each character boundary, one thing
+    you might do to score a segmentation is multiply the probabilities of the boundaries you choose to split on.
+    The problem here is that it disincentivises gathering a higher amount of high-probability boundaries even if it takes
+    no other bad splits to do so: 0.9999 * 0.9999 * 0.9999 is smaller than 0.9999 * 0.9999. A second issue is that when
+    you do hit a low-probability boundary, you carry that forever: 0.1 * 0.9999 * 0.9999 * 0.9999 * 0.9999 * 0.9999
+    has 5 perfect splits and 1 bad split, and it is 10x smaller than having even 1 good split at 0.9999.
+
+    So, what you want is to give all probabilities past 50% a boost so that you can recover completely from a bad split
+    and so that two perfect splits are better than one perfect split.
+    """
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
+                 logprob_classifier: CharacterClassifier, transform: MultiplicativelyBalancedProbabilityTransform):
+        max_step = max_step or max(map(len, vocab))
+        super().__init__(preprocessor=preprocessor, max_stepsize=max_step, objectives=[
+            ViterbiObjective(
+                initial_score=1,
+                score_generator=
+                    VocabularyConstraintExact(
+                        BoundaryScoresChosen(
+                            logprob_classifier, transform
+                        ),
+                        subword_vocabulary=vocab, reset_value=-INFTY
+                    ),
+                score_combiner=ScoreProduct()
+            )
+        ])
+
+    def getName(self):
+        constraint: VocabularyConstraint = self.objectives[0].score_generator
+        return self.__class__.__name__ + "(" + constraint.nested_generator.__repr__() + " + " + constraint.__class__.__name__ + ")"

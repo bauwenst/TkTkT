@@ -1,13 +1,20 @@
-from tktkt.models.viterbi.objectives_postprocessors import VocabularyConstraintExact
-from tst.evaluation.english_morphology import make_CanineViterbiBPE
+from tktkt.builders.english import getEnglishBpeFiles
+from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
+from tktkt.preparation.huggingface import HuggingFacePreprocessorForWords
+from tktkt.util.strings import segmentUsingIndices
 
-canine_viterbi = make_CanineViterbiBPE()
-vocab_manager: VocabularyConstraintExact = canine_viterbi.objectives[0].score_generator
 s = "accumulatively"
 
+english_bpe = getEnglishBpeFiles()
+preprocessor = HuggingFacePreprocessorForWords(english_bpe.toFastBPE())
+
+s = preprocessor.do(s)[0]
+all_segmentations = generateSegmentationIndices_fixedSpace(s, english_bpe.loadVocabulary())
+
 print("Enumerating...")
-all_segmentations = vocab_manager.getAllPossibleSegmentations(
-    canine_viterbi.preprocessor.do(s)[0],
-    max_k=20
-)
-print(list(sorted(filter(lambda segmentation: not any(len(t) == 1 for t in segmentation[1:]), all_segmentations), reverse=True)))
+print(
+    list(
+        sorted(
+            filter(lambda segmentation: not any(len(t) == 1 for t in segmentation[1:]),
+                   map(lambda idcs: segmentUsingIndices(s, idcs),
+                       all_segmentations)), reverse=True)))

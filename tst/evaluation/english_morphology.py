@@ -4,7 +4,9 @@ Evaluate any tokeniser on English morphology.
 TODO: To be tested:
     - English BPE-knockout-reify
     - We have prefix objectives. What about suffix objectives? I.e.: if you have splits |abcde|fghi| then you get a
-      score of 3 for a token [CDE] because it ENDS on a boundary, not starts on it.
+      score of 3 for a token [CDE] because it ENDS on a boundary, not starts on it. Prefix objectives give that 0 score,
+      and rather give you credit for any extension of that split point (e.g. [FGH])
+      |
       And could you do prefix and suffix combined? Giving score for starting and ending on a boundary, proportional to
       the distance travelled to/from that point and capped by the distance to the nearest boundary in that direction?
 
@@ -30,18 +32,19 @@ TODO: There are two issues with our CANINE evaluation.
 """
 import json
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish
+from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from tktkt.builders.english import *
 from tktkt.util.timing import datetimeDashed
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.objectives_guided import *
 from tktkt.models.viterbi.objectives_postprocessors import *
-from tktkt.files.paths import DataPaths
+from tktkt.files.paths import TkTkTPaths
 
 
-def testTokenisers(tokenisers: Iterable[Tokeniser]):
+def evaluateTokenisers(tokenisers: Iterable[Tokeniser]):
     with KnockoutDataConfiguration(setupEnglish()):
+        Pℛ𝒪𝒥ℰ𝒞𝒯.do_old_iterator = True
         # Do evaluation
         results = intrinsicEvaluation(tokenisers, do_whole_word=False, verbose=True)
 
@@ -64,7 +67,7 @@ def testTokenisers(tokenisers: Iterable[Tokeniser]):
                 }
             }
 
-        with open(DataPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "_morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
+        with open(TkTkTPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "_morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
             json.dump(d, handle)
 
 ##################################################################################################################
@@ -80,9 +83,9 @@ def constructTokenisers():
 
 def constructTokenisers_BPE():  # 43, 45.9, 53.2, 52.4
     return [
-        Builder_English_BPE(),                            # Worst
+        Builder_English_BPE(),                    # Worst
         Builder_English_LeastToken_BPE(),         # Better by +1%
-        Builder_English_BPEKnockout(),                    # Best (+10% Pr, +25% Re)
+        Builder_English_BPEKnockout(),            # Best (+10% Pr, +25% Re)
         Builder_English_LeastToken_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
     ]
 
@@ -151,7 +154,18 @@ def constructTokenisers_dropout():
     ]
 
 
+def constructTokenisers_multiplicativeProbabilities():
+    for scale in [0.25, 0.5, 0.75, 1.0, 1.1, 1.25]:
+        yield Builder_English_CanineViterbiMultiplicative_ULM(PowerMBPT(power=1, scale=scale))
+    yield Builder_English_CanineViterbiMultiplicative_ULM(DoublingMBPT())
+
+
+def constructTokenisers_reBPE():
+    for its in [1,2,3,4,5]:
+        yield Builder_English_ReBPE(iterations=its)
+
+
 if __name__ == "__main__":
-    tokeniser_builders = constructTokenisers_dropout()
+    tokeniser_builders = [Builder_English_BPEKnockout()]
     ###
-    testTokenisers(builder.buildTokeniser() for builder in tokeniser_builders)
+    evaluateTokenisers(builder.buildTokeniser() for builder in tokeniser_builders)

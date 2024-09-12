@@ -98,4 +98,4 @@ class PathManager:
         return PathManager.extend(self._homeDirectory(), parts)
 
 
-DataPaths = PathManager()
+TkTkTPaths = PathManager()
