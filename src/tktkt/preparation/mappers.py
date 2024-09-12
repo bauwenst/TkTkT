@@ -191,8 +191,8 @@ class AppendSpace(InvertibleTextMapper):
         return " "*self.front + text + " "*(not self.front)
 
     def invert(self, text: str) -> str:
-        trim_front = text[0].isspace() and self.front
-        trim_back  = text[-1].isspace() and not self.front
+        trim_front = self.front     and len(text) and text[0].isspace()
+        trim_back  = not self.front and len(text) and text[-1].isspace()
         return text[trim_front:len(text) - trim_back]
 
 
