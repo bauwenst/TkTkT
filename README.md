@@ -1,6 +1,6 @@
 # TkTkT
 A collection of Pythonic subword tokenisers and text preprocessing tools, with full
-backwards- *and* forwards-compatibility with HuggingFace `tokenizers`.
+backwards- *and* forwards-compatibility with HuggingFace `tokenizers`!
 
 Quick navigation:
 - <a href="#installation">Installation</a>
