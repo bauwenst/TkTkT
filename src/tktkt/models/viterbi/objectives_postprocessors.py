@@ -107,9 +107,7 @@ class VocabularyConstraintExact(VocabularyConstraint):
     def augmentScores(self, nested_scores: ViterbiStepScores, string: str, max_k: int):
         for n in range(len(string)):
             for k in range(max_k):  # It doesn't really matter that for large n, n:n+k is the same string every iteration.
-                if k >= len(string) - n:
-                    nested_scores.set(n, k, self.default)
-                elif string[n:n+(k+1)] not in self.vocab:
+                if k >= len(string) - n or string[n:n+(k+1)] not in self.vocab:  # TODO: Preferably this would be `not self.hasType()` like for the Markov random tokeniser, but a constraint is not a tokeniser...
                     nested_scores.set(n, k, self.default)
 
 

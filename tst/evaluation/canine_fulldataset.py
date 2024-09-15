@@ -11,19 +11,16 @@ from tst.preamble import *
 
 from lamoto.trainer.hyperparameters import *
 from lamoto.tasks.mbr import MBR, SUGGESTED_HYPERPARAMETERS_MBR
-from tktkt.models.viterbi.instances import HuggingFaceCharacterModelForTokenClassification, VocabularyConstraintExact, ScoreGeneratorUsingCharacterClassifier
-from tktkt.builders.english import Builder_English_CanineViterbi_BPE
+from tktkt.builders.english import getEnglishCANINE
 
 # Model setup  TODO: I wonder how we can support loading completely custom models in LaMoTO.
-canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()
-generator: VocabularyConstraintExact = canine_viterbi.objectives[0].score_generator
-nested_generator: ScoreGeneratorUsingCharacterClassifier = generator.nested_generator
-classifier: HuggingFaceCharacterModelForTokenClassification = nested_generator.logprob_classifier
-model = classifier.model
+wrapper = getEnglishCANINE()
+model = wrapper.model_for_tokenclassification
 model.to("cuda")
 
 # Hyperparameters
 hp = SUGGESTED_HYPERPARAMETERS_MBR
+hp.TOKENISER = wrapper.characters_to_modelinput
 hp.HARD_STOPPING_CONDITION = AfterNEpochs(epochs=0, effective_batch_size=SUGGESTED_HYPERPARAMETERS_MBR.EXAMPLES_PER_EFFECTIVE_BATCH)
 
 # "Train", which is just an evaluation.
