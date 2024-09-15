@@ -2,8 +2,7 @@
 Some examples of common Viterbi objectives.
 """
 from typing import Type, Optional
-
-from transformers import PreTrainedTokenizer, PreTrainedModel
+from typing_extensions import Self
 
 from ..viterbi import *
 from ...interfaces.tokeniser import Preprocessor, Vocab
@@ -47,40 +46,75 @@ class ProductViterbi(ViterbiTokeniser):
         ])
 
 
-class HFPointViterbi(ViterbiTokeniser):
+class BoMMa(ViterbiTokeniser):
     """
-    Uses a HuggingFace character model for generating the probability that a split point should occur after each
-    character, transforms those probabilities into Viterbi scores, and applies a vocabulary constraint to prevent
-    the Viterbi optimiser from choosing some paths.
+    The "Boundary Model Maximisation" tokeniser is a Viterbi tokeniser that uses a binary character classifier to
+    generate probabilities at each inter-character position for whether there should be a split there, transforms those,
+    and applies a vocabulary constraint on top to prevent the Viterbi optimiser from choosing some paths.
 
     You can make so many different models with this class that you can write an entire paper about just this one.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
-                 # Grid generator
-                 score_generator_class: Type[ScoreGeneratorUsingCharacterClassifier], score_transform: Optional[ProbabilityTransform], vocabulary_constraint_class: Type[VocabularyConstraint],
-                 # Probability generator
-                 huggingface_checkpoint: str, tokeniser_class: Type[PreTrainedTokenizer], model_class: Type[PreTrainedModel], tokeniser_kwargs: dict=None):
+    def __init__(self, preprocessor: Preprocessor, max_step: Optional[int],
+                 score_generator: ScoreGeneratorUsingCharacterClassifier,
+                 vocabulary_constraint_class: Type[VocabularyConstraint], vocab: Vocab):
         max_step = max_step or max(len(t) for t in vocab)
 
-        # The thing that generates (log) probabilities
-        probability_model = HuggingFaceCharacterModelForTokenClassification(
-            tokeniser_class.from_pretrained(huggingface_checkpoint),
-            model_class.from_pretrained(huggingface_checkpoint),
-            tokeniser_kwargs
-        )
-
+        self._score_generator = score_generator
+        self._constraint = vocabulary_constraint_class(self._score_generator, vocab, reset_value=-INFTY)
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
-                initial_score=0,
-                score_generator=vocabulary_constraint_class(score_generator_class(probability_model, transform=score_transform), vocab, reset_value=-INFTY),
-                score_combiner=ScoreSum()
+                initial_score=self._getInitialScore(),
+                score_generator=self._constraint,
+                score_combiner=self._getAccumulator()
             )
         ])
 
+    @classmethod
+    @abstractmethod
+    def _getInitialScore(cls) -> float:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def _getAccumulator(cls) -> ViterbiAccumulator:
+        pass
+
+    def from_object(self, classifier: CharacterClassifier) -> Self:
+        """
+        Set the backend probability model to any CharacterClassifier object, no matter where it came from.
+        """
+        self._score_generator.setBackend(classifier)
+        return self
+
+    def from_pretrained_hf(self, huggingface_checkpoint: str, tokeniser_kwargs: dict=None) -> Self:  # model_class: Type[PreTrainedModel], tokeniser_class: Type[PreTrainedTokenizer],
+        """
+        Set the backend probability model to a HuggingFace checkpoint.
+        """
+        return self.from_object(HuggingFaceForBinaryCharacterClassification(characterclassifier_checkpoint=huggingface_checkpoint, input_kwargs=tokeniser_kwargs))
+
     def getName(self):
-        constraint: VocabularyConstraint = self.objectives[0].score_generator
-        return self.__class__.__name__ + "(" + constraint.nested_generator.__repr__() + " + " + constraint.__class__.__name__ + ")"
+        return self.__class__.__name__ + "(" + self._score_generator.__repr__() + " + " + self._constraint.__class__.__name__ + ")"
+
+
+class BoMMa_Sum(BoMMa):
+    @classmethod
+    def _getInitialScore(cls) -> float:
+        return 0
+
+    @classmethod
+    def _getAccumulator(cls) -> ViterbiAccumulator:
+        return ScoreSum()
+
+
+class BoMMa_Product(BoMMa):
+    @classmethod
+    def _getInitialScore(cls) -> float:
+        return 1
+
+    @classmethod
+    def _getAccumulator(cls) -> ViterbiAccumulator:
+        return ScoreProduct()
 
 
 class LeastTokenViterbiWithProbabilityTiebreaker(ViterbiTokeniser):
@@ -102,10 +136,11 @@ class LeastTokenViterbiWithProbabilityTiebreaker(ViterbiTokeniser):
             ),
             ViterbiObjective(
                 initial_score=0,
-                score_generator=VocabularyConstraintExact(BoundaryScoresChosen(logprob_classifier, IdentityPT()), vocab, reset_value=-INFTY),
+                score_generator=VocabularyConstraintExact(BoundaryScoresChosen(IdentityPT()), vocab, reset_value=-INFTY),
                 score_combiner=ScoreSum()
             )
         ])
+        self.objectives[1].score_generator.nested_generator.setBackend(logprob_classifier)
 
 
 class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniser):
@@ -136,7 +171,7 @@ class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniser):
                     VocabularyConstraintExact(
                         DiscretiseScores(
                             BoundaryScoresChosen(
-                                logprob_classifier, IdentityPT()  # No transformation of the probabilities. We want them raw to discretise them.
+                                IdentityPT()  # No transformation of the probabilities. We want them raw to discretise them.
                             ),
                             minimum_score=0, maximum_score=1, discretisation_levels=discretisation_steps
                         ),
@@ -150,37 +185,4 @@ class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniser):
                 score_combiner=ScoreSubtract()
             )
         ])
-
-
-class MultiplicativeBalanceViterbi(ViterbiTokeniser):
-    """
-    The idea is this: if you have a boundary model that gives you probabilities at each character boundary, one thing
-    you might do to score a segmentation is multiply the probabilities of the boundaries you choose to split on.
-    The problem here is that it disincentivises gathering a higher amount of high-probability boundaries even if it takes
-    no other bad splits to do so: 0.9999 * 0.9999 * 0.9999 is smaller than 0.9999 * 0.9999. A second issue is that when
-    you do hit a low-probability boundary, you carry that forever: 0.1 * 0.9999 * 0.9999 * 0.9999 * 0.9999 * 0.9999
-    has 5 perfect splits and 1 bad split, and it is 10x smaller than having even 1 good split at 0.9999.
-
-    So, what you want is to give all probabilities past 50% a boost so that you can recover completely from a bad split
-    and so that two perfect splits are better than one perfect split.
-    """
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
-                 logprob_classifier: CharacterClassifier, transform: MultiplicativelyBalancedProbabilityTransform):
-        max_step = max_step or max(map(len, vocab))
-        super().__init__(preprocessor=preprocessor, max_stepsize=max_step, objectives=[
-            ViterbiObjective(
-                initial_score=1,
-                score_generator=
-                    VocabularyConstraintExact(
-                        BoundaryScoresChosen(
-                            logprob_classifier, transform
-                        ),
-                        subword_vocabulary=vocab, reset_value=-INFTY
-                    ),
-                score_combiner=ScoreProduct()
-            )
-        ])
-
-    def getName(self):
-        constraint: VocabularyConstraint = self.objectives[0].score_generator
-        return self.__class__.__name__ + "(" + constraint.nested_generator.__repr__() + " + " + constraint.__class__.__name__ + ")"
+        self.objectives[0].score_generator.nested_generator.nested_generator.setBackend(logprob_classifier)

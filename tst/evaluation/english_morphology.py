@@ -1,15 +1,6 @@
 """
 Evaluate any tokeniser on English morphology.
 
-TODO: To be tested:
-    - English BPE-knockout-reify
-    - We have prefix objectives. What about suffix objectives? I.e.: if you have splits |abcde|fghi| then you get a
-      score of 3 for a token [CDE] because it ENDS on a boundary, not starts on it. Prefix objectives give that 0 score,
-      and rather give you credit for any extension of that split point (e.g. [FGH])
-      |
-      And could you do prefix and suffix combined? Giving score for starting and ending on a boundary, proportional to
-      the distance travelled to/from that point and capped by the distance to the nearest boundary in that direction?
-
 TODO: There are two issues with our CANINE evaluation.
     1. I'm not sure if it got special tokens during pretraining, and it is likely not a good idea to leave them out in
        both fine-tuning and inference. The model is used to using these as working memory, most likely.
@@ -32,14 +23,14 @@ TODO: There are two issues with our CANINE evaluation.
 """
 import json
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
-
 from tktkt.builders.english import *
 from tktkt.util.timing import datetimeDashed
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.objectives_guided import *
 from tktkt.models.viterbi.objectives_postprocessors import *
 from tktkt.files.paths import TkTkTPaths
+
+from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 
 def evaluateTokenisers(tokenisers: Iterable[Tokeniser]):
@@ -70,14 +61,16 @@ def evaluateTokenisers(tokenisers: Iterable[Tokeniser]):
         with open(TkTkTPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "_morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
             json.dump(d, handle)
 
+
 ##################################################################################################################
+
 
 def constructTokenisers():
     return [
         Builder_English_KudoPiece(),
-        Builder_English_CanineViterbi_BPE(),
+        Builder_English_BoMMaSum_BPE(),
         Builder_English_LeastToken_ULM(),
-        Builder_English_LeastTokenThenHF_ULM(),
+        Builder_English_LeastTokenThenProbability_ULM(),
     ]
 
 
@@ -90,23 +83,6 @@ def constructTokenisers_BPE():  # 43, 45.9, 53.2, 52.4
     ]
 
 
-def constructTokenisers_prefixGenerators():
-    generators = [
-        HardBoundaryPrefixLength,
-        HardBoundaryPrefixLengthExtended,
-        HardBoundaryAndNonBoundaryPrefixLength,
-        HardBoundaryAndNonBoundaryPrefixLengthExtended
-    ]
-    constraints = [
-        VocabularyConstraintExact,
-        VocabularyConstraintAtLeastAll
-    ]
-
-    for c in constraints:
-        for g in generators:
-            yield Builder_English_CanineViterbi_ULM(g, None, c)
-
-
 def constructTokenisers_boundaryScores():
     a = -2
     b = +1
@@ -115,7 +91,7 @@ def constructTokenisers_boundaryScores():
 
     for g in generators:
         for t in transforms:
-            yield Builder_English_CanineViterbi_ULM(g, t, VocabularyConstraintExact)
+            yield Builder_English_BoMMaSum_FromTransform_ULM(g, t, VocabularyConstraintExact)
 
 
 def constructTokenisers_boundaryScorePunishments():
@@ -126,20 +102,52 @@ def constructTokenisers_boundaryScorePunishments():
     for low in lower_bounds:
         for t in transforms:
             for g in generators:
-                yield Builder_English_CanineViterbi_ULM(g, t(low, +1), VocabularyConstraintExact)
+                yield Builder_English_BoMMaSum_FromTransform_ULM(g, t(low, +1), VocabularyConstraintExact)
 
 
 def constructTokenisers_boundaryScoreLog():
     generators = [BoundaryScoresChosen, BoundaryScoresAll]
     for g in generators:
-        yield Builder_English_CanineViterbi_ULM(g, LogPT(), VocabularyConstraintExact)
+        yield Builder_English_BoMMaSum_FromTransform_ULM(g, LogPT(), VocabularyConstraintExact)
+
+
+def constructTokenisers_hardBoundaryViterbi():
+    generator_classes = [
+        # BoundaryPrefixLength,
+        # BoundaryPrefixLengthExtended,
+        BoundarySuffixLength,
+        BoundarySuffixLengthExtended,
+        BoundaryPrefixAndSuffixLengthExtended
+    ]
+    constraint_classes = [
+        VocabularyConstraintExact,
+        # VocabularyConstraintAtLeastAll
+    ]
+    punishments = [0, -1, -2]
+    normalisation = [False, True]
+
+    for cc in constraint_classes:
+        for gc in generator_classes:
+            for p in punishments:
+                for n in normalisation:
+                    g = gc(punishment=p, do_normalise=n)
+                    yield Builder_English_BoMMaSum_ULM(g, cc)
+
+
+def constructTokenisers_suffixPunishments():
+    punishments = [-0.5, -1, -1.5, -2, -2.5, -3, -3.5, -4, -4.5, -5, -5.5, -6, -6.5, -7, -7.5]
+    for p in punishments:
+        yield Builder_English_BoMMaSum_ULM(
+            BoundarySuffixLength(punishment=p, do_normalise=True),
+            VocabularyConstraintExact
+        )
 
 
 def constructTokenisers_leasttoken():
     return [
         Builder_English_LeastToken_ULM(),
-        Builder_English_LeastTokenThenHF_ULM(),
-        Builder_English_HfThenLeastToken_ULM(),
+        Builder_English_LeastTokenThenProbability_ULM(),
+        Builder_English_ProbabilityThenLeastToken_ULM(),
     ]
 
 
@@ -156,8 +164,8 @@ def constructTokenisers_dropout():
 
 def constructTokenisers_multiplicativeProbabilities():
     for scale in [0.25, 0.5, 0.75, 1.0, 1.1, 1.25]:
-        yield Builder_English_CanineViterbiMultiplicative_ULM(PowerMBPT(power=1, scale=scale))
-    yield Builder_English_CanineViterbiMultiplicative_ULM(DoublingMBPT())
+        yield Builder_English_BoMMaProduct_ULM(PowerMBPT(power=1, scale=scale))
+    yield Builder_English_BoMMaProduct_ULM(DoublingMBPT())
 
 
 def constructTokenisers_reBPE():
@@ -166,6 +174,6 @@ def constructTokenisers_reBPE():
 
 
 if __name__ == "__main__":
-    tokeniser_builders = [Builder_English_BPEKnockout()]
+    tokeniser_builders = constructTokenisers_suffixPunishments()
     ###
     evaluateTokenisers(builder.buildTokeniser() for builder in tokeniser_builders)

@@ -4,11 +4,11 @@ from typing import Optional
 
 from tktkt.models.viterbi import *
 from tktkt.preparation.instances import RobertaPreprocessor, IdentityPreprocessor
-from tktkt.builders.english import Builder_English_CanineViterbi_BPE, getEnglishBpeFiles
+from tktkt.builders.english import Builder_English_BoMMaSum_BPE, getEnglishBpeFiles
 from tktkt.interfaces.tokeniser import Vocab, Preprocessor
 
 
-canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()
+canine_viterbi = Builder_English_BoMMaSum_BPE().buildTokeniser()
 classifier: CharacterClassifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
 vocab = getEnglishBpeFiles().loadVocabulary()  # Determines how you should format the below example.
@@ -16,7 +16,7 @@ word = "Ġhorseshoe"
 # word = "Ġsupercalifragilistic"
 
 
-class TestDegenerateViterbi(ViterbiTokeniser):
+class PrototypingViterbi(ViterbiTokeniser):
     """
     Quick testing class that I can change objectives in
     to check several score grids and vocab constraints.
@@ -26,10 +26,13 @@ class TestDegenerateViterbi(ViterbiTokeniser):
         max_step = max_step or max(len(t) for t in vocab)
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
+                # initial_score=1,
+                # score_generator=VocabularyConstraintExact(BoundaryScoresChosen(classifier, transform=DoublingMBPT()),
+                #                                           vocab, reset_value=-INFTY),
+                # score_combiner=ScoreProduct()
                 initial_score=0,
-                score_generator=VocabularyConstraintExact(BoundaryScoresChosen(classifier, transform=DoublingMBPT()),
-                                                          vocab, reset_value=-INFTY),
-                score_combiner=ScoreProduct()
+                score_generator=BoundaryPrefixAndSuffixExtendedAll(classifier, punishment=0),
+                score_combiner=ScoreSum()
             ),
             ViterbiObjective(
                 initial_score=0,
@@ -41,26 +44,28 @@ class TestDegenerateViterbi(ViterbiTokeniser):
 
 def tst_verify_scoregrid():
     # Tokenise
-    tk = TestDegenerateViterbi(IdentityPreprocessor, getEnglishBpeFiles().loadVocabulary(), max_step=None)
+    tk = PrototypingViterbi(IdentityPreprocessor, getEnglishBpeFiles().loadVocabulary(), max_step=None)
     print(tk.prepareAndTokenise(word))
 
     # Show score grid
     constraint = tk.objectives[0].score_generator
-    print(constraint.generateGrid(word, max_k=len(word)))
+    grid_wrapper = constraint.generateGrid(word, max_k=len(word))
+    # grid_wrapper.grid = grid_wrapper.grid.astype(int)
+    print(grid_wrapper)
 
     # Show probabilities the score grid came from
     from tst.visualisation.canine_boundaries import visualisePredictedBoundaries
-    print(np.exp(classifier.getPointLogProbabilities(word)))
-    print(visualisePredictedBoundaries(classifier, word))
+    print("Probabilities:", np.exp(classifier.getPointLogProbabilities(word)).tolist())
+    print("\tVisualised:", visualisePredictedBoundaries(classifier, word))
 
     # Show mask that turned the probabilities into the grid
     boundary_after_asmask = [1 * (np.exp(ln) > 0.5) for ln in classifier.getPointLogProbabilities(word)]
     boundary_before_asmask = [1] + boundary_after_asmask
     boundary_before_asmask[-1] = 1
     boundary_before = np.nonzero(boundary_before_asmask)
-    print(boundary_before)
-    print(list(zip(boundary_before[:-1], boundary_before[1:])))
-    print(list(zip(boundary_before[0][:-1], boundary_before[0][1:])))
+    print("Hard split indices:", boundary_before)
+    print("\tbadly-zipped:", list(zip(boundary_before[:-1], boundary_before[1:])))
+    print("\twell-zipped:",list(zip(boundary_before[0][:-1], boundary_before[0][1:])))
 
 
 def tst_verify_that_nonboundary_does_something():
@@ -86,7 +91,7 @@ def tst_compare_to_robbert():
     from transformers import RobertaTokenizer
 
     baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
-    tk = TestDegenerateViterbi(RobertaPreprocessor, vocab, max_step=None)
+    tk = PrototypingViterbi(RobertaPreprocessor, vocab, max_step=None)
 
     words = [" flatscreentelevisie"]
     for word in words:

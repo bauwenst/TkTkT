@@ -10,7 +10,7 @@ The baseline to beat is BPE-knockout, which does Pr=53%, Re=75%, F1=62% on morph
 #### Probability-based
 **CANINE with boundary-only symmetric probabilities** (2*P-1) and English BPE vocabulary as constraint:
 ```
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
     Precision: 0.5707395498392283
     Recall:    0.8034367141659682
     F1:        0.6673861579167247
@@ -20,7 +20,7 @@ which is respectively +4%, +5%, +4% on BPE-knockout.
 The vocabulary does matter a lot. The character model by itself does 92% on all metrics, and if you switch to a Dutch
 vocabulary (RobBERT's) with the same objective, you get
 ```
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
     Precision: 0.43320889909887733
     Recall:    0.8851913942442023
     F1:        0.5817243690381102
@@ -36,7 +36,7 @@ Strangely, the first one changes 0 of the predicted splits.
 
 When you use log probabilities WITHOUT the joint, performance tanks.
 ```
-HFPointViterbi(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
     Precision: 0.5128729963008631
     Recall:    0.5810841017043867
     F1:        0.5448519779931884
@@ -47,7 +47,7 @@ HFPointViterbi(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
 
 Using joint log probabilities, which is probabilistically the most sound, actually produces the best tokeniser so far!
 ```
-HFPointViterbi(BoundaryScoresAll(LogPT) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LogPT) + VocabularyConstraintExact)
     Precision: 0.5703759458067583
     Recall:    0.8045822855546242
     F1:        0.6675321062636191
@@ -78,7 +78,7 @@ in whole-word boundary recall by 5%:
 #### Probability-based
 Using **CANINE with symmetric probability** (joint or not) and a ULM vocabulary:
 ```
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact)
     Precision: 0.583957433992571
     Recall:    0.8126292260407936
     F1:        0.6795724049301947
@@ -91,7 +91,7 @@ HFPointViterbi(BoundaryScoresChosen(LinearPT(-1,+1)) + VocabularyConstraintExact
 
 The joint log probability has a lower precision and F1 this time:
 ```
-HFPointViterbi(BoundaryScoresAll(LogPT) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LogPT) + VocabularyConstraintExact)
     Precision: 0.5824413277045277
     Recall:    0.8133836267113719
     F1:        0.6788075223560411
@@ -99,7 +99,7 @@ HFPointViterbi(BoundaryScoresAll(LogPT) + VocabularyConstraintExact)
 
 And again, scores are worst for boundary-only log probabilities:
 ```
-HFPointViterbi(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
     Precision: 0.5452460090819718
     Recall:    0.6508521933500978
     F1:        0.5933869981658856
@@ -108,7 +108,7 @@ HFPointViterbi(BoundaryScoresChosen(LogPT) + VocabularyConstraintExact)
 Using the **AtLeastAll constraint with symmetric probability objective** unsurprisingly gives a result that is
 at least as good as with an exact vocabulary:
 ```
-HFPointViterbi(BoundaryScoresAll(LogPT) + VocabularyConstraintAtLeastAll)
+BoMMa(BoundaryScoresAll(LogPT) + VocabularyConstraintAtLeastAll)
     Precision: 0.6577800897327525
     Recall:    0.8479463537300922
     F1:        0.7408546632978139
@@ -124,12 +124,12 @@ Now let's switch back to the Exact constraint but use a different probability-to
 ```
 NO EQUIVALENCE:
 
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
     Precision: 0.586417157275021
     Recall:    0.7792679519418833
     F1:        0.6692261547690462
 
-HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-2,+1)) + VocabularyConstraintExact)
     Precision: 0.5839858651568084
     Recall:    0.8126851075719475
     F1:        0.6796111967848965  ---> NEW BEST!
@@ -138,12 +138,12 @@ HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)) + VocabularyConstraintExact)
 YES EQUIVALENCE (which implies that with this objective, you can't actually take joint effect into account):
 Also equivalent to the first LinearPT above.
 
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)_NegComp) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-2,+1)_NegComp) + VocabularyConstraintExact)
     Precision: 0.586417157275021
     Recall:    0.7792679519418833
     F1:        0.6692261547690462
 
-HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)_NegComp) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-2,+1)_NegComp) + VocabularyConstraintExact)
     Precision: 0.586417157275021
     Recall:    0.7792679519418833
     F1:        0.6692261547690462
@@ -151,12 +151,12 @@ HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)_NegComp) + VocabularyConstraint
 ---------------------------------------
 NO EQUIVALENCE:
 
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
     Precision: 0.5861179889091244
     Recall:    0.8003073484213468
     F1:        0.6766675722604802
 
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
     Precision: 0.5839858651568084
     Recall:    0.8126851075719475
     F1:        0.6796111967848965
@@ -165,12 +165,12 @@ HFPointViterbi(BoundaryScoresAll(PiecewisePT(-2,+1)) + VocabularyConstraintExact
 YES EQUIVALENCE:
 (Again equivalent to the first class above.)
 
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)_NegComp) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-2,+1)_NegComp) + VocabularyConstraintExact)
     Precision: 0.5861179889091244
     Recall:    0.8003073484213468
     F1:        0.6766675722604802
 
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-2,+1)_NegComp) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(PiecewisePT(-2,+1)_NegComp) + VocabularyConstraintExact)
     Precision: 0.5861179889091244
     Recall:    0.8003073484213468
     F1:        0.6766675722604802
@@ -188,62 +188,62 @@ considering all boundaries.
 Also notice the only two real BoundaryScoresAll results are *the same* regardless of LinearPT or PiecewisePT. What's more:
 they are *equal across punishments*.
 ```
-HFPointViterbi(BoundaryScoresAll(LinearPT(-0.25,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-0.25,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084
     Re: 0.8126851075719475
     F1: 0.6796111967848965
 
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-0.25,+1)) + VocabularyConstraintExact):
+BoMMa(BoundaryScoresAll(PiecewisePT(-0.25,+1)) + VocabularyConstraintExact):
     Pr: 0.5839858651568084
     Re: 0.8126851075719475
     F1: 0.6796111967848965
   
-HFPointViterbi(BoundaryScoresAll(LinearPT(-0.33,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-0.33,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084
     Re: 0.8126851075719475
     F1: 0.6796111967848965
   
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-0.33,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(PiecewisePT(-0.33,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084
     Re: 0.8126851075719475
     F1: 0.6796111967848965
 
-HFPointViterbi(BoundaryScoresAll(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
       Pr: 0.5839858651568084
       Re: 0.8126851075719475
       F1: 0.6796111967848965
 
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084,
     Re: 0.8126851075719475,
     F1: 0.6796111967848965,
   
-HFPointViterbi(BoundaryScoresAll(LinearPT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-2,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084,
     Re: 0.8126851075719475,
     F1: 0.6796111967848965,
 
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084,
     Re: 0.8126851075719475,
     F1: 0.6796111967848965,
 
-HFPointViterbi(BoundaryScoresAll(LinearPT(-3,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-3,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084,
     Re: 0.8126851075719475,
     F1: 0.6796111967848965,
 
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-3,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(PiecewisePT(-3,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084,
     Re: 0.8126851075719475,
     F1: 0.6796111967848965,
 
-HFPointViterbi(BoundaryScoresAll(LinearPT(-4,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(LinearPT(-4,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084,
     Re: 0.8126851075719475,
     F1: 0.6796111967848965,
 
-HFPointViterbi(BoundaryScoresAll(PiecewisePT(-4,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresAll(PiecewisePT(-4,+1)) + VocabularyConstraintExact)
     Pr: 0.5839858651568084,
     Re: 0.8126851075719475,
     F1: 0.6796111967848965
@@ -253,32 +253,32 @@ is virtually the same as BoundaryScoresChosen with the addition of 2 lines of co
 
 BoundaryScoresChosen *does* have variable results, with best F1 so far for exact constraints:
 ```
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.25,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-0.25,+1)) + VocabularyConstraintExact)
     Pr: 0.5384182846558396,
     Re: 0.909639564124057,
     F1: 0.6764461436170213
   
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.33,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-0.33,+1)) + VocabularyConstraintExact)
     Pr: 0.5491143867320273,
     Re: 0.8982676725342275,
     F1: 0.6815777478613906,
   
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
     Pr: 0.5645647815327927,
     Re: 0.8733165688739871,
     F1: 0.6857920200103124,  ---> New best, but precision is 2% lower than before.
   
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
     Pr: 0.586417157275021,  ---> New best, at the cost of recall
     Re: 0.7792679519418833,
     F1: 0.6692261547690462,
   
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-3,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-3,+1)) + VocabularyConstraintExact)
     Pr: 0.585579629787597,
     Re: 0.7672254819782062,
     F1: 0.6642074453931932,
   
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-4,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-4,+1)) + VocabularyConstraintExact)
     Pr: 0.5842290046740044,
     Re: 0.7578653255099189,
     F1: 0.6598148801342789,
@@ -287,32 +287,32 @@ Notice how the recall drops monotonously and the precision rises up to a certain
 
 Same story for piecewise, although less prominently.
 ```
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.25,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-0.25,+1)) + VocabularyConstraintExact)
     Pr: 0.5641620821377004,
     Re: 0.8624476110645432,
     F1: 0.6821210346618344,
   
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.33,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-0.33,+1)) + VocabularyConstraintExact)
     Pr: 0.5672451994091581,
     Re: 0.8583962000558816,
     F1: 0.6830906058921623,
   
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
     Pr: 0.5733971871509966,
     Re: 0.8463816708577815,
     F1: 0.683645719315271,
   
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
     Pr: 0.5861179889091244,
     Re: 0.8003073484213468,
     F1: 0.6766675722604802,
   
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-3,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-3,+1)) + VocabularyConstraintExact)
     Pr: 0.586262046339963,
     Re: 0.7988823693769209,
     F1: 0.6762535477767265,
   
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-4,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-4,+1)) + VocabularyConstraintExact)
     Pr: 0.5863377998481522,
     Re: 0.7983794355965353,
     F1: 0.676123658649125,
@@ -338,27 +338,27 @@ Even though the tokeniser *can* jump to the end immediately, it shouldn't, perha
 The best punishment seems to lie between -0.5 and -2 for both the linear and the piecewise transform.
 To repeat those results, ordered in increasing precision (and coincidentally decreasing recall!):
 ```
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-0.5,+1)) + VocabularyConstraintExact)
     Pr: 0.5645647815327927
     Re: 0.8733165688739871  
     F1: 0.6857920200103124  ---> New best, but precision is 2% lower than before.
     
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-0.5,+1)) + VocabularyConstraintExact)
     Pr: 0.5733971871509966
     Re: 0.8463816708577815
     F1: 0.683645719315271
 
-HFPointViterbi(BoundaryScoresChosen(LinearPT/PiecewisePT(-1,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT/PiecewisePT(-1,+1)) + VocabularyConstraintExact)
     Pr: 0.583957433992571
     Re: 0.8126292260407936
     F1: 0.6795724049301947
   
-HFPointViterbi(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(PiecewisePT(-2,+1)) + VocabularyConstraintExact)
     Pr: 0.5861179889091244
     Re: 0.8003073484213468
     F1: 0.6766675722604802
           
-HFPointViterbi(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
+BoMMa(BoundaryScoresChosen(LinearPT(-2,+1)) + VocabularyConstraintExact)
     Pr: 0.586417157275021  ---> New best, at the cost of recall
     Re: 0.7792679519418833
     F1: 0.6692261547690462
@@ -388,71 +388,259 @@ Prefix-based objectives give a higher score when they include a larger portion o
 
 For exact vocabulary constraint, we are looking to beat 58%, 81%, 68%:
 ```
-HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintExact)
+BoMMa(BoundaryPrefixLength(pm=0) + VocabularyConstraintExact)
     Precision: 0.5290765557743583
     Recall:    0.8482816429170159
     F1:        0.6516909405085165
-    WW-Precision: 0.11468553404318352
-    WW-Recall:    0.9526635784597568
-    WW-F1:        0.2047253892457731
 
-HFPointViterbi(HardBoundaryPrefixLengthExtended + VocabularyConstraintExact)
-    Precision: 0.5411118078866797
-    Recall:    0.8197261804973456
-    F1:        0.6518976091014131
-    WW-Precision: 0.12114058061898263
-    WW-Recall:    0.950781702374059
-    WW-F1:        0.2149003697281026
-
-HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLength + VocabularyConstraintExact)
+BoMMa(BoundaryPrefixLength(pm=-1) + VocabularyConstraintExact)
     Precision: 0.5359700205844579
     Recall:    0.8511874825370215
     F1:        0.6577637672867028
-    WW-Precision: 0.11627579654814477
-    WW-Recall:    0.9567168500289519
-    WW-F1:        0.2073509341616076
 
-HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstraintExact)
+BoMMa(BoundaryPrefixLengthExtended(pm=0) + VocabularyConstraintExact)
+    Precision: 0.5411118078866797
+    Recall:    0.8197261804973456
+    F1:        0.6518976091014131
+
+BoMMa(BoundaryPrefixLengthExtended(pm=-1) + VocabularyConstraintExact)
     Precision: 0.5541110599785243
     Recall:    0.8074322436434759
     F1:        0.6572058856973915
-    WW-Precision: 0.1262080073630925
-    WW-Recall:    0.9528083381586566
-    WW-F1:        0.22289197426346088
 ```
+The difference between the non-extended and extended version is that the extended ones have higher
+precision, likely because they make fewer splits since they get rewarded for overshooting boundaries as
+long as the step starts on a boundary. It also makes sense that their recall is lowest because they don't take
+small steps in order to still catch some reward they would've lost by overshooting.
+TL;DR: giving credit even when you overshoot lowers the amount of splits and hence ups precision while lowering recall.
+
+Punishment seems to increase precision but it's unclear what it does to recall.
+The higher precision makes sense since punishment disincentivises oversegmentation. 
+We should vary the punishments though.
+
+```
+BoMMa_Sum(BoundaryPrefixLength(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.5290765557743583
+   Recall:    0.8482816429170159
+   F1:        0.6516909405085165
+
+BoMMa_Sum(BoundaryPrefixLength_Normed(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.5290765557743583
+   Recall:    0.8482816429170159
+   F1:        0.6516909405085165
+
+BoMMa_Sum(BoundaryPrefixLength(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5359700205844579
+   Recall:    0.8511874825370215
+   F1:        0.6577637672867028
+
+BoMMa_Sum(BoundaryPrefixLength_Normed(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5432766615146831
+   Recall:    0.8446214026264319
+   F1:        0.6612345787032986
+
+BoMMa_Sum(BoundaryPrefixLength(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5392776043145047
+   Recall:    0.849343392008941
+   F1:        0.6596931357017296
+
+BoMMa_Sum(BoundaryPrefixLength_Normed(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5524127691165553
+   Recall:    0.8316289466331378
+   F1:        0.6638563622170179
+
+BoMMa_Sum(BoundaryPrefixLengthExtended(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.5411118078866797
+   Recall:    0.8197261804973456
+   F1:        0.6518976091014131
+
+BoMMa_Sum(BoundaryPrefixLengthExtended_Normed(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.5292527683320255
+   Recall:    0.8480022352612462
+   F1:        0.6517420948086111
+
+BoMMa_Sum(BoundaryPrefixLengthExtended(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5541110599785243
+   Recall:    0.8074322436434759
+   F1:        0.6572058856973915
+
+BoMMa_Sum(BoundaryPrefixLengthExtended_Normed(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5669964209595045
+   Recall:    0.7879016485051691
+   F1:        0.6594406248538422
+
+BoMMa_Sum(BoundaryPrefixLengthExtended(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5617480293182132
+   Recall:    0.7944677284157586
+   F1:        0.658141122825697
+
+BoMMa_Sum(BoundaryPrefixLengthExtended_Normed(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5697980684811238
+   Recall:    0.7797429449566918
+   F1:        0.6584401948871613
+
+BoMMa_Sum(BoundarySuffixLength(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.527421487012755
+   Recall:    0.8249231628946633
+   F1:        0.6434486967134513
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.527421487012755
+   Recall:    0.8249231628946633
+   F1:        0.6434486967134513
+
+BoMMa_Sum(BoundarySuffixLength(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5323896094564007
+   Recall:    0.8280525286392847
+   F1:        0.6480930720783764
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5544226498889712
+   Recall:    0.8371332774518022
+   F1:        0.6670600022264277
+
+BoMMa_Sum(BoundarySuffixLength(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5472073618287717
+   Recall:    0.837384744341995
+   F1:        0.6618889342859351
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5628878577838881
+   Recall:    0.8236658284436994
+   F1:        0.6687537573303389
+
+BoMMa_Sum(BoundarySuffixLengthExtended(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.5288189089343998
+   Recall:    0.8239172953338921
+   F1:        0.6441803565186998
+
+BoMMa_Sum(BoundarySuffixLengthExtended_Normed(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.5280878774867611
+   Recall:    0.8247555183012014
+   F1:        0.6438932879610846
+
+BoMMa_Sum(BoundarySuffixLengthExtended(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.539861479516652
+   Recall:    0.8188879575300363
+   F1:        0.6507249272852418
+
+BoMMa_Sum(BoundarySuffixLengthExtended_Normed(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5778501493528045
+   Recall:    0.778345906677843
+   F1:        0.663277697088026
+
+BoMMa_Sum(BoundarySuffixLengthExtended(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5631739493675805
+   Recall:    0.8098910310142498
+   F1:        0.6643669993926128
+
+BoMMa_Sum(BoundarySuffixLengthExtended_Normed(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5801030602587023
+   Recall:    0.7706342553785974
+   F1:        0.6619307613847724
+
+BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.5523155130998268
+   Recall:    0.8287510477787091
+   F1:        0.6628674868425464
+
+BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended_Normed(pm=0)) + VocabularyConstraintExact)
+   Precision: 0.545613037015287
+   Recall:    0.8307069013690975
+   F1:        0.6586324918864435
+
+BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5533579859554759
+   Recall:    0.8278569432802458
+   F1:        0.6633308706651444
+
+BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended_Normed(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5518945634266886
+   Recall:    0.8236937692092763
+   F1:        0.6609420890971459
+
+BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5554428668018931
+   Recall:    0.8263202011735121
+   F1:        0.6643304804905992
+
+BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended_Normed(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5521809188338455
+   Recall:    0.8234423023190836
+   F1:        0.6610663735672149
+```
+Some conclusions:
+- Norming seems to produce better F1.
+- Prefix objectives only attain >66% F1 on two occasions, whilst suffix objectives do it consistently.
+- More punishment seems to produce better F1.
+- Norming does nothing when there is no punishment and no extension.
+- Overall, `BoundarySuffixLength_Normed` with high punishment seems to do best.
+
+Pulling up the punishment on `BoundarySuffixLength_Normed` has effect until about -3.5 but
+is best at -2.
+```
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-0.5)) + VocabularyConstraintExact)
+   Precision: 0.5519227946572729
+   Recall:    0.8405141100866164
+   F1:        0.6663122688107738
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-1)) + VocabularyConstraintExact)
+   Precision: 0.5544226498889712
+   Recall:    0.8371332774518022
+   F1:        0.6670600022264277
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-1.5)) + VocabularyConstraintExact)
+   Precision: 0.5624106308745305
+   Recall:    0.8242246437552389
+   F1:        0.6686007638172731
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-2)) + VocabularyConstraintExact)
+   Precision: 0.5628878577838881
+   Recall:    0.8236658284436994
+   F1:        0.6687537573303389
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-2.5)) + VocabularyConstraintExact)
+   Precision: 0.5638342804484718
+   Recall:    0.8205923442302319
+   F1:        0.6684039236213841
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-3)) + VocabularyConstraintExact)
+   Precision: 0.5639784016448569
+   Recall:    0.8200614696842693
+   F1:        0.668328949915178
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-3.5)) + VocabularyConstraintExact)
+   Precision: 0.564188344773221
+   Recall:    0.8198938250908074
+   F1:        0.668420633022403
+
+BoMMa_Sum(BoundarySuffixLength_Normed(pm=-4)) + VocabularyConstraintExact)
+   Precision: 0.564188344773221
+   Recall:    0.8198938250908074
+   F1:        0.668420633022403
+```
+
 For at-least constraint, we are looking to beat 66%, 85%, 74%:
 ```
-HFPointViterbi(HardBoundaryPrefixLength + VocabularyConstraintAtLeastAll)
+BoMMa(BoundaryPrefixLength(pm=0) + VocabularyConstraintAtLeastAll)
     Precision: 0.6116584912043301
     Recall:    0.8082984073763622
     F1:        0.6963628048046602
-    WW-Precision: 0.1357620094722598
-    WW-Recall:    0.9295020266357846
-    WW-F1:        0.23691978451774773
 
-HFPointViterbi(HardBoundaryPrefixLengthExtended + VocabularyConstraintAtLeastAll)
+BoMMa(BoundaryPrefixLengthExtended(pm=0) + VocabularyConstraintAtLeastAll)
     Precision: 0.6116584912043301
     Recall:    0.8082984073763622
     F1:        0.6963628048046602
-    WW-Precision: 0.1357620094722598
-    WW-Recall:    0.9295020266357846
-    WW-F1:        0.23691978451774773
 
-HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLength + VocabularyConstraintAtLeastAll)
+BoMMa(BoundaryPrefixLength(pm=-1) + VocabularyConstraintAtLeastAll)
     Precision: 0.6199262778854964
     Recall:    0.8129365744621403
     F1:        0.7034319354955697
-    WW-Precision: 0.13787739969744103
-    WW-Recall:    0.9367400115807759
-    WW-F1:        0.24037443583885884
 
-HFPointViterbi(HardBoundaryAndNonBoundaryPrefixLengthExtended + VocabularyConstraintAtLeastAll)
+BoMMa(BoundaryPrefixLengthExtended(pm=-1) + VocabularyConstraintAtLeastAll)
     Precision: 0.620031118784236
     Recall:    0.8127968706342554
     F1:        0.7034471084672398
-    WW-Precision: 0.1378604770125967
-    WW-Recall:    0.9363057324840764
-    WW-F1:        0.24033441709242917
 ```
 
 #### Multiplicative

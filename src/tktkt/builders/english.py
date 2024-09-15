@@ -1,7 +1,6 @@
 """
 Evaluate any tokeniser on English morphology.
 """
-from transformers import CanineTokenizer, CanineForTokenClassification, AutoTokenizer
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
 
 from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯, defaultTokeniserFiles
@@ -15,7 +14,6 @@ from ..models.bpe.knockout import BPEKnockout, ReBPE
 from ..models.bpe.guided import GuidedBPEDropout
 from ..models.ngram.alphabet import UnicodeTokeniser
 from ..files.paths import relativeToCwd, TkTkTPaths
-
 from .base import TokeniserBuilder, T
 
 
@@ -35,12 +33,10 @@ def getEnglishKudo() -> AlbertTokenizerFast:
     return AutoTokenizer.from_pretrained("albert/albert-base-v2")
 
 
-def getEnglishCANINE() -> CharacterClassifier:
-    huggingface_checkpoint = PATH_CANINE_FOR_MBR_EN.as_posix()
-    return HuggingFaceCharacterModelForTokenClassification(
-        characters_to_modelinput=CanineTokenizer.from_pretrained(huggingface_checkpoint),
-        for_token_classification=CanineForTokenClassification.from_pretrained(huggingface_checkpoint),
-        input_kwargs={"padding": "max_length", "max_length": 4}
+def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
+    return HuggingFaceForBinaryCharacterClassification(
+        characterclassifier_checkpoint=PATH_CANINE_FOR_MBR_EN.as_posix(),
+        input_kwargs={"padding": "max_length", "max_length": 4}  # This is necessary for CANINE because it needs an input of size at least 4. This isn't a problem in fine-tuning because there we're not sending in single examples but 32 at once and collating.
     )
 
 
@@ -110,7 +106,10 @@ class Builder_English_LeastToken_BPE(TokeniserBuilder[LeastTokenViterbi]):
 
 class Builder_English_LeastToken_BPEKnockout(TokeniserBuilder[LeastTokenViterbi]):
     def buildTokeniser(self) -> T:
+        # Get starting BPE vocabulary
         files = getEnglishBpeFiles()
+
+        # Prune the vocabulary with BPE-knockout
         only_for_vocabulary = BPEKnockout(
             preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),
             vocab=files.loadVocabulary(),
@@ -118,6 +117,8 @@ class Builder_English_LeastToken_BPEKnockout(TokeniserBuilder[LeastTokenViterbi]
             language="English",
             boundary_marker=RobertaSpaceMarker
         )
+
+        # Use this new vocabulary
         return LeastTokenViterbi(
             preprocessor=only_for_vocabulary.preprocessor,
             vocab=only_for_vocabulary.vocab,
@@ -135,28 +136,22 @@ class Builder_English_LeastToken_ULM(TokeniserBuilder[LeastTokenViterbi]):
         )
 
 
-class Builder_English_CanineViterbi_BPE(TokeniserBuilder[HFPointViterbi]):
+class Builder_English_BoMMaSum_BPE(TokeniserBuilder[BoMMa_Sum]):
     def buildTokeniser(self) -> T:
-        english_bpe = getEnglishBpeFiles().toFastBPE()
-        return HFPointViterbi(
-            # HuggingFacePreprocessorForWords(robbert_tokenizer),  # The preprocessor that maps any string into the space of the vocabulary used.
-            # vocab=robbert_tokenizer.get_vocab(),                 # The vocabulary that limits Viterbi steps.
+        english_bpe        = getEnglishBpeFiles().toFastBPE()
+        english_canine_mbr = getEnglishCANINE()
+        return BoMMa_Sum(
             preprocessor=HuggingFacePreprocessorForWords(english_bpe),
+            max_step=20,
+
+            score_generator=BoundaryScoresChosen(LinearPT(-1, +1, negate_as_complement=True)),
 
             vocab=english_bpe.get_vocab(),
-            max_step=20,
             vocabulary_constraint_class=VocabularyConstraintExact,
-            score_generator_class=BoundaryScoresChosen,
-            score_transform=LinearPT(-1, +1, negate_as_complement=True),
-
-            huggingface_checkpoint=PATH_CANINE_FOR_MBR_EN.as_posix(),
-            tokeniser_class=CanineTokenizer,
-            model_class=CanineForTokenClassification,
-            tokeniser_kwargs={"padding": "max_length", "max_length": 4}  # This is necessary for CANINE because it needs an input of size at least 4. This isn't a problem in fine-tuning because there we're not sending in single examples but 32 at once and collating.
-        )
+        ).from_object(english_canine_mbr)
 
 
-class Builder_English_CanineViterbi_ULM(TokeniserBuilder[HFPointViterbi]):
+class Builder_English_BoMMaSum_ULM(TokeniserBuilder[BoMMa_Sum]):
     """
     Build a Viterbi tokeniser with an underlying CANINE boundary probability model while choosing:
         - The grid generator that uses these probabilities;
@@ -164,61 +159,89 @@ class Builder_English_CanineViterbi_ULM(TokeniserBuilder[HFPointViterbi]):
         - The constraint put on steps afterwards, using the ULM vocabulary.
     """
 
-    def __init__(self,
-        generator: Type[ScoreGeneratorUsingCharacterClassifier]=BoundaryScoresChosen,
-        score_transform: Optional[ProbabilityTransform]=LinearPT(-1, +1, negate_as_complement=False),
-        constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
-    ):
+    def __init__(self, generator: ScoreGeneratorUsingCharacterClassifier, constraint: Type[VocabularyConstraint]):
         self.generator = generator
-        self.score_transform = score_transform
         self.constraint = constraint
 
     def buildTokeniser(self) -> T:
-        english_ulm = getEnglishKudo()
-
-        return HFPointViterbi(
+        english_ulm        = getEnglishKudo()
+        english_canine_mbr = getEnglishCANINE()
+        return BoMMa_Sum(
             preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            max_step=20,
+
+            score_generator=self.generator,
+
+            vocabulary_constraint_class=self.constraint,
+            vocab=english_ulm.get_vocab()
+        ).from_object(english_canine_mbr)
+
+
+class Builder_English_BoMMaSum_FromTransform_ULM(Builder_English_BoMMaSum_ULM):
+    def __init__(self,
+        generator: Type[ScoreGeneratorUsingCharacterClassifierForTransform]=BoundaryScoresChosen,
+        score_transform: ProbabilityTransform=LinearPT(-1, +1, negate_as_complement=False),
+        constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
+    ):
+        super().__init__(generator(score_transform), constraint)
+
+
+class Builder_English_BoMMaProduct_ULM(TokeniserBuilder[BoMMa_Product]):
+    """
+    Instantiates a BoMMa_Product tokeniser specifically with a BoundaryScoresChosen generator and a multiplicatively
+    balanced probability transform (a small subset of all BoMMa_Product tokenisers, technically).
+
+    The idea is this: if you have a boundary model that gives you probabilities at each character boundary, one thing
+    you might do to score a segmentation is multiply the probabilities of the boundaries you choose to split on.
+    The problem here is that it disincentivises gathering a higher amount of high-probability boundaries even if it takes
+    no other bad splits to do so: 0.9999 * 0.9999 * 0.9999 is smaller than 0.9999 * 0.9999. A second issue is that when
+    you do hit a low-probability boundary, you carry that forever: 0.1 * 0.9999 * 0.9999 * 0.9999 * 0.9999 * 0.9999
+    has 5 perfect splits and 1 bad split, and it is 10x smaller than having even 1 good split at 0.9999.
+
+    So, what you want is to give all probabilities above 50% a boost so that you can recover completely from a bad split
+    and so that two perfect splits are better than one perfect split.
+    """
+
+    def __init__(self, score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
+        self.balanced_transform = score_transform
+
+    def buildTokeniser(self):
+        english_ulm        = getEnglishKudo()
+        english_canine_mbr = getEnglishCANINE()
+        return BoMMa_Product(
+            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            max_step=20,
+
+            score_generator=BoundaryScoresChosen(self.balanced_transform),
+
+            vocabulary_constraint_class=VocabularyConstraintExact,
+            vocab=english_ulm.get_vocab()
+        ).from_object(english_canine_mbr)
+
+
+class Builder_English_LeastTokenThenProbability_ULM(TokeniserBuilder[LeastTokenViterbiWithProbabilityTiebreaker]):
+    def buildTokeniser(self) -> T:
+        english_ulm        = getEnglishKudo()
+        english_canine_mbr = getEnglishCANINE()
+        return LeastTokenViterbiWithProbabilityTiebreaker(
+            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            max_step=20,
 
             vocab=english_ulm.get_vocab(),
-            max_step=20,
-            score_generator_class=self.generator,
-            score_transform=self.score_transform,
-            vocabulary_constraint_class=self.constraint,
-
-            huggingface_checkpoint=PATH_CANINE_FOR_MBR_EN.as_posix(),
-            tokeniser_class=CanineTokenizer,
-            model_class=CanineForTokenClassification,
-            tokeniser_kwargs={"padding": "max_length", "max_length": 4}  # This is necessary for CANINE because it needs an input of size at least 4. This isn't a problem in fine-tuning because there we're not sending in single examples but 32 at once and collating.
+            logprob_classifier=english_canine_mbr
         )
 
 
-class Builder_English_LeastTokenThenHF_ULM(TokeniserBuilder[LeastTokenViterbiWithProbabilityTiebreaker]):
+class Builder_English_ProbabilityThenLeastToken_ULM(TokeniserBuilder[ProbabilityViterbiWithLeastTokenTiebreaker]):
     def buildTokeniser(self) -> T:
-        kudo: HuggingFaceTokeniser = Builder_English_KudoPiece().buildTokeniser()
-        vocab = kudo.backend.get_vocab()
-        assert isinstance(vocab, dict)
-
-        classifier = getEnglishCANINE()
-        return LeastTokenViterbiWithProbabilityTiebreaker(
-            preprocessor=kudo.preprocessor,
-            vocab=vocab,
-            max_step=20,
-            logprob_classifier=classifier
-        )
-
-
-class Builder_English_HfThenLeastToken_ULM(TokeniserBuilder[ProbabilityViterbiWithLeastTokenTiebreaker]):
-    def buildTokeniser(self) -> T:
-        kudo: HuggingFaceTokeniser = Builder_English_KudoPiece().buildTokeniser()
-        vocab = kudo.backend.get_vocab()
-        assert isinstance(vocab, dict)
-
-        classifier = getEnglishCANINE()
+        english_ulm        = getEnglishKudo()
+        english_canine_mbr = getEnglishCANINE()
         return ProbabilityViterbiWithLeastTokenTiebreaker(
-            preprocessor=kudo.preprocessor,
-            vocab=vocab,
+            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
             max_step=20,
-            logprob_classifier=classifier
+
+            vocab=english_ulm.get_vocab(),
+            logprob_classifier=english_canine_mbr
         )
 
 
@@ -228,9 +251,8 @@ class Builder_English_CanineBPEdropout(TokeniserBuilder[GuidedBPEDropout]):
         self.threshold = deterministic_threshold
 
     def buildTokeniser(self) -> T:
-        english_bpe_files = getEnglishBpeFiles()
+        english_bpe_files  = getEnglishBpeFiles()
         english_canine_mbr = getEnglishCANINE()
-
         return GuidedBPEDropout(
             preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # We know the BPE files uses this marker, so we can manually specify it.
 
@@ -246,21 +268,3 @@ class Builder_English_CanineBPEdropout(TokeniserBuilder[GuidedBPEDropout]):
 class Builder_English_Character(TokeniserBuilder[UnicodeTokeniser]):
     def buildTokeniser(self) -> T:
         return UnicodeTokeniser(preprocessor=IdentityPreprocessor)
-
-
-class Builder_English_CanineViterbiMultiplicative_ULM(TokeniserBuilder[MultiplicativeBalanceViterbi]):
-    def __init__(self, score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
-        self.transform = score_transform
-
-    def buildTokeniser(self):
-        english_ulm        = getEnglishKudo()
-        english_canine_mbr = getEnglishCANINE()
-
-        return MultiplicativeBalanceViterbi(
-            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
-            vocab=english_ulm.get_vocab(),
-            max_step=20,
-
-            logprob_classifier=english_canine_mbr,
-            transform=self.transform
-        )

@@ -3,7 +3,7 @@ from tktkt.util.strings import segmentUsingIndices
 from tst.preamble import *
 from tst.evaluation.english_morphology import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
-from tktkt.builders.english import Builder_English_CanineViterbi_BPE
+from tktkt.builders.english import Builder_English_BoMMaSum_BPE
 from tktkt.evaluation.morphological import tokeniseAndDecode, morphologyGenerator
 from tktkt.visualisation.neural.splitpoints_probabilities import *
 
@@ -13,11 +13,11 @@ from fiject import MultiHistogram, CacheMode
 def test_probabilityVisualisation():
     # Classifier setup (this is only for illustration purposes; normally you would use a Builder for this!).
     from tktkt.files.paths import from_pretrained_absolutePath, TkTkTPaths
-    from tktkt.models.viterbi.objectives_guided import HuggingFaceCharacterModelForTokenClassification, CanineTokenizer, CanineForTokenClassification
+    from tktkt.models.viterbi.objectives_guided import HuggingFaceForBinaryCharacterClassification, CanineTokenizer, CanineForTokenClassification
     tk = CanineTokenizer.from_pretrained("google/canine-c")
     core = from_pretrained_absolutePath(CanineForTokenClassification,
                                         TkTkTPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28")
-    classifier = HuggingFaceCharacterModelForTokenClassification(tk, core)
+    classifier = HuggingFaceForBinaryCharacterClassification(tk, core)
 
     # Visualise the following words
     words = [" establishmentarianism", " rainbow-coloured", " superbizarre", " algebraically", " ascertainably",
@@ -33,7 +33,7 @@ def test_visualiseCelexMismatches():
     """
     Print Viterbi predictions that don't match CELEX boundaries.
     """
-    canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()  # Easier way of getting the classifier, which is also set up for inputs of length < 4, unlike the above.
+    canine_viterbi = Builder_English_BoMMaSum_BPE().buildTokeniser()  # Easier way of getting the classifier, which is also set up for inputs of length < 4, unlike the above.
     classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
     vocab = canine_viterbi.objectives[0].score_generator.vocab
 
@@ -75,7 +75,7 @@ def test_uncertaintyOfPredictions():
         histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
 
         if histo.needs_computation:
-            canine_viterbi = Builder_English_CanineViterbi_BPE().buildTokeniser()
+            canine_viterbi = Builder_English_BoMMaSum_BPE().buildTokeniser()
             classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
             for obj in morphologyGenerator():

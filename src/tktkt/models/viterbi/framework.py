@@ -51,6 +51,9 @@ class ViterbiStepScores:
     def set(self, n: int, k: int, value: float):
         self.grid[n,k] = value
 
+    def add(self, n: int, k: int, value: float):
+        self.grid[n,k] += value
+
     def __repr__(self):
         with np.printoptions(linewidth=200):
             return self.grid.T.__repr__()  # Print transpose because we are used to seeing strings horizontally.
