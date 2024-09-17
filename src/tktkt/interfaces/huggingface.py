@@ -1,7 +1,8 @@
 """
-Interfaces to make tokenisers that are compatible with the HuggingFace suite.
-Indeed, these are interfaces that TkTkT tokenisers hold to (like all the other TkTkT interfaces),
-in this case with the goal of becoming HuggingFace-compatible.
+Interface for tokenisers that want to be compatible with the HuggingFace suite.
+
+Indeed, this has nothing to do with having a tokeniser that runs on HuggingFace internally, because that would be just
+another member of tktkt.models. Rather, this is about needs to be implemented in order to become a HuggingFace tokeniser.
 """
 from typing import List, Optional, Tuple, Mapping, Dict, Iterable
 from abc import ABC, abstractmethod

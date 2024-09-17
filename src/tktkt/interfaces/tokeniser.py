@@ -1,11 +1,9 @@
 import warnings
 from abc import ABC, abstractmethod
-from typing import List, Dict, Mapping, Iterable
+from typing import List, Iterable
 
+from .vocabulariser import Vocab
 from .preparation import Preprocessor
-
-
-Vocab = Dict[str, int]
 
 
 class Tokeniser(ABC):
