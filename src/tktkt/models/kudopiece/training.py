@@ -4,15 +4,15 @@ Why not use `tokenizers`? Because I trust Kudo himself more than HuggingFace (si
 and at least he has documentation that exists.
 """
 from pathlib import Path
-from typing import List, Iterable
+from typing import List, Iterable, Tuple
 from dataclasses import dataclass
 
-import time
 import sentencepiece
-from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter, iterateWordsFile
+from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
-from ...files.paths import TkTkTPaths
+from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab
+from ...util.timing import datetimeDashed
 
 MAXIMUM_SENTENCE_LENGTH = 4192
 
@@ -32,9 +32,10 @@ class KudoPieceArguments_Algorithm:
     num_sub_iterations: int=2
 
 
-class KudoPieceTrainer:
+class KudoPieceTrainer(Vocabulariser):
 
-    def __init__(self, final_vocab_size: int, word_boundary_location: BoundaryMarkerLocation,
+    def __init__(self, preprocessor: Preprocessor,
+                 final_vocab_size: int, word_boundary_location: BoundaryMarkerLocation,
                  alphabet_arguments: KudoPieceArguments_Alphabet,
                  algorithm_arguments: KudoPieceArguments_Algorithm,
                  file_stem: str="kudopiece"):
@@ -107,8 +108,10 @@ class KudoPieceTrainer:
             --split_by_whitespace (use a white space to split sentence pieces)  type: bool default: true
             --split_digits (split all digits (0-9) into separate pieces)  type: bool default: false
         """
+        super().__init__(name="kudopiece", preprocessor=preprocessor)
+
         if word_boundary_location == BoundaryMarkerLocation.ISOLATED:
-            raise ValueError("KudoPiece only supports start-of-word and end-of-word boundary markers!")
+            raise ValueError("KudoPiece only supports start-of-word and end-of-word boundary markers.")
 
         self.alphabet = alphabet_arguments
         self.algorithm = algorithm_arguments
@@ -117,16 +120,30 @@ class KudoPieceTrainer:
 
         self.boundary_style = word_boundary_location
 
-    def train_from_iterator(self, string_iterator: Iterable[str], is_wordfile: bool=False,
-                            strings_need_space_splitting: bool=False) -> Path:
-        output_folder = TkTkTPaths.append(TkTkTPaths.pathToModels(), self.stem)
-        output_prefix = output_folder / (self.stem + time.strftime("_%F_%X").replace(":", "-"))
+    def _vocabulariseFromWords(self, word_iterable: Iterable[Tuple[str,int]]) -> Path:
+        """
+        FIXME: Currently suffers from https://github.com/google/sentencepiece/issues/967
+        """
+        return self._withSentencepieceTrainer(
+            (f"{self._addSpace(word)}\t{count}" for word, count in word_iterable),
+            is_wordfile=True, strings_need_space_splitting=False
+        )
+
+    def _vocabulariseFromSentences(self, sentence_iterable: Iterable[str]) -> Path:
+        return self._withSentencepieceTrainer(
+            map(lambda s: " ".join(self.preprocessor.do(s)), sentence_iterable),
+            is_wordfile=False, strings_need_space_splitting=True
+        )
+
+    def _withSentencepieceTrainer(self, string_iterable: Iterable[str], is_wordfile: bool=False,
+                                  strings_need_space_splitting: bool=False) -> Path:
+        output_prefix = self._makeOutputFolder() / (self.stem + "_" + datetimeDashed())
 
         sentencepiece.SentencePieceTrainer.Train(
             model_type="unigram",
 
             #  I/O
-            sentence_iterator=string_iterator,
+            sentence_iterator=string_iterable,
             input_format="tsv" if is_wordfile else "",
             max_sentence_length=MAXIMUM_SENTENCE_LENGTH,
             train_extremely_large_corpus=True,  # Why not, right?
@@ -166,28 +183,22 @@ class KudoPieceTrainer:
 
         return output_prefix.with_suffix(".model")
 
-    def train_from_wordfile(self, wordfile: Path) -> Path:
-        """
-        FIXME: Currently suffers from https://github.com/google/sentencepiece/issues/967
-        """
-        # def corpusGenerator():
-        #     for word, count in wordsFileToCounter(wordfile).items():
-        #         word = " " + word
-        #         words_per_sentence = MAXIMUM_SENTENCE_LENGTH // len(word)
-        #         characters_per_sentence = words_per_sentence*len(word)
-        #         if characters_per_sentence == 0:  # Can't make progress by iterating
-        #             continue
-        #
-        #         n_sentences = (count*len(word) - 1) // characters_per_sentence + 1
-        #         for _ in range(n_sentences):
-        #             yield word*words_per_sentence
-        def tsvGenerator():
-            """
-            SentencePiece supports word files!
-            """
-            with open(wordfile, "r", encoding="utf-8") as handle:
-                for word, count in iterateWordsFile(handle):
-                    word = " " * (self.boundary_style == BoundaryMarkerLocation.START) + word + " " * (self.boundary_style == BoundaryMarkerLocation.END)
-                    yield f"{word}\t{count}"
+    def _addSpace(self, word: str) -> str:
+        return " "*(self.boundary_style == BoundaryMarkerLocation.START) + word + " "*(self.boundary_style == BoundaryMarkerLocation.END)
 
-        return self.train_from_iterator(tsvGenerator(), is_wordfile=True, strings_need_space_splitting=False)
+    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
+        return [typ for typ,_  in iterateTsv(file_or_folder)]
+
+
+from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter
+def corpusGenerator(wordfile: Path):
+    for word, count in wordsFileToCounter(wordfile).items():
+        word = " " + word
+        words_per_sentence = MAXIMUM_SENTENCE_LENGTH // len(word)
+        characters_per_sentence = words_per_sentence*len(word)
+        if characters_per_sentence == 0:  # Can't make progress by iterating
+            continue
+
+        n_sentences = (count*len(word) - 1) // characters_per_sentence + 1
+        for _ in range(n_sentences):
+            yield word*words_per_sentence

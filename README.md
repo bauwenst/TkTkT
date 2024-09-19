@@ -162,12 +162,19 @@ In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in T
 
 First we call the trainer with relevant training arguments:
 ```python
+from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
 from tktkt.models.kudopiece.training import *
 from string import ascii_letters
 
 ### Your data iterator goes here.
 sentence_corpus: Iterable[str] = ...
 ###
+
+preprocessor = Preprocessor(
+    IdentityMapper(),
+    AppendSpace(front_not_back=True),
+    IdentityPretokeniser()
+)
 
 args_alpha = KudoPieceArguments_Alphabet(
     required_chars=list(ascii_letters),
@@ -178,29 +185,24 @@ args_alpha = KudoPieceArguments_Alphabet(
 args_algo = KudoPieceArguments_Algorithm()
 
 trainer = KudoPieceTrainer(
+    preprocessor=preprocessor,
     word_boundary_location=BoundaryMarkerLocation.START,
     final_vocab_size=40_000,
     alphabet_arguments=args_alpha,
     algorithm_arguments=args_algo,
-    file_stem="kudopiece_en"
+    file_stem="tutorial"
 )
-model_path = trainer.train_from_iterator(sentence_corpus, strings_need_space_splitting=True)
+model_path = trainer.vocabulariseFromStringIterable(sentence_corpus)
 ```
 Once the final model is stored to disk, we can load it as an object (and give it a basic preprocessor).
 Note that all models are stored under `tktkt.files.paths.DataPaths.pathToModels()`.
 ```python
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
-from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
 
-# If you need to recover the path:
-# from tktkt.files.paths import DataPaths
-# model_path = DataPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_xxxx-yy-zz_aa-bb-cc.model"
+# # If you need to recover the path:
+# from tktkt.files.paths import TkTkTPaths
+# model_path = TkTkTPaths.pathToModels() / "kudopiece" / "tutorial_xxxx-yy-zz_aa-bb-cc.model"
 
-preprocessor = Preprocessor(
-    IdentityMapper(),
-    AppendSpace(front_not_back=True),
-    IdentityPretokeniser()
-)
 tokeniser = KudoPieceTokeniser(preprocessor=preprocessor, model_file=model_path)
 
 print(tokeniser.prepareAndTokenise("Hello there, my good friend!"))

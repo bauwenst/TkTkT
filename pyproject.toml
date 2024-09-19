@@ -35,6 +35,7 @@ dependencies = [
 github = [
     "modest[github]       @ git+https://github.com/bauwenst/MoDeST",
     "bpe_knockout[github] @ git+https://github.com/bauwenst/BPE-knockout",
+    "sage_tokenizer       @ git+https://github.com/bauwenst/SaGe-tokeniser",
     "fiject               @ git+https://github.com/bauwenst/fiject",
     "clavier              @ git+https://github.com/MaxHalford/clavier"
 ]

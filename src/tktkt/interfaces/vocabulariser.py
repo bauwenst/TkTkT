@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Set, Dict, Callable, Iterable, Tuple
+from typing import Set, Dict, Callable, Iterable, Tuple, Optional, Union
 from pathlib import Path
 from collections import Counter
 
@@ -12,8 +12,10 @@ from ..util.timing import datetimeDashed
 from ..util.types import Comparable
 
 
-UnorderedVocab = Set[str]
+UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers.
 Vocab = Dict[str, int]
+
+TokenSortingKey = Callable[[str], Comparable]
 
 
 class Vocabulariser(ABC):
@@ -25,10 +27,12 @@ class Vocabulariser(ABC):
         self._name = name
         self.preprocessor = preprocessor
 
+    @classmethod
     @abstractmethod
-    def loadFromFolder(self, folder: Path) -> UnorderedVocab:
+    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
         """
-        Load a vocabulary trained with this vocabulariser from its save folder.
+        Load a vocabulary trained with this vocabulariser from its save path.
+        Depending on the vocabulariser, this can be a file or folder.
         """
         pass
 
@@ -49,11 +53,17 @@ class Vocabulariser(ABC):
         """
         pass
 
+    # Pre-implemented backend methods
+
     def _makeOutputFolder(self) -> Path:
         """
         Get a new folder in which to store any files you want to store during vocabularisation.
         """
         return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, f"{self._name}_{datetimeDashed()}"])
+
+    @classmethod
+    def _assignIdentifiers(cls, vocab: UnidentifiedVocab, sorting_key: Optional[TokenSortingKey], starting_id: int=0) -> Vocab:
+        return {t:i for i,t in enumerate(sorted(vocab, key=sorting_key), start=starting_id)}
 
     # User-facing interface
 
@@ -69,5 +79,21 @@ class Vocabulariser(ABC):
     def vocabulariseFromHf(self, dataset: Dataset, text_field: str):
         return self._vocabulariseFromSentences(example[text_field] for example in dataset)
 
-    def assignIdentifiers(self, vocab: UnorderedVocab, sorting_key: Callable[[str],Comparable], starting_id: int=0) -> Vocab:
-        return {t:i for i,t in enumerate(sorted(vocab, key=sorting_key), start=starting_id)}
+    @classmethod
+    def load(cls, file_or_folder: Path, sorting_key: Optional[TokenSortingKey], existing_types: Union[Vocab,UnidentifiedVocab]=None) -> Vocab:
+        if existing_types is None:
+            existing_types = dict()
+
+        n_specials = len(existing_types)
+        if isinstance(existing_types, dict):
+            assert sorted(existing_types.values()) == list(range(n_specials))
+        else:
+            existing_types = {t: i for i,t in enumerate(existing_types)}
+
+        tokeniser_vocab = cls._assignIdentifiers(cls._load(file_or_folder), sorting_key=sorting_key, starting_id=n_specials)
+        for t in existing_types:
+            if t in tokeniser_vocab:
+                print(f"Warning: special token {t} (id: {existing_types[t]}) is already part of the vocabulary (id: {tokeniser_vocab[t]}). The latter id will be kept. "
+                      f"In the future, there will likely be support to keep both at the same time.")
+
+        return existing_types | tokeniser_vocab
