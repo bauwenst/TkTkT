@@ -63,7 +63,10 @@ class Vocabulariser(ABC):
 
     @classmethod
     def _assignIdentifiers(cls, vocab: UnidentifiedVocab, sorting_key: Optional[TokenSortingKey], starting_id: int=0) -> Vocab:
-        return {t:i for i,t in enumerate(sorted(vocab, key=sorting_key), start=starting_id)}
+        if sorting_key is None:  # Note that sorted(key=None) still sorts. Here, we allow using the raw order too.
+            return {t:i for i,t in enumerate(vocab, start=starting_id)}
+        else:
+            return {t:i for i,t in enumerate(sorted(vocab, key=sorting_key), start=starting_id)}
 
     # User-facing interface
 
@@ -80,7 +83,7 @@ class Vocabulariser(ABC):
         return self._vocabulariseFromSentences(example[text_field] for example in dataset)
 
     @classmethod
-    def load(cls, file_or_folder: Path, sorting_key: Optional[TokenSortingKey], existing_types: Union[Vocab,UnidentifiedVocab]=None) -> Vocab:
+    def load(cls, file_or_folder: Path, sorting_key: Optional[TokenSortingKey]=None, existing_types: Union[Vocab,UnidentifiedVocab]=None) -> Vocab:
         if existing_types is None:
             existing_types = dict()
 

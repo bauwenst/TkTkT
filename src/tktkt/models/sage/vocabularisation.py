@@ -36,28 +36,32 @@ class SageVocabulariser(Vocabulariser):
             round(embedding_schedule.get(i/(n_embedding_samples-1)) * (n_vocab_samples - 2)) for i in range(n_embedding_samples)
         })]
 
-        self.initial_vocab = None
+        self.initial_hex_vocab = None
         self.seed = seed
 
     def initialiseVocabulary(self, vocab: UnidentifiedVocab):
-        self.initial_vocab = {typ.encode(encoding="utf-8").hex() for typ in vocab}
+        self.initial_hex_vocab = set(map(SageVocabulariser._toHexString, vocab))
+
+    @classmethod
+    def _toHexString(cls, typ: str) -> str:
+        return typ.encode(encoding="utf-8").hex()
 
     @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
         with open(file_or_folder, "r", encoding="utf-8") as handle:
-            return [bytes.fromhex(line.strip()).decode(encoding="utf-8") for line in handle]
+            return [bytes.fromhex(line).decode(encoding="utf-8") for line in handle]
 
     def _vocabulariseFromWords(self, word_iterable: Iterable[Tuple[str,int]]) -> Path:
         raise RuntimeError("SaGe operates on contextual corpora, not on word lists.")
 
     def _vocabulariseFromSentences(self, sentence_iterable: Iterable[str]) -> Path:
-        if not self.initial_vocab:
+        if not self.initial_hex_vocab:
             raise RuntimeError("SaGe vocabulary wasn't yet initialised.")
 
         builder = SaGeVocabBuilder(
             full_vocab_schedule=self.vocabulary_points,
             embeddings_schedule=self.recompute_embeddings_at,
-            max_len=max(len(t) for t in self.initial_vocab),
+            max_len=max(len(t) for t in self.initial_hex_vocab),
 
             random_seed=self.seed
         )
@@ -66,7 +70,7 @@ class SageVocabulariser(Vocabulariser):
 
         return builder.build_vocab(
             experiment_name="sage",
-            initial_vocabulary=self.initial_vocab,
+            initial_vocabulary=self.initial_hex_vocab,
             corpus=sentence_iterable,
 
             k_corpus_examples=None,
