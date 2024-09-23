@@ -9,7 +9,7 @@ from transformers import PreTrainedTokenizerFast
 from ...preparation.boundaries import BoundaryMarker
 from ...interfaces.tokeniser import Preprocessor
 from ..viterbi.objectives_guided import CharacterClassifier
-from .base import Vocab, MergeList, NonDeterministicBPETokeniser
+from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
 
 
 class ConstantCharacterClassifier(CharacterClassifier):
@@ -66,7 +66,7 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast,
                         dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None) -> Self:
-        classic_implementation = super().fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
+        classic_implementation = ClassicBPE.fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
         return cls(
             preprocessor=classic_implementation.preprocessor,
             vocab=classic_implementation.vocab,

@@ -9,7 +9,7 @@ from transformers import PreTrainedTokenizerFast
 
 from ...preparation.boundaries import BoundaryMarker
 from ...interfaces.tokeniser import Preprocessor
-from .base import Vocab, MergeList, NonDeterministicBPETokeniser
+from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
 
 
 class BPEDropout(NonDeterministicBPETokeniser):
@@ -28,7 +28,7 @@ class BPEDropout(NonDeterministicBPETokeniser):
 
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, dropout_probability: float) -> Self:
-        classic_implementation = super().fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
+        classic_implementation = ClassicBPE.fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
         return cls(
             preprocessor=classic_implementation.preprocessor,
             vocab=classic_implementation.vocab,
@@ -179,7 +179,7 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
 
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, breakdown_probability: float, within_tree: bool) -> Self:
-        classic_implementation = super().fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
+        classic_implementation = ClassicBPE.fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
         return cls(
             preprocessor=classic_implementation.preprocessor,
             boundary_marker=classic_implementation._boundary_marker,

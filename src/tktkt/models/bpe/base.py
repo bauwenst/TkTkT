@@ -11,7 +11,7 @@ from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 from ...interfaces.preparation import TextMapper, Preprocessor
 from ...interfaces.tokeniser import Vocab
 from ...preparation.boundaries import BoundaryMarker
-from ...preparation.huggingface import detectBoundaryMarker, detectByteBased, HuggingFacePreprocessor
+from ...preparation.huggingface import detectBoundaryMarker, detectByteBased, HuggingFacePreprocessor, HuggingFacePreprocessorForWords
 
 MergeList = List[str]
 
@@ -54,27 +54,13 @@ class SimplifiedBTEInterface(BTE):
         )
 
     @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast) -> Self:
+    @abstractmethod
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, for_words: bool=True) -> Self:
         """
         Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
         (rather than wrapping it).
-
-        TODO: Not sure if this specific implementation belongs here or rather under ClassicBPE.
-              There may be some subclasses that have the same exact constructor signature as SimplifiedBTEInterface though.
         """
-        vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        marker = detectBoundaryMarker(hf_bpe_tokenizer)
-        return cls(
-            preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
-
-            vocab=vocab_and_merges.loadVocabulary(),
-            merges=vocab_and_merges.loadMerges(),
-            boundary_marker=marker,
-
-            unk_type=hf_bpe_tokenizer.unk_token,
-            do_morphemic_knockout=False,
-            do_reification=False
-        )
+        pass
 
     def getName(self):
         return self.__class__.__name__
@@ -127,4 +113,18 @@ class ClassicBPE(DeterministicBPETokeniser):
 
             do_morphemic_knockout=False,
             do_reification=False
+        )
+
+    @classmethod
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, for_words: bool=True) -> Self:
+        vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
+        marker = detectBoundaryMarker(hf_bpe_tokenizer)
+        return cls(
+            preprocessor=HuggingFacePreprocessorForWords(hf_bpe_tokenizer) if for_words else HuggingFacePreprocessor(hf_bpe_tokenizer),
+
+            vocab=vocab_and_merges.loadVocabulary(),
+            merges=vocab_and_merges.loadMerges(),
+            boundary_marker=marker,
+
+            unk_type=hf_bpe_tokenizer.unk_token,
         )
