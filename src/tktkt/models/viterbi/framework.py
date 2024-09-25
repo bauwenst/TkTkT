@@ -27,12 +27,14 @@ Deciding whether a substring doesn't belong to the vocabulary, and hence a step 
 the Viterbi decoder, but rather in the scoring grid. The grid might map the step to a different string, e.g.
 """
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Iterable
+from typing_extensions import Self
 from abc import abstractmethod
 import numpy as np
 
 from ...interfaces.tokeniser import Tokeniser, Preprocessor
-from ...util.printing import gridify, transpose
+from ...util.printing import gridify
+from ...util.iterables import transpose
 
 INFTY = float("inf")
 
@@ -42,8 +44,10 @@ class ViterbiStepScores:
     Stores, at index (n,k), the score gained from stepping k+1 characters starting BEFORE character n.
     """
 
+    DTYPE = np.float32
+
     def __init__(self, N: int, K: int, default=0):
-        self.grid = np.full(shape=(N,K), fill_value=default, dtype=np.float32)
+        self.grid = np.full(shape=(N,K), fill_value=default, dtype=ViterbiStepScores.DTYPE)
 
     def get(self, n: int, k: int):
         return self.grid[n,k]
@@ -71,6 +75,20 @@ class ViterbiStepScores:
         except:
             return self.grid.shape[1]
 
+    @classmethod
+    def fromExisting(cls, grid: Iterable[Iterable[float]], needs_transpose: bool=False) -> Self:
+        """
+        :param needs_transpose: If True, the given score grid is transposed before use, which you need to do when it is laid
+                                out in the way we visualise it (steps x characters), i.e. with the vertical dimension representing step sizes.
+        """
+        this = cls(0,0)
+        this.grid = np.array(grid, dtype=ViterbiStepScores.DTYPE)  # This also checks non-raggedness.
+        assert len(this.grid.shape) == 2, f"Score grid must be 2D, not {len(this.grid.shape)}D."
+
+        if needs_transpose:
+            this.grid = this.grid.T  # Note: in PyTorch, a Tensor being a view can raise errors downstream. NumPy has no .contiguous() method though, so I assume this is okay.
+        return this
+
 
 class ViterbiStepScoresWithTokens(ViterbiStepScores):
     """
@@ -92,6 +110,23 @@ class ViterbiStepScoresWithTokens(ViterbiStepScores):
 
     def __repr__(self):
         return gridify(transpose(self.tokens)) + "\n" + super().__repr__()
+
+    @classmethod
+    def fromExisting(cls, grid: Iterable[Iterable[float]], tokens: Iterable[Iterable[str]], needs_transpose: bool=False) -> Self:
+        this = super().fromExisting(grid=grid, needs_transpose=needs_transpose)  # Returns object of this subclass, not of the super type. Python magic.
+
+        this.tokens = [list(tokens_from_character) for tokens_from_character in tokens]
+        if needs_transpose:
+            this.tokens = transpose(this.tokens)
+
+        # Check that there are as many tokens as there are scores. Since the scores have been checked on non-raggedness,
+        # this implicitly also checks non-raggedness.
+        N,K = this.grid.shape
+        assert len(this.tokens) == N
+        for tokens_from_character in this.tokens:
+            assert len(tokens_from_character) == K
+
+        return this
 
 
 class ViterbiStepScoreGenerator:
@@ -181,8 +216,8 @@ class ViterbiTokeniser(Tokeniser):
 
         self.objectives = objectives
         self.K = max_stepsize
-        self.degenerate_output = degenerate
-        self.trim_fully_infinite_steps = trimmed
+        self._degenerate_output = degenerate
+        self._trim_fully_infinite_steps = trimmed
 
     def tokenise(self, string: str):
         N = len(string)
@@ -190,7 +225,7 @@ class ViterbiTokeniser(Tokeniser):
 
         # 1. There is a different set of edge weights per objective and per string. Generate these for the given string.
         graphs = [o.score_generator.generateGrid(string, K) for o in self.objectives]
-        if self.trim_fully_infinite_steps:
+        if self._trim_fully_infinite_steps:
             K = min(graph.getEffectiveK() for graph in graphs)  # We assume that this cannot be larger than the K we already had. You're in trouble otherwise.
 
         # 2. Walk forwards through the graphs.
@@ -208,10 +243,15 @@ class ViterbiTokeniser(Tokeniser):
         # 3. Walk backwards over the best path.
         tokens = []
 
-        prev_index    = N
-        current_index = t.backpointers[prev_index]
+        prev_index    = N  # bigger index
+        current_index = t.backpointers[prev_index]  # smaller index
+        if not self._degenerate_output:
+            indices_to_token = lambda string, left_index, right_index: string[left_index:right_index]
+        else:
+            indices_to_token = lambda string, left_index, right_index: graphs[0].getToken(left_index, right_index-left_index-1)
+
         while current_index != -1:
-            token = string[current_index:prev_index] if not self.degenerate_output else graphs[0].getToken(current_index, prev_index-current_index-1)
+            token = indices_to_token(string, current_index, prev_index)
             tokens.insert(0, token)
 
             prev_index    = current_index

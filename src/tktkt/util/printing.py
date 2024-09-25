@@ -65,17 +65,6 @@ def gridify(matrix: Iterable[Iterable]) -> str:
     return result[:-2]
 
 
-def transpose(matrix: Iterable[Iterable]) -> List[List]:
-    new_matrix = []
-    for row in matrix:
-        for y,e in enumerate(row):
-            if y >= len(new_matrix):
-                new_matrix.append([])
-            new_matrix[y].append(e)
-
-    return new_matrix
-
-
 def iprint(integer: int, sep=" "):
     """
     Print an integer with a custom thousands separator.

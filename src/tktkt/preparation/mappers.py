@@ -9,12 +9,18 @@ from ..util.dicts import invertdict, insertKeyAlias
 
 
 class TextMapper(ABC):
+    """
+    Turns one string into another string. By default, this is not invertible.
+    """
     @abstractmethod
     def convert(self, text: str) -> str:
         pass
 
 
 class InvertibleTextMapper(TextMapper):
+    """
+    Turns one string into another string and can deduce the original from the result.
+    """
     @abstractmethod
     def invert(self, text: str) -> str:
         pass
@@ -35,15 +41,31 @@ class MapperSequence(TextMapper):
 
 
 class Stripper(TextMapper):
-
+    """
+    Strips whitespace off both ends of a given string.
+    """
     def convert(self, text: str) -> str:
         return text.strip()
 
 
 class Lowercaser(TextMapper):
-
+    """
+    Lowercases a given string.
+    """
     def convert(self, text: str) -> str:
         return text.lower()
+
+
+class Truncate(TextMapper):
+    """
+    Truncates a given string to a maximal length in characters.
+    Can help curb the danger of tokenising massive examples.
+    """
+    def __init__(self, maximum_character_count: int):
+        self.cap = maximum_character_count
+
+    def convert(self, text: str) -> str:
+        return text[:self.cap]
 
 
 class FilterRegex(TextMapper):

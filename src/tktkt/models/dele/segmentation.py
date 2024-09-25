@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 
 from ...interfaces.preparation import Preprocessor
 from ...interfaces.tokeniser import Tokeniser
-from ...util.iterables import fileToList
+from ...util.iterables import streamLines
 
 DEL_DATA = Path(__file__).resolve().parent / "data"
 
@@ -52,9 +52,9 @@ class Derivator(ABC):
         path_suffices = path_suffices or default_suffices
 
         # Read files
-        prefices = fileToList(path_prefices, include_empty_lines=False)
-        suffices = fileToList(path_suffices, include_empty_lines=False)
-        stems    = fileToList(path_stems,    include_empty_lines=False) if path_stems is not None else []
+        prefices = list(streamLines(path_prefices, include_empty_lines=False))
+        suffices = list(streamLines(path_suffices, include_empty_lines=False))
+        stems    = list(streamLines(path_stems, include_empty_lines=False)) if path_stems is not None else []
         return cls(prefices, suffices, stems)
 
     @abstractmethod

@@ -9,9 +9,11 @@ T = TypeVar("T")
 T2 = TypeVar("T2")
 
 
-def fileToList(path: Path, include_empty_lines=True) -> List[str]:
+def streamLines(path: Path, include_empty_lines=True) -> Iterable[str]:
     with open(path, "r", encoding="utf-8") as handle:
-        return [line.strip() for line in handle if include_empty_lines or line.strip()]
+        return filter(lambda line: include_empty_lines or len(line),
+                      map(lambda line: line.strip(),
+                          handle))
 
 
 class _NonePlaceholder:  # Replacement for None when None is actually a legitimate value.
@@ -68,13 +70,6 @@ def mapExtend(f: Callable[[T],Iterable[T2]], iterable: Iterable[T]) -> Iterable[
             yield piece
 
 
-def count(iterable: Iterable[T]) -> int:
-    total = 0
-    for _ in iterable:
-        total += 1
-    return total
-
-
 def drop(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
     for i, thing in enumerate(iterable):
         if i < n:
@@ -82,8 +77,28 @@ def drop(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
         yield thing
 
 
-def take(n: int, iterable: Iterable) -> Generator[T, None, None]:
+def take(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
     for i, thing in enumerate(iterable):
         if i >= n:
             break
         yield thing
+
+
+# Endpoints below
+
+def count(iterable: Iterable[T]) -> int:
+    total = 0
+    for _ in iterable:
+        total += 1
+    return total
+
+
+def transpose(matrix: Iterable[Iterable[T]]) -> List[List[T]]:
+    new_matrix = []
+    for row in matrix:
+        for y,e in enumerate(row):
+            if y >= len(new_matrix):
+                new_matrix.append([])
+            new_matrix[y].append(e)
+
+    return new_matrix

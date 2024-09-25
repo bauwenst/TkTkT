@@ -7,7 +7,6 @@ from pathlib import Path
 
 from .segmentation import EnglishDerivator, Derivator
 from ...interfaces.tokeniser import TokeniserWithFiniteIdRange, TokeniserWithFiniteTypeDomain
-from ...util.iterables import fileToList
 from ...util.timing import datetimeDashed
 from ...files.paths import TkTkTPaths
 
