@@ -40,11 +40,11 @@ Currently work in progress:
 
 ### Evaluation metrics
 TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
-- Fertility statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
+- *Fertility* statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
 - Morphological boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
   position in a word.
-- Richness of token contexts with accessor variety.
-- Entropy-based measures.
+- Richness of token contexts with *accessor variety*.
+- Entropy-based measures, including *Rényi efficiency*.
 - Comparison between two tokenisers: how much they tokenise words exactly the same, and how much their split points overlap.
 
 ### Visualisers
@@ -269,7 +269,8 @@ BPE and KudoPiece.
 ## Pronunciation
 The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast, like a beatboxer mimicking hi-hats
 (kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.
-If you are Brazilian, you may pronounce it "tuca tuca" while playing [the official TkTkT theme song](https://open.spotify.com/track/2aX7w5bdbES8A9H5FDydSA).
+If you are Brazilian, you may pronounce it "tuca tuca" while playing [the official TkTkT theme song](https://open.spotify.com/track/2aX7w5bdbES8A9H5FDydSA),
+which gives you a peek into my demented taste in music.
 
 If you think all of this is cringe, too bad -- it is the only way not to fall into clinical depression after realising
 just how messy modern subword tokenisation is at the algorithmic *and* an implementational level.

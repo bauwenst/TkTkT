@@ -130,7 +130,7 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
 
     def getName(self):  # Properties in order of how much they alter the behaviour of the tokeniser.
         return "GRaMPa(" + \
-            ("unconstrained," if self._accept_all_types else "") + \
+            ("inf," if self._accept_all_types else "") + \
             (f"S(t={self.renormalisation.tau})" if isinstance(self.renormalisation, SoftmaxNormalisation)
             else f"P(t={self.renormalisation.tau})" if isinstance(self.renormalisation, PowerNormalisation)
             else "") + \
