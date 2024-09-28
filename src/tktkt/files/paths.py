@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import re
 from typing import List
 
 PATH_PACKAGE = Path(__file__).resolve().parent.parent
@@ -46,6 +47,28 @@ def from_pretrained_absolutePath(cls, absolute_path: Path):
     return cls.from_pretrained(relativeToCwd(absolute_path).as_posix())
 
 
+def pathSafe(string: str) -> str:
+    """
+    Adapted from https://stackoverflow.com/a/71199182/9352077 which is based on https://en.wikipedia.org/wiki/Filename#Reserved_characters_and_words.
+    Illegal strings are prefixed by an underscore.
+    """
+    placeholder = "_"  # This is not an argument of the function because then the user could give an illegal placeholder.
+
+    string = string.strip()
+    string = re.sub(r"[/\\?%*:|\"<>\x7F\x00-\x1F]", placeholder, string)
+
+    # Don't allow dots at the end
+    string = string.rstrip(".")
+
+    # If empty or part of Windows's illegal list of names, add an extra placeholder at the end.
+    if not string or string.upper() in {"CON", "CONIN$", "CONOUT$", "PRN", "AUX", "CLOCK$", "NUL",
+                                        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                                        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}:
+        string += "_"
+
+    return string
+
+
 class PathManager:
 
     def __init__(self, project_name: str=""):
@@ -55,7 +78,7 @@ class PathManager:
 
     @staticmethod
     def append(base_path: Path, part: str) -> Path:
-        full_path = base_path / part
+        full_path = base_path / pathSafe(part)
         full_path.mkdir(exist_ok=True, parents=True)
         return full_path
 
@@ -63,7 +86,7 @@ class PathManager:
     def extend(base_path: Path, parts: List[str]) -> Path:
         full_path = base_path
         for part in parts:
-            full_path /= part
+            full_path /= pathSafe(part)
         full_path.mkdir(exist_ok=True, parents=True)
         return full_path
 

@@ -1,5 +1,23 @@
 """
 Wrapper that multiplexes more than one Tokeniser.
+
+There are 5 possible configurations to handle preprocessing:
+
+| Apply global preprocessor? | Give global pretokens of one example to same tokeniser? | Preprocess with selected subtokeniser? |
+| ---                        | ---                                                     | ---                                    |
+| yes                        | no                                                      | no                                     |
+| yes                        | no                                                      | yes                                    |
+| yes                        | yes                                                     | no                                     |
+| yes                        | yes                                                     | yes                                    |
+| no (== yes, Identity)      | yes+no (there only is one pretoken)                     | yes                                    |
+
+Every yes-yes-X style is arguably mediocre (multiplexing at the sentence level).
+The bottom one can be implemented as yes-no-yes.
+That means we really only need support for yes-no-yes and yes-no-no. Hence, there is always a global preprocessor
+(sometimes an identity) which determines the pretokens over which we multiplex tokenisers. Whether the subtokeniser
+preprocesses extra is then just a boolean decision.
+
+TODO: Rework the hierarchy to reflect this. It means all multiplexers can have the same parent.
 """
 from typing import List, Iterable
 from abc import abstractmethod
