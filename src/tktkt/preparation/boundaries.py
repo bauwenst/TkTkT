@@ -41,7 +41,7 @@ class BoundaryMarker:
 
         return root, mark
 
-    def concatenate(self, root: str, marker: str):
+    def concatenate(self, root: str, marker: str) -> str:
         """
         Inverse of isolate().
         """
@@ -54,7 +54,7 @@ class BoundaryMarker:
         else:
             return root
 
-    def intoCharacters(self, pretoken: str):
+    def intoCharacters(self, pretoken: str) -> Tuple[str,...]:
         """
         Method for algorithms like BPE that require a word to start out as being split into characters.
 
@@ -64,28 +64,31 @@ class BoundaryMarker:
         if self.location == BoundaryMarkerLocation.START:
             chars, sow = self.isolate(pretoken)
             if not sow:
-                return list(chars)
+                return tuple(chars)
             else:
                 if self.detached:
-                    return [sow] + list(chars)
+                    return (sow,) + tuple(chars)
                 else:
-                    return [sow + chars[0]] + list(chars[1:])
+                    return (sow + chars[0],) + tuple(chars[1:])
+
         elif self.location == BoundaryMarkerLocation.END:
             chars, eow = self.isolate(pretoken)
             if not eow:
-                return list(chars)
+                return tuple(chars)
             else:
                 if self.detached:
-                    return list(chars) + [eow]
+                    return tuple(chars) + (eow,)
                 else:
-                    return list(chars[:-1]) + [chars[-1] + eow]
+                    return tuple(chars[:-1]) + (chars[-1] + eow,)
+
         elif self.location == BoundaryMarkerLocation.ISOLATED:
             if pretoken == self.substitute:
-                return [pretoken]
+                return (pretoken,)
             else:
-                return list(pretoken)
+                return tuple(pretoken)
+
         else:
-            return [pretoken]
+            return (pretoken,)
 
 
 # Old names for compatibility

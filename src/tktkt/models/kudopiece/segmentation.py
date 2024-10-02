@@ -4,7 +4,7 @@ from typing import List
 from sentencepiece import SentencePieceProcessor
 
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor
-from .training import KudoPieceTrainer
+from .vocabularisation import KudoPieceTrainer
 
 
 class KudoPieceTokeniser(TokeniserWithVocabDict):

@@ -161,9 +161,10 @@ because its Python interface is a thin wrapper around a command-line call, not a
 In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in TkTkT because many tokenisers are based on a language model of unigrams).
 
 First we call the trainer with relevant training arguments:
+
 ```python
 from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
-from tktkt.models.kudopiece.training import *
+from tktkt.models.kudopiece.vocabularisation import *
 from string import ascii_letters
 
 ### Your data iterator goes here.

@@ -2,7 +2,25 @@
 General new types.
 """
 from abc import abstractmethod
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, Iterable, Callable
+
+T = TypeVar("T")
+T2 = TypeVar("T2")
+
+class NamedIterable(Iterable[T]):  # This T is so that type signatures like NamedIterable[str] actually cause type inference for return values once iterating.
+    """
+    An iterable that has a string attached to it. Handy when e.g. you have a streamable corpus and want to name the
+    results based on the name of the corpus.
+    """
+    def __init__(self, iterable: Iterable[T], name: str):  # This T is so that the above T is be inferred from the constructor if there is no type signature.
+        self._iterable = iterable
+        self.name = name
+
+    def __iter__(self):
+        return self._iterable.__iter__()
+
+    def map(self, f: Callable[[T],T2]) -> "NamedIterable[T2]":
+        return NamedIterable(map(f, self), name=self.name)
 
 
 class Comparable(Protocol):

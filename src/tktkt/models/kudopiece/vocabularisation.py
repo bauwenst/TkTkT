@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import List, Iterable, Tuple
 from dataclasses import dataclass
 
+from tqdm.auto import tqdm
 import sentencepiece
 from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab
-from ...util.timing import datetimeDashed
+from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
 
 MAXIMUM_SENTENCE_LENGTH = 4192
 
@@ -113,56 +113,55 @@ class KudoPieceTrainer(Vocabulariser):
         if word_boundary_location == BoundaryMarkerLocation.ISOLATED:
             raise ValueError("KudoPiece only supports start-of-word and end-of-word boundary markers.")
 
-        self.alphabet = alphabet_arguments
-        self.algorithm = algorithm_arguments
-        self.size = final_vocab_size
-        self.stem = file_stem
+        self._alphabet = alphabet_arguments
+        self._algorithm = algorithm_arguments
+        self._size = final_vocab_size
+        self._stem = file_stem
 
-        self.boundary_style = word_boundary_location
+        self._boundary_style = word_boundary_location
 
-    def _vocabulariseFromWords(self, word_iterable: Iterable[Tuple[str,int]]) -> Path:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
         """
         FIXME: Currently suffers from https://github.com/google/sentencepiece/issues/967
         """
         return self._withSentencepieceTrainer(
-            (f"{self._addSpace(word)}\t{count}" for word, count in word_iterable),
-            is_wordfile=True, strings_need_space_splitting=False
+            word_iterable.map(lambda t: f"{self._addSpace(t[0])}\t{t[1]}"),
+            is_wordfile=True
         )
 
-    def _vocabulariseFromSentences(self, sentence_iterable: Iterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
         return self._withSentencepieceTrainer(
-            map(lambda s: " ".join(self.preprocessor.do(s)), sentence_iterable),
-            is_wordfile=False, strings_need_space_splitting=True
+            self._preprocessSentencesToSentences(sentence_iterable),  # FIXME: The problem with having pretokens be space-separated is that sentencepiece is going to turn something like "ĠBPE - knockout" into ["_ĠBPE", "_-", "_knockout"] which is wrong. An easy fix is to not put any SoW and to not segment beyond word-level.
+            is_wordfile=False
         )
 
-    def _withSentencepieceTrainer(self, string_iterable: Iterable[str], is_wordfile: bool=False,
-                                  strings_need_space_splitting: bool=False) -> Path:
-        output_prefix = self._makeOutputFolder() / (self.stem + "_" + datetimeDashed())
+    def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> Path:
+        output_prefix = self._makeOutputFolder() / (self._stem + "_" + string_iterable.name)
 
         sentencepiece.SentencePieceTrainer.Train(
             model_type="unigram",
 
-            #  I/O
-            sentence_iterator=string_iterable,
+            # I/O
+            sentence_iterator=tqdm(string_iterable).__iter__(),
             input_format="tsv" if is_wordfile else "",
             max_sentence_length=MAXIMUM_SENTENCE_LENGTH,
             train_extremely_large_corpus=True,  # Why not, right?
             model_prefix=output_prefix.as_posix(),
 
             # Alphabet
-            required_chars=self.alphabet.required_chars,
-            byte_fallback=self.alphabet.byte_fallback,
-            character_coverage=self.alphabet.character_coverage,
+            required_chars=self._alphabet.required_chars,
+            byte_fallback=self._alphabet.byte_fallback,
+            character_coverage=self._alphabet.character_coverage,
 
             # Algorithm
-            treat_whitespace_as_suffix=self.boundary_style == BoundaryMarkerLocation.END,
+            treat_whitespace_as_suffix=self._boundary_style == BoundaryMarkerLocation.END,
 
-            seed_sentencepiece_size=self.algorithm.initial_vocab_size,
-            max_sentencepiece_length=self.algorithm.maximum_token_length,
-            shrinking_factor=self.algorithm.shrinking_factor,
-            num_sub_iterations=self.algorithm.num_sub_iterations,
+            seed_sentencepiece_size=self._algorithm.initial_vocab_size,
+            max_sentencepiece_length=self._algorithm.maximum_token_length,
+            shrinking_factor=self._algorithm.shrinking_factor,
+            num_sub_iterations=self._algorithm.num_sub_iterations,
 
-            vocab_size=self.size,
+            vocab_size=self._size,
             hard_vocab_limit=True,
             vocabulary_output_piece_score=True,
 
@@ -176,7 +175,7 @@ class KudoPieceTrainer(Vocabulariser):
             remove_extra_whitespaces=False,
             split_by_unicode_script=False,
             split_by_number=False,
-            split_by_whitespace=strings_need_space_splitting,
+            split_by_whitespace=not is_wordfile,
             split_digits=False,
             allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
         )
@@ -184,21 +183,7 @@ class KudoPieceTrainer(Vocabulariser):
         return output_prefix.with_suffix(".model")
 
     def _addSpace(self, word: str) -> str:
-        return " "*(self.boundary_style == BoundaryMarkerLocation.START) + word + " "*(self.boundary_style == BoundaryMarkerLocation.END)
+        return " " * (self._boundary_style == BoundaryMarkerLocation.START) + word + " " * (self._boundary_style == BoundaryMarkerLocation.END)
 
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
         return [typ for typ,_  in iterateTsv(file_or_folder)]
-
-
-from bpe_knockout.datahandlers.wordfiles import wordsFileToCounter
-def corpusGenerator(wordfile: Path):
-    for word, count in wordsFileToCounter(wordfile).items():
-        word = " " + word
-        words_per_sentence = MAXIMUM_SENTENCE_LENGTH // len(word)
-        characters_per_sentence = words_per_sentence*len(word)
-        if characters_per_sentence == 0:  # Can't make progress by iterating
-            continue
-
-        n_sentences = (count*len(word) - 1) // characters_per_sentence + 1
-        for _ in range(n_sentences):
-            yield word*words_per_sentence

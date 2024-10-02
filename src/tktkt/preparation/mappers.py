@@ -314,8 +314,7 @@ class PseudoByteMapping(InvertibleTextMapper):
         mappings = dict()
         for byte in range(256):
             representation = chr(byte)
-            if representation.isspace() or len(
-                    representation.__repr__()) == 6:  # Cannot be printed properly in a text file.
+            if representation.isspace() or len(representation.__repr__()) == 6:  # Cannot be printed properly in a text file.
                 mappings[byte] = chr(256 + offset)
                 offset += 1
             else:
@@ -324,5 +323,5 @@ class PseudoByteMapping(InvertibleTextMapper):
         return mappings
 
     BYTE_TO_PSEUDO = bytes_to_unicode_softcoded()
-    PSEUDO_TO_BYTE = insertKeyAlias(invertdict(BYTE_TO_PSEUDO), existing_key="Ġ", alias_key=" ")  # Map spaces (which technically shouldn't be in encoded input) to the byte G maps to.
+    PSEUDO_TO_BYTE = insertKeyAlias(invertdict(BYTE_TO_PSEUDO), existing_key="Ġ", alias_key=" ")  # Map spaces (which technically shouldn't be in encoded input) to the byte that G maps to.
     SPACING_BYTES = [9, 10, 13, 32]

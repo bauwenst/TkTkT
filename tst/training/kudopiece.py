@@ -1,5 +1,5 @@
 from tst.preamble import *
-from tktkt.models.kudopiece.training import *
+from tktkt.models.kudopiece.vocabularisation import *
 
 from bpe_knockout.project.config import Pℛ𝒪𝒥ℰ𝒞𝒯, KnockoutDataConfiguration, setupEnglish
 from string import ascii_letters

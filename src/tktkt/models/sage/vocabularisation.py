@@ -6,11 +6,11 @@ During vocabulary building, data are kept in-context rather than coming from a w
 vocabulary is just a set of subwords without context, however.
 """
 from pathlib import Path
-from typing import Iterable, Tuple, List
+from typing import Tuple, List
 
 from sage_tokenizer import SaGeVocabBuilder, setSageFolder
 
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab
+from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
 from .schedules import *
 
 
@@ -51,10 +51,10 @@ class SageVocabulariser(Vocabulariser):
         with open(file_or_folder, "r", encoding="utf-8") as handle:
             return [bytes.fromhex(line).decode(encoding="utf-8") for line in handle]
 
-    def _vocabulariseFromWords(self, word_iterable: Iterable[Tuple[str,int]]) -> Path:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
         raise RuntimeError("SaGe operates on contextual corpora, not on word lists.")
 
-    def _vocabulariseFromSentences(self, sentence_iterable: Iterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
         if not self.initial_hex_vocab:
             raise RuntimeError("SaGe vocabulary wasn't yet initialised.")
 
@@ -66,12 +66,13 @@ class SageVocabulariser(Vocabulariser):
             random_seed=self.seed
         )
 
-        setSageFolder(self._makeOutputFolder())
+        folder = self._makeOutputFolder()
+        setSageFolder(folder.with_stem(folder.stem + "_" + sentence_iterable.name))
 
         return builder.build_vocab(
             experiment_name="sage",
             initial_vocabulary=self.initial_hex_vocab,
-            corpus=sentence_iterable,
+            corpus=sentence_iterable,  # TODO: Possible replace this by self._preprocessSentencesToListsAsStrings(sentence_iterable).
 
             k_corpus_examples=None,
             corpus_cache=""  # Don't use corpus caching. Slower, but it is what you would expect by coming from an iterable.

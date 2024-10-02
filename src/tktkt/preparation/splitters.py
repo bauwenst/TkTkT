@@ -331,6 +331,8 @@ class AddWordBoundary(Pretokeniser):
     Is entirely insensitive to the presence of spaces. Using spaces as boundary markers is a bad idea for multiple
     reasons, among which the fact that a text doesn't always start (for SoW) or end (for EoW) with a space, and that
     punctuation sometimes removes preceding or succeeding space. A boundary is a boundary.
+
+    The reason this is a pretokeniser is that it can produce multiple tokens at once (namely, a separate token as boundary).
     """
 
     def __init__(self, marker: BoundaryMarker):
