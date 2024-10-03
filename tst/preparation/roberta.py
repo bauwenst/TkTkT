@@ -8,7 +8,7 @@ from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import *
 from tktkt.preparation.huggingface import HuggingFacePretokeniser
 from tktkt.preparation.instances import RobertaPreprocessor, RobertaSpaceMarker, SennrichSpaceMarker, \
-    IsolatedSpaceMarker, CommonsensePreprocessor
+    IsolatedSpaceMarker, ModernEnglishPreprocessor
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 
 
@@ -41,7 +41,7 @@ def steps():
     sentence = "It's a Pℛ𝒪𝒥ë𝒞𝒯, bruh! (low-key triggered)"
     clean = RobertaPreprocessor.irreversible.convert(sentence)
 
-    s = CommonsensePreprocessor(marker=RobertaSpaceMarker)
+    s = ModernEnglishPreprocessor(marker=RobertaSpaceMarker)
     print(s.do(word))
     print(s.do(sentence))
     print()

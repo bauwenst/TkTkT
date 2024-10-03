@@ -60,13 +60,13 @@ class Vocabulariser(ABC):
         """
         return sentence_iterable.map(self.preprocessor.do)
 
-    def _preprocessSentencesToSentences(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[str]:
+    def _preprocessSentencesToSentences(self, sentence_iterable: NamedIterable[str], sep: str=" ") -> NamedIterable[str]:
         """
         Run the preprocessor to get pretokens from sentences, and concatenate them with spaces.
         Some packages expect such a "list as string" explicitly (one example is GenSim). Others like SentencePiece,
         BPEasy and even HuggingFace tokenizers allow specifying a whitespace tokeniser, implicitly accepting pretoken lists this way.
         """
-        return sentence_iterable.map(self.preprocessor.do).map(lambda pretokens: " ".join(pretokens))
+        return sentence_iterable.map(self.preprocessor.do).map(lambda pretokens: sep.join(pretokens))
 
     def _preprocessWordsToSentences(self, word_iterable: NamedIterable[Tuple[str, int]]) -> NamedIterable[str]:
         """
@@ -91,11 +91,11 @@ class Vocabulariser(ABC):
                 count -= diff
                 yield diff * (" " + word)
 
-    def _makeOutputFolder(self) -> Path:
+    def _makeOutputFolder(self, extra_suffix: str="") -> Path:
         """
         Get a new folder in which to store any files you want to store during vocabularisation.
         """
-        return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, f"{self._name}_{datetimeDashed()}"])
+        return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, f"{self._name}_{extra_suffix}_{datetimeDashed()}"])
 
     @classmethod
     def _assignIdentifiers(cls, vocab: UnidentifiedVocab, sorting_key: Optional[TokenSortingKey], starting_id: int=0) -> Vocab:

@@ -50,7 +50,7 @@ class Builder_English_BPE_native(TokeniserBuilder[ClassicBPE]):
     def buildTokeniser(self) -> T:
         files = getEnglishBpeFiles()
         return ClassicBPE(
-            preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
+            preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
             vocab=files.loadVocabulary(),
             merges=files.loadMerges(),
             boundary_marker=RobertaSpaceMarker
@@ -61,7 +61,7 @@ class Builder_English_BPEKnockout(TokeniserBuilder[BPEKnockout]):
     def buildTokeniser(self) -> T:
         files = getEnglishBpeFiles()
         return BPEKnockout(
-            preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
+            preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
             vocab=files.loadVocabulary(),
             merges=files.loadMerges(),
             language="English",
@@ -77,7 +77,7 @@ class Builder_English_ReBPE(TokeniserBuilder[ReBPE]):
     def buildTokeniser(self) -> T:
         files = getEnglishBpeFiles()
         return ReBPE(
-            preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
+            preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),  # I use this because I know the BPE vocabs are byte-based and this one is too.
             vocab=files.loadVocabulary(),
             merges=files.loadMerges(),
             language="English",
@@ -111,7 +111,7 @@ class Builder_English_LeastToken_BPEKnockout(TokeniserBuilder[LeastTokenViterbi]
 
         # Prune the vocabulary with BPE-knockout
         only_for_vocabulary = BPEKnockout(
-            preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),
+            preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),
             vocab=files.loadVocabulary(),
             merges=files.loadMerges(),
             language="English",
@@ -254,7 +254,7 @@ class Builder_English_CanineBPEdropout(TokeniserBuilder[GuidedBPEDropout]):
         english_bpe_files  = getEnglishBpeFiles()
         english_canine_mbr = getEnglishCANINE()
         return GuidedBPEDropout(
-            preprocessor=CommonsensePreprocessor(RobertaSpaceMarker),  # We know the BPE files uses this marker, so we can manually specify it.
+            preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),  # We know the BPE files uses this marker, so we can manually specify it.
 
             vocab=english_bpe_files.loadVocabulary(),
             merges=english_bpe_files.loadMerges(),

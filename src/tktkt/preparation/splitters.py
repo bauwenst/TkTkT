@@ -305,7 +305,7 @@ class IsolateDigits(Pretokeniser):
         pretokens = self.pattern.split(text)
         return [t for t in pretokens if t]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Should actually look for adjacent digits and merge them.
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Should actually look for adjacent digits and merge them. Careful merging sequences like "2024 10 02" to "20241002" though.
         return pretokens
 
 

@@ -125,7 +125,7 @@ tokeniser = L2R_Greedy(
 print(tokeniser.prepareAndTokenise("A bad cab, ABBA!"))
 print(tokeniser.tokenise("abc."))
 ```
-There are many more preprocessing classes available, some pre-made. Check out the `CommonsensePreprocessor` 
+There are many more preprocessing classes available, some pre-made. Check out the `ModernEnglishPreprocessor` 
 for typical modern use-cases.
 
 ### HuggingFace compatibility

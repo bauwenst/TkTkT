@@ -1,21 +1,27 @@
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple, Union, List
 from pathlib import Path
 from enum import Enum
+from collections import defaultdict
 
 import json
+import warnings
 from tqdm.auto import tqdm
 
+# Core libraries
+from tktkt.util.dicts import substituteKey, argmax
 from transformers import SpecialTokensMixin
 from tokenizers import Tokenizer, models, pre_tokenizers, trainers
 import bpeasy
 import sentencepiece
-
-from bpe_knockout.auxiliary.tokenizer_interface import SennrichTokeniserPath, HuggingFaceTokeniserPath
 from bpe_knockout._lib.sbpe.learn_bpe import learn_bpe
 
-from ...preparation.boundaries import BoundaryMarker
+from bpe_knockout.auxiliary.tokenizer_interface import SennrichTokeniserPath, HuggingFaceTokeniserPath
+
+from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
 from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab
+from ...util.iterables import streamProgress, streamPrint
+from ...util.printing import logger
 
 
 PAD = "<pad>"
@@ -81,24 +87,55 @@ class BPEVocabulariser(Vocabulariser):
     ####################################################################################################################
 
     def _withBPEasyTrainer(self, sentence_iterable: NamedIterable[str]) -> Path:
-        path = self._makeOutputFolder() / "vocab.json"
+        """
+        Produces a pseudo-byte vocabulary with boundary marker. Assumes that the vocabulariser's preprocessor is slightly
+        different from the tokeniser's preprocessor, namely that the former does not apply a pseudo-byte mapping nor adds
+        boundaries other than spaces.
+        """
+        logger("Note: BPEasy has a byte-based implementation. That means you should use a byte-compatible preprocessor, which doesn't add a boundary marker (unless it's a space) and doesn't apply a pseudo-byte mapping.")
+        out_folder = self._makeOutputFolder(sentence_iterable.name)
 
-        # Learn vocabulary
-        vocab = bpeasy.train_bpe(
-            iterator=tqdm(self._preprocessSentencesToSentences(sentence_iterable)).__iter__(), python_regex=" ",  # Splitting on spaces will reveal pretokens.
+        # Learn vocabulary.
+        PRETOKEN_SEPARATOR = "🂠"  # Normally you can use spaces to separate pretokens, but here we need spaces to act as boundary markers, and while all pretokens are separated, not all pretokens have a boundary marker, hence you can't use spaces.
+        PRETOKEN_REGEX     = " ?"*(self._marker.location == BoundaryMarkerLocation.START) + "[^" + PRETOKEN_SEPARATOR + "]+" + " ?"*(self._marker.location == BoundaryMarkerLocation.END)
+        bytes_vocab: Dict[bytes,int] = bpeasy.train_bpe(
+            iterator=streamProgress(self._preprocessSentencesToSentences(sentence_iterable, sep=PRETOKEN_SEPARATOR)).__iter__(),
+            python_regex=PRETOKEN_REGEX,  # Splitting on spaces will reveal pretokens.
             vocab_size=self._size,
             max_token_length=self._maxlen
         )
-        vocab = {"".join(map(PseudoByteMapping.BYTE_TO_PSEUDO.get, byte_sequence)): i
-                 for byte_sequence, i in vocab.items()}
 
-        # Write out
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(vocab, handle)
-        return path
+        # Convert the byte-level vocabulary to pseudo-byte characters so that it can be written to a text file.
+        # The byte for spaces is converted to a space because of the assumption that the preprocessor wipes all spaces
+        # except those it wants as a boundary marker.
+        space_pseudo = PseudoByteMapping.BYTE_TO_PSEUDO.get(" ".encode("utf-8")[0])
+        vocab = {"".join(map(PseudoByteMapping.BYTE_TO_PSEUDO.get, byte_sequence)).replace(space_pseudo, " "): i
+                 for byte_sequence, i in bytes_vocab.items()}
+        substituteKey(vocab, " ", space_pseudo)  # The byte you need for encoding actual spaces needs to be kept.
+
+        # Need to make room for the marker itself as a 257th atom (kind of like a special).
+        if self._marker.detached and self._marker.substitute not in vocab:
+            last_type = argmax(vocab)[0]
+            substituteKey(vocab, last_type, self._marker.substitute)
+        else:  # TODO: Technically you should then make room for the entire alphabet with the marker attached, as happens in Sennrich's case.
+            pass
+
+        # Replace the space by the vocabulariser's marker, sort, and write out.
+        vocab = {typ.replace(" ", self._marker.substitute): vocab.get(typ) for typ in vocab}
+        types = sorted(vocab, key=vocab.get)
+        with open(out_folder / "vocab.json", "w", encoding="utf-8") as handle:
+            json.dump({typ: vocab.get(typ) for typ in types}, handle, ensure_ascii=False, indent=4)
+
+        # Induce merges
+        merges = BPEVocabulariser.deduceMergesFromVocab(types, self._marker)
+        with open(out_folder / "merges.txt", "w", encoding="utf-8") as handle:
+            for left,right in merges:
+                handle.write(f"{left} {right}\n")
+
+        return out_folder
 
     def _withSBPETrainer(self, iterable: Union[NamedIterable[Tuple[str,int]], NamedIterable[str]], is_wordfile: bool=False) -> Path:
-        out_folder = self._makeOutputFolder()
+        out_folder = self._makeOutputFolder(iterable.name)
 
         paths = SennrichTokeniserPath(folder=out_folder)
         path_vocab, path_merges = paths.getPaths()
@@ -108,7 +145,7 @@ class BPEVocabulariser(Vocabulariser):
             iterables = [iterable if not is_wordfile else (f"{word} {count}" for word,count in iterable)]
             learn_bpe(iterables, out_handle, is_dict=is_wordfile,
                       num_symbols_ori=self._size, total_symbols=True,
-                      word_preprocessor=self.preprocessor, marker=self._marker)
+                      preprocessor=self.preprocessor, marker=self._marker)
 
         # Deduce vocab
         vocab = BPEVocabulariser.deduceVocabFromMerges(path_merges, byte_based=self._byte_based)
@@ -121,7 +158,7 @@ class BPEVocabulariser(Vocabulariser):
         HuggingFace equivalent. For German: starts out extremely slow
         (giving an ETA of 500 000 hours), but finishes in under 2 hours.
         """
-        out_folder = self._makeOutputFolder()
+        out_folder = self._makeOutputFolder(sentence_iterable.name)
 
         # Model: no normaliser (because RobBERT doesn't have one) and no decoder (because training is back-end-only).
         tokeniser = Tokenizer(models.BPE())
@@ -143,7 +180,7 @@ class BPEVocabulariser(Vocabulariser):
         tokeniser.train_from_iterator(sentence_iterable, trainer=trainer)
 
         # Save
-        save_path = out_folder / f"BPE_from_{sentence_iterable.name}.json"
+        save_path = out_folder / f"tokenizer.json"
         hf = HuggingFaceTokeniserPath(json_path=save_path)  # Calls .mkdir, which is important because otherwise the next line fails.
         tokeniser.save(path=save_path.as_posix())
 
@@ -182,3 +219,62 @@ class BPEVocabulariser(Vocabulariser):
         )}
 
         return vocab
+
+    @staticmethod
+    def deduceMergesFromVocab(types: UnidentifiedVocab, boundary_marker: BoundaryMarker) -> List[Tuple[str,str]]:
+        """
+        If the types are given in the order they were learnt by the BPE vocabulariser, you can actually reconstruct
+        the merge of type i by constructing the BPE tokeniser for types 1 ... i-1 and then tokenising type i with it.
+        The result will have exactly two types, and it is those two types that merge into type i (rather than any other
+        pair in the vocabulary that also concatenate into type i).
+
+        The theoretical invariant this is based on is that <i>at every point during BPE tokenisation, if there exist
+        two adjacent tokens in the sequence that can be merged into a type of the vocabulary, then those tokens are
+        exactly the tokens that make up the one merge of that type</i> together with the fact that you don't need to
+        know more than the first i-1 merges to simulate a BPE tokeniser with >i merges in its first i-1 inference steps.
+        """
+        types = list(types)
+        current_type_state = [list(boundary_marker.intoCharacters(t)) for t in types]
+        states_with_type = defaultdict(set)
+        for i in range(len(current_type_state)):
+            for atom in current_type_state[i]:
+                states_with_type[atom].add(i)
+
+        merges = []
+        for i in tqdm(range(len(current_type_state)), desc="TYPES DEDUCED"):
+            tokens_to_merge = tuple(current_type_state[i])
+            if len(tokens_to_merge) == 1:  # Alphabet
+                continue
+            elif len(tokens_to_merge) == 2:  # Concatenate
+                left, right = tokens_to_merge
+                merged_type = left + right
+                assert types[i] == merged_type
+                merges.append((left,right))
+            else:
+                raise RuntimeError("Found type that could not be formed with a binary merge.")
+
+            for j in states_with_type[left] | states_with_type[right]:
+                old_tokens = current_type_state[j]
+                new_tokens = []
+                k = 0
+                while k < len(old_tokens):
+                    if k != len(old_tokens)-1 and old_tokens[k] == left and old_tokens[k+1] == right:
+                        new_tokens.append(merged_type)
+                        k += 2
+                    else:
+                        new_tokens.append(old_tokens[k])
+                        k += 1
+
+                if len(old_tokens) != len(new_tokens):  # Update cache.
+                    for t in old_tokens:
+                        try:
+                            states_with_type[t].remove(j)
+                        except:
+                            pass
+
+                    for t in new_tokens:
+                        states_with_type[t].add(j)
+
+                current_type_state[j] = new_tokens
+
+        return merges

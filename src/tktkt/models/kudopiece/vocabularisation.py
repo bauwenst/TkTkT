@@ -13,8 +13,12 @@ from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
 from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
+from ...util.iterables import streamPrint, streamProgress, T
 
-MAXIMUM_SENTENCE_LENGTH = 4192
+
+def progress(iterable: Iterable[T]) -> Iterable[T]:
+    return streamProgress(streamPrint(iterable))
+    # return streamProgress(iterable)
 
 
 @dataclass
@@ -30,6 +34,7 @@ class KudoPieceArguments_Algorithm:
     maximum_token_length: int=16
     shrinking_factor: float=0.75
     num_sub_iterations: int=2
+    skip_sentences_over_length: int=2**13
 
 
 class KudoPieceTrainer(Vocabulariser):
@@ -136,15 +141,15 @@ class KudoPieceTrainer(Vocabulariser):
         )
 
     def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> Path:
-        output_prefix = self._makeOutputFolder() / (self._stem + "_" + string_iterable.name)
+        output_prefix = self._makeOutputFolder(string_iterable.name)
 
         sentencepiece.SentencePieceTrainer.Train(
             model_type="unigram",
 
             # I/O
-            sentence_iterator=tqdm(string_iterable).__iter__(),
+            sentence_iterator=progress(string_iterable).__iter__(),
             input_format="tsv" if is_wordfile else "",
-            max_sentence_length=MAXIMUM_SENTENCE_LENGTH,
+            max_sentence_length=self._algorithm.skip_sentences_over_length,
             train_extremely_large_corpus=True,  # Why not, right?
             model_prefix=output_prefix.as_posix(),
 
@@ -171,7 +176,7 @@ class KudoPieceTrainer(Vocabulariser):
 
             # Preprocessing is expected to be done by one of our preprocessors.
             normalization_rule_name="identity",
-            add_dummy_prefix=False,
+            add_dummy_prefix=True,
             remove_extra_whitespaces=False,
             split_by_unicode_script=False,
             split_by_number=False,

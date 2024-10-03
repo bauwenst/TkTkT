@@ -54,9 +54,18 @@ RobertaPretokeniser = BoundariesFromSpacesPretokeniser(marker=RobertaSpaceMarker
 # ])
 RobertaPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), RobertaPretokeniser)
 
-class CommonsensePretokeniser(PretokeniserSequence):
+class TruncateAndNormalise(MapperSequence):
+    def __init__(self, truncate_after_chars: int):
+        super().__init__([
+            Truncate(truncate_after_chars),
+            HuggingFaceNormaliser(tn.NFKC())
+        ])
+
+
+class ModernEnglishPretokeniser(PretokeniserSequence):
     """
-    My common-sense pretokeniser can add any space marker for announcing words/punctuations.
+    My common-sense pretokeniser can add any boundary marker for announcing words/punctuations.
+    Good for modern-day subword systems like transformers.
     """
     def __init__(self, marker: BoundaryMarker):
         super().__init__([
@@ -69,6 +78,87 @@ class CommonsensePretokeniser(PretokeniserSequence):
             EnglishApostrophes(do_nt=True)
         ])
 
-class CommonsensePreprocessor(Preprocessor):
-    def __init__(self, marker: BoundaryMarker):
-        super().__init__(HuggingFaceNormaliser(tn.NFKC()), IdentityMapper(), CommonsensePretokeniser(marker))
+
+class ModernEnglishPreprocessor(Preprocessor):
+    def __init__(self, marker: BoundaryMarker, truncate_text_after_chars: int=1_000_000):
+        super().__init__(
+            TruncateAndNormalise(truncate_text_after_chars),
+            IdentityMapper(),
+            ModernEnglishPretokeniser(marker)
+        )
+
+CommonsensePreprocessor = ModernEnglishPreprocessor
+
+
+class ModernEnglishPretokeniser_ByteCompatible(PretokeniserSequence):
+    """
+    Same as the ModernEnglishPretokeniser, except it is compatible with tokenisers that process their input
+    in the byte domain (which usually happens by running bytes(..., "utf-8") on every pretoken).
+
+    The issue with these tokenisers is two-fold:
+        1. They map pseudo-byte characters, which each represent an atom of the alphabet, into even finer atoms that
+           then need to be learnt as units, which takes up vocabulary space in tokenisers like BPE.
+        2. In addition, exactly because these tokenisers cannot have any other atoms than the 256 byte units, they also
+           don't support treating multi-byte boundary markers (e.g. Sennrich's multi-character </w> or Roberta's Ġ) as whole units.
+
+    The solution to both of these is to set up the string such that .encode() will produce both of the effects we want:
+        1. Don't apply a pseudo-byte mapping. Without adding characters, that means .encode() performs the same mapping we want.
+        2. We pick a character that is mapped to a single atom, make sure it is removed from all pretokens, and then use
+           that as a boundary marker at the front or back of pretokens. This means .encode() will map it to a single byte
+           that appears nowhere else, and hence we effectively have a boundary marker. Since we start with whitespace
+           tokenisation, whitespace is a suitable choice for that character.
+    """
+    def __init__(self, marker_location: BoundaryMarkerLocation):
+        super().__init__([
+            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+            WhitespacePretokeniser(destructive=True),
+            AddWordBoundary(BoundaryMarker(substitute=" ", detached=True, location=marker_location)),
+            IsolateDigits(),
+            PunctuationPretokeniser(HyphenMode.ONLY),
+            EnglishApostrophes(do_nt=True)
+        ])
+
+
+class ModernEnglishPreprocessor_ByteCompatible(Preprocessor):
+    """
+    See explanation under ModernEnglishPretokeniser_ByteCompatible.
+    """
+    def __init__(self, marker: BoundaryMarker, truncate_text_after_chars: int=1_000_000):
+        super().__init__(
+            TruncateAndNormalise(truncate_text_after_chars),
+            IdentityMapper(),
+            ModernEnglishPretokeniser_ByteCompatible(marker.location)
+        )
+        self._marker = marker
+        self._marker_space = BoundaryMarker(substitute=" ", detached=True, location=marker.location)
+        self._pseudos = PseudoByteMapping()
+
+    def pseudoToByteToken(self, pbyte_token: str) -> bytes:
+        """
+        Turns a token like "efficiÃ«ntie</w>", which represents a segment from a string to which we first applied
+        a pseudo-byte mapping and then added a boundary marker, into a byte sequence where each character becomes exactly
+        one byte (despite being Unicode characters of multiple bytes) and where the boundary marker is mapped to the byte
+        corresponding to a space.
+
+        This is good for cases where you have a tokeniser that needs a byte vocabulary, whilst you have a traditional
+        pseudo-byte vocabulary at hand.
+        """
+        pseudobytes, marker_found = self._marker.isolate(pbyte_token)  # Is there a marker?
+        if marker_found:
+            pseudobytes = self._marker.concatenate(pseudobytes, self._pseudos.convert(" "))  # Put a space in place of the marker, as a pseudo-byte.
+
+        return bytes(map(self._pseudos.PSEUDO_TO_BYTE.get, pseudobytes))
+
+    def byteToPseudoToken(self, byte_token: bytes) -> str:
+        """
+        Turns a byte sequence that may include the byte representing a space
+        into a pseudo-byte string with a proper space marker.
+
+        This is good for cases where you have a vocabulariser or a tokeniser that produces bytes objects as tokens.
+        """
+        pseudobytes_with_space = "".join(map(self._pseudos.BYTE_TO_PSEUDO, byte_token))
+        pseudobytes, marker_found = self._marker_space.isolate(pseudobytes_with_space)
+        if marker_found:
+            pseudobytes = self._marker_space.concatenate(pseudobytes, self._marker.substitute)
+
+        return pseudobytes

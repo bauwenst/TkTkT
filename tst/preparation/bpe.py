@@ -1,11 +1,11 @@
 from tktkt.builders.english import getEnglishBpeFiles
-from tktkt.preparation.instances import CommonsensePreprocessor, RobertaSpaceMarker
+from tktkt.preparation.instances import ModernEnglishPreprocessor, RobertaSpaceMarker
 from tktkt.models.bpe.base import ClassicBPE
 
 
 def test_preprocessAlreadySegmented():
     files = getEnglishBpeFiles()
-    bpe = ClassicBPE(CommonsensePreprocessor(RobertaSpaceMarker), boundary_marker=RobertaSpaceMarker, vocab=files.loadVocabulary(), merges=files.loadMerges())
+    bpe = ClassicBPE(ModernEnglishPreprocessor(RobertaSpaceMarker), boundary_marker=RobertaSpaceMarker, vocab=files.loadVocabulary(), merges=files.loadMerges())
 
     input_string = "ab err ant"
     output_string = bpe._preprocessAlreadySegmentedString("ab err ant")

@@ -2,8 +2,8 @@
 Builds a vocabulary using the SaGe algorithm described in
     https://aclanthology.org/2023.eacl-main.45.pdf
 
-During vocabulary building, data are kept in-context rather than coming from a word frequency list. The resulting
-vocabulary is just a set of subwords without context, however.
+During vocabulary building, words are kept in the context of their sentences rather than coming from a word frequency
+list. The resulting vocabulary is just a set of subwords without context, however.
 """
 from pathlib import Path
 from typing import Tuple, List
@@ -40,6 +40,14 @@ class SageVocabulariser(Vocabulariser):
         self.seed = seed
 
     def initialiseVocabulary(self, vocab: UnidentifiedVocab):
+        """
+        Set the initial tokens that the tokeniser can use to segment the output of the preprocessor.
+
+        Under the hood, we will map them bytes (stored and later read out in hex format). Note that this is not
+        an issue even if the given vocabulary already uses pseudo-bytes: types in the vocabulary will become longer, yes,
+        but since the preprocessor also maps input text to pseudo-bytes and those are converted to bytes by SaGe already,
+        the input will contain the same bytes-of-pseudobytes units we get in the vocabulary.
+        """
         self.initial_hex_vocab = set(map(SageVocabulariser._toHexString, vocab))
 
     @classmethod
@@ -66,8 +74,7 @@ class SageVocabulariser(Vocabulariser):
             random_seed=self.seed
         )
 
-        folder = self._makeOutputFolder()
-        setSageFolder(folder.with_stem(folder.stem + "_" + sentence_iterable.name))
+        setSageFolder(self._makeOutputFolder(sentence_iterable.name))
 
         return builder.build_vocab(
             experiment_name="sage",

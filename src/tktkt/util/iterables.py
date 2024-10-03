@@ -3,7 +3,7 @@ Operations that can stream an input and output a stream in return.
 """
 from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union
 from pathlib import Path
-
+from tqdm.auto import tqdm
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
@@ -82,6 +82,16 @@ def take(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
         if i >= n:
             break
         yield thing
+
+
+def streamPrint(iterable: Iterable[T]) -> Iterable[T]:
+    for thing in iterable:
+        print(thing)
+        yield thing
+
+
+def streamProgress(iterable: Iterable[T]) -> Iterable[T]:
+    return tqdm(iterable)
 
 
 # Endpoints below
