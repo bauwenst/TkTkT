@@ -1,7 +1,7 @@
 """
 Operations that can stream an input and output a stream in return.
 """
-from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union
+from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional
 from pathlib import Path
 from tqdm.auto import tqdm
 
@@ -90,8 +90,8 @@ def streamPrint(iterable: Iterable[T]) -> Iterable[T]:
         yield thing
 
 
-def streamProgress(iterable: Iterable[T]) -> Iterable[T]:
-    return tqdm(iterable)
+def streamProgress(iterable: Iterable[T], show_as: Optional[str]=None) -> Iterable[T]:
+    return tqdm(iterable, desc=show_as)
 
 
 # Endpoints below

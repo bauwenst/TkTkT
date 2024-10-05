@@ -19,6 +19,7 @@ from bpe_knockout.auxiliary.tokenizer_interface import SennrichTokeniserPath, Hu
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
+from ...preparation.instances import SentencePiecePreprocessor
 from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab
 from ...util.iterables import streamProgress, streamPrint
 from ...util.printing import logger
@@ -39,17 +40,17 @@ SPECIAL_TYPES = SpecialTokensMixin(
 
 
 class BpeTrainerImplementation(Enum):
-    SBPE   = 1
-    HF     = 2
-    BPEASY = 3
-    SP     = 4
+    SBPE        = 1
+    HUGGINGFACE = 2
+    SENTENCEPIECE = 3
+    BPEASY      = 4
 
 
 class BPEVocabulariser(Vocabulariser):
 
     def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker, byte_based: bool,
                  vocab_size: int, max_length: int=128,
-                 implementation: BpeTrainerImplementation=BpeTrainerImplementation.HF):
+                 implementation: BpeTrainerImplementation=BpeTrainerImplementation.HUGGINGFACE):
         super().__init__(name="bpe", preprocessor=preprocessor)
         self._size   = vocab_size
         self._maxlen = max_length
@@ -60,21 +61,25 @@ class BPEVocabulariser(Vocabulariser):
         self._mode = implementation
 
     def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
-        if self._mode == BpeTrainerImplementation.HF:
+        # Note: The cases that preprocess beforehand do this because the trainers only accept sentences. The other cases do preprocessing internally.
+        if self._mode == BpeTrainerImplementation.HUGGINGFACE:
             return self._withHfTrainer(self._preprocessWordsToSentences(word_iterable))
-        if self._mode == BpeTrainerImplementation.BPEASY:
+        elif self._mode == BpeTrainerImplementation.BPEASY:
             return self._withBPEasyTrainer(self._preprocessWordsToSentences(word_iterable))
         elif self._mode == BpeTrainerImplementation.SBPE:
             return self._withSBPETrainer(word_iterable, is_wordfile=True)
+        elif self._mode == BpeTrainerImplementation.SENTENCEPIECE:
+            return self._withSentencePieceTrainer(word_iterable, is_wordfile=True)
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+        # Note: calling self._preprocessSentencesToSentences is up to the individual trainer implementations below.
         if self._mode == BpeTrainerImplementation.BPEASY:
             return self._withBPEasyTrainer(sentence_iterable)
-        elif self._mode == BpeTrainerImplementation.HF:
+        elif self._mode == BpeTrainerImplementation.HUGGINGFACE:
             return self._withHfTrainer(sentence_iterable)
         elif self._mode == BpeTrainerImplementation.SBPE:
             return self._withSBPETrainer(sentence_iterable)
-        elif self._mode == BpeTrainerImplementation.SP:
+        elif self._mode == BpeTrainerImplementation.SENTENCEPIECE:
             return self._withSentencePieceTrainer(sentence_iterable)
 
     @classmethod
@@ -141,8 +146,12 @@ class BPEVocabulariser(Vocabulariser):
         path_vocab, path_merges = paths.getPaths()
 
         # Learn merges
+        iterables = []
+        if is_wordfile:
+            iterables.append(f"{word} {count}" for word, count in iterable)  # Generator
+        else:
+            iterables.append(iterable)
         with open(path_merges, "w", encoding="utf-8") as out_handle:
-            iterables = [iterable if not is_wordfile else (f"{word} {count}" for word,count in iterable)]
             learn_bpe(iterables, out_handle, is_dict=is_wordfile,
                       num_symbols_ori=self._size, total_symbols=True,
                       preprocessor=self.preprocessor, marker=self._marker)
@@ -192,8 +201,57 @@ class BPEVocabulariser(Vocabulariser):
             out_handle.writelines([merge + "\n" for merge in hf.loadMerges()])
         return out_folder
 
-    def _withSentencePieceTrainer(self, sentence_iterable: NamedIterable[str]):  # TODO
-        raise NotImplementedError
+    def _withSentencePieceTrainer(self, iterable: NamedIterable, is_wordfile: bool=False):
+        output_prefix = self._makeOutputFolder(iterable.name) / "spm"
+
+        iterable = self._preprocessSentencesToSentences(iterable) if not is_wordfile else self._preprocessWordsToPretokens_approx(iterable)  # TODO: I wonder if SP prefixes every TSV entry with a SoW. If not, you can use the non-approximative _counter variant here too.
+
+        sentencepiece.SentencePieceTrainer.Train(
+            model_type="bpe",
+
+            # I/O
+            sentence_iterator=streamProgress(iterable).__iter__(),
+            input_format="tsv" if is_wordfile else "",
+            max_sentence_length=8192,
+            train_extremely_large_corpus=True,  # Why not, right?
+            model_prefix=output_prefix.as_posix(),
+
+            # Alphabet
+            required_chars=[], #[k for k in PseudoByteMapping.PSEUDO_TO_BYTE if k != " "] if self._byte_based else [],  # TODO: Required characters must have a frequency > 0 otherwise you get an error. https://github.com/google/sentencepiece/blob/d8f741853847553169444afc12c00f4bbff3e9ce/src/bpe_model_trainer.cc#L37
+            # byte_fallback=self._alphabet.byte_fallback,
+            character_coverage=1.0 if self._byte_based else 0.9995,
+
+            # Algorithm
+            treat_whitespace_as_suffix=self._marker.location == BoundaryMarkerLocation.END,
+
+            # seed_sentencepiece_size=self._algorithm.initial_vocab_size,
+            max_sentencepiece_length=self._maxlen,
+            # shrinking_factor=self._algorithm.shrinking_factor,
+            # num_sub_iterations=self._algorithm.num_sub_iterations,
+
+            vocab_size=self._size,
+            hard_vocab_limit=True,
+            vocabulary_output_piece_score=True,
+
+            # We assume no special tokens.
+            control_symbols=[],
+            user_defined_symbols=[],
+
+            # Preprocessing is expected to be done by one of our preprocessors.
+            normalization_rule_name="identity",
+            add_dummy_prefix=True,
+            remove_extra_whitespaces=False,
+            split_by_unicode_script=False,
+            split_by_number=False,
+            split_by_whitespace=not is_wordfile,
+            split_digits=isinstance(self.preprocessor, SentencePiecePreprocessor),
+            allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
+        )
+
+        # TODO: Negate the IDs in the .vocab file and convert it to a vocab.json file.
+        # TODO: Since required_chars doesn't work, you should also insert all the missing required_chars and pop the
+        #       same amount off the end of the vocabulary.
+        return output_prefix.parent
 
     @staticmethod
     def deduceVocabFromMerges(mergefile: Path, byte_based: bool) -> Dict[str, int]:

@@ -17,13 +17,13 @@ from ...util.iterables import streamPrint, streamProgress, T
 
 
 def progress(iterable: Iterable[T]) -> Iterable[T]:
-    return streamProgress(streamPrint(iterable))
-    # return streamProgress(iterable)
+    # return streamProgress(streamPrint(iterable))
+    return streamProgress(iterable)
 
 
 @dataclass
 class KudoPieceArguments_Alphabet:
-    required_chars: List[str]
+    required_chars: List[str]  # NOTE: If you use a pseudo-byte mapping, DO NOT include the " " character.
     byte_fallback: bool
     character_coverage: float=0.9995
 
@@ -141,7 +141,7 @@ class KudoPieceTrainer(Vocabulariser):
         )
 
     def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> Path:
-        output_prefix = self._makeOutputFolder(string_iterable.name)
+        output_prefix = self._makeOutputFolder(string_iterable.name) / "spm"
 
         sentencepiece.SentencePieceTrainer.Train(
             model_type="unigram",
@@ -181,7 +181,7 @@ class KudoPieceTrainer(Vocabulariser):
             split_by_unicode_script=False,
             split_by_number=False,
             split_by_whitespace=not is_wordfile,
-            split_digits=False,
+            split_digits=False,  # TODO: Does this also prevent the "_" prefix to stick to the first digit? If yes, we want this if using a SentencePiecePreprocessor.
             allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
         )
 

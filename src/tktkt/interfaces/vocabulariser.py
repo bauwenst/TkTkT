@@ -10,6 +10,7 @@ from .preparation import Preprocessor
 from ..files.paths import TkTkTPaths
 from ..util.timing import datetimeDashed
 from ..util.types import Comparable, NamedIterable
+from ..util.iterables import streamProgress
 
 UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers.
 Vocab = Dict[str, int]
@@ -80,16 +81,40 @@ class Vocabulariser(ABC):
         """
         LARGEST_STRING_LEN = 1_000
 
-        for word, count in word_iterable:
-            word = " ".join(self.preprocessor.do(word))
+        def generate():
+            for word, count in word_iterable:
+                word = " ".join(self.preprocessor.do(word))
 
-            count       = int(count)  # Note: can't just multiply the word by this count, because you'll run into memory errors.
-            max_at_once = max(1, LARGEST_STRING_LEN // (len(word) + 1))
-            while count > 0:
-                new_count = max(0, count - max_at_once)
-                diff      = count - new_count
-                count -= diff
-                yield diff * (" " + word)
+                count       = int(count)  # Note: can't just multiply the word by this count, because you'll run into memory errors.
+                max_at_once = max(1, LARGEST_STRING_LEN // (len(word) + 1))
+                while count > 0:
+                    new_count = max(0, count - max_at_once)
+                    diff      = count - new_count
+                    count -= diff
+                    yield diff * (" " + word)
+
+        return NamedIterable(generate(), name=word_iterable.name)
+
+    def _preprocessWordsToTsv(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[str]:
+        return word_iterable.map(lambda tup: f"{tup[0]}\t{tup[1]}\n")
+
+    def _preprocessWordsToPretokens_approx(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
+        """
+        Apply the preprocessor onto the given words, concatenate the resulting pretokens, and return the result with
+        the given counts. Approximates _preprocessWordsToPretokens_counter without loading all pretokens into memory at once.
+        """
+        return word_iterable.map(lambda tup: ("".join(self.preprocessor.do(tup[0])), tup[1]))
+
+    def _preprocessWordsToPretokens_counter(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
+        """
+        Apply the preprocessor to each word, count the pretokens separately, and return the pretoken counts.
+        This requires loading all pretokens into memory.
+        """
+        counter = Counter()
+        for word,count in streamProgress(word_iterable, "Counting pretokens"):
+            for pretoken in self.preprocessor.do(word):
+                counter[pretoken] += count
+        return NamedIterable(counter.most_common(), name=word_iterable.name)
 
     def _makeOutputFolder(self, extra_suffix: str="") -> Path:
         """
@@ -118,7 +143,10 @@ class Vocabulariser(ABC):
         return self._vocabulariseFromSentences(string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name=""))
 
     def vocabulariseFromHf(self, dataset: DatasetInfoMixin, text_field: str):
-        return self._vocabulariseFromSentences(NamedIterable(map(lambda example: example[text_field], dataset), name=dataset.info.dataset_name if dataset.info.dataset_name is not None else ""))
+        return self._vocabulariseFromSentences(
+            NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else "")
+                .map(lambda example: example[text_field])
+        )
 
     @classmethod
     def load(cls, file_or_folder: Path, sorting_key: Optional[TokenSortingKey]=None, existing_types: Union[Vocab,UnidentifiedVocab]=None) -> Vocab:

@@ -67,16 +67,23 @@ class ModernEnglishPretokeniser(PretokeniserSequence):
     My common-sense pretokeniser can add any boundary marker for announcing words/punctuations.
     Good for modern-day subword systems like transformers.
     """
-    def __init__(self, marker: BoundaryMarker):
-        super().__init__([
+    def __init__(self, marker: BoundaryMarker, do_pseudobytes: bool=True, do_split_after_placing_boundaries: bool=True):
+        whitespace_and_punctuation = [
             PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
             WhitespacePretokeniser(destructive=True),
-            MapperAsPretokeniser(PseudoByteMapping()),
-            AddWordBoundary(marker),
-            IsolateDigits(),
-            PunctuationPretokeniser(HyphenMode.ONLY),
             EnglishApostrophes(do_nt=True)
-        ])
+        ]
+        pseudos = [
+            MapperAsPretokeniser(PseudoByteMapping())
+        ]
+        boundaries = [
+            AddWordBoundary(marker)
+        ]
+        post_boundaries = [  # These split into pretokens that should NOT all have a word boundary. E.g.: for the string "2024 10 04", you do not want the pretokens ["2024", "10", "04"] to become ["_2", "_0", "_2", "_4", "_1", "_0", "_0", "_4"].
+            IsolateDigits(),  # Also splits the word boundary off of the first digit.
+            PunctuationPretokeniser(HyphenMode.ONLY)
+        ]
+        super().__init__(whitespace_and_punctuation + pseudos*do_pseudobytes + boundaries + post_boundaries*do_split_after_placing_boundaries)
 
 
 class ModernEnglishPreprocessor(Preprocessor):
@@ -90,7 +97,7 @@ class ModernEnglishPreprocessor(Preprocessor):
 CommonsensePreprocessor = ModernEnglishPreprocessor
 
 
-class ModernEnglishPretokeniser_ByteCompatible(PretokeniserSequence):
+class ModernEnglishPretokeniser_ByteCompatible(ModernEnglishPretokeniser):
     """
     Same as the ModernEnglishPretokeniser, except it is compatible with tokenisers that process their input
     in the byte domain (which usually happens by running bytes(..., "utf-8") on every pretoken).
@@ -109,26 +116,17 @@ class ModernEnglishPretokeniser_ByteCompatible(PretokeniserSequence):
            tokenisation, whitespace is a suitable choice for that character.
     """
     def __init__(self, marker_location: BoundaryMarkerLocation):
-        super().__init__([
-            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
-            WhitespacePretokeniser(destructive=True),
-            AddWordBoundary(BoundaryMarker(substitute=" ", detached=True, location=marker_location)),
-            IsolateDigits(),
-            PunctuationPretokeniser(HyphenMode.ONLY),
-            EnglishApostrophes(do_nt=True)
-        ])
+        super().__init__(BoundaryMarker(substitute=" ", detached=True, location=marker_location), do_pseudobytes=False)
 
 
-class ModernEnglishPreprocessor_ByteCompatible(Preprocessor):
+class ModernEnglishPreprocessor_ByteCompatible(ModernEnglishPreprocessor):
     """
     See explanation under ModernEnglishPretokeniser_ByteCompatible.
     """
     def __init__(self, marker: BoundaryMarker, truncate_text_after_chars: int=1_000_000):
-        super().__init__(
-            TruncateAndNormalise(truncate_text_after_chars),
-            IdentityMapper(),
-            ModernEnglishPretokeniser_ByteCompatible(marker.location)
-        )
+        super().__init__(marker, truncate_text_after_chars)
+        self.splitter = ModernEnglishPretokeniser_ByteCompatible(marker.location)
+
         self._marker = marker
         self._marker_space = BoundaryMarker(substitute=" ", detached=True, location=marker.location)
         self._pseudos = PseudoByteMapping()
@@ -162,3 +160,18 @@ class ModernEnglishPreprocessor_ByteCompatible(Preprocessor):
             pseudobytes = self._marker_space.concatenate(pseudobytes, self._marker.substitute)
 
         return pseudobytes
+
+
+class SentencePiecePreprocessor(ModernEnglishPreprocessor):
+    """
+    Preprocessor compatible with the SentencePiece package, which does its own preprocessing (both for BPE and for KudoPiece).
+    In particular: you can give pretokens to SentencePiece by separating them by spaces, but SentencePiece will prefix each
+    of them by its own boundary marker. Hence, you want a preprocessor that does not split into finer pretokens than possible given
+    that all pretokens will receive a boundary marker.
+
+    TODO: Wondering what to do with the marker substitute.
+    """
+    def __init__(self, marker: BoundaryMarker, truncate_text_after_chars: int=1_000_000):
+        super().__init__(marker, truncate_text_after_chars)
+        self.splitter = ModernEnglishPretokeniser(BoundaryMarker(substitute=" ", detached=True, location=marker.location),
+                                                  do_split_after_placing_boundaries=False)
