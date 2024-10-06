@@ -53,4 +53,25 @@ def getByValue(d: Dict[K,V], value: V) -> List[K]:
 
 
 def argmax(d: Dict[K,V]) -> List[K]:
+    """Finds the keys belonging to the largest value in the dictionary."""
     return getByValue(d, max(d.values()))
+
+
+def kargmax(d: Dict[K,V], k: int) -> List[List[K]]:
+    """Finds the keys belonging to the k unique largest values in the dictionary. Could be O(k). I do it in O(n log(n))."""
+    if k < 0:
+        raise ValueError(f"k-argmax only exists for positive integers k. Received {k}.")
+
+    values = set(d.values())
+    if len(values) < k:
+        raise ValueError(f"Could not get {k}-argmax: there are only {len(values)} unique values.")
+
+    top_values = sorted(values, reverse=True)[:k]
+    top_value_mapping = {v:i for i,v in enumerate(top_values)}
+
+    key_buckets = [[] for _ in range(k)]
+    for k,v in d.items():
+        if v in top_value_mapping:
+            key_buckets[top_value_mapping[v]].append(k)
+
+    return key_buckets

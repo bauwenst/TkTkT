@@ -1,42 +1,28 @@
 from typing import Dict, Tuple, Union, List
 from pathlib import Path
 from enum import Enum
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 
 import json
 import warnings
 from tqdm.auto import tqdm
 
 # Core libraries
-from tktkt.util.dicts import substituteKey, argmax
-from transformers import SpecialTokensMixin
 from tokenizers import Tokenizer, models, pre_tokenizers, trainers
 import bpeasy
 import sentencepiece
 from bpe_knockout._lib.sbpe.learn_bpe import learn_bpe
 
 from bpe_knockout.auxiliary.tokenizer_interface import SennrichTokeniserPath, HuggingFaceTokeniserPath
+from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
-from ...preparation.instances import SentencePiecePreprocessor
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab
+from ...preparation.instances import SentencePiecePreprocessor, KudoSpaceMarker
+from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab, DEFAULT_FIVE_SPECIALS
+from ...util.dicts import substituteKey, argmax, kargmax
 from ...util.iterables import streamProgress, streamPrint
 from ...util.printing import logger
-
-
-PAD = "<pad>"
-BOS = "<s>"
-EOS = "</s>"
-MSK = "<mask>"
-UNK = "<unk>"
-SPECIAL_TYPES = SpecialTokensMixin(
-    pad_token=PAD,
-    bos_token=BOS,
-    eos_token=EOS,
-    mask_token=MSK,
-    unk_token=UNK
-)  # The above argument mapping is reconstructed with .special_tokens_map; the list of values is .all_special_tokens
 
 
 class BpeTrainerImplementation(Enum):
@@ -113,10 +99,12 @@ class BPEVocabulariser(Vocabulariser):
         # Convert the byte-level vocabulary to pseudo-byte characters so that it can be written to a text file.
         # The byte for spaces is converted to a space because of the assumption that the preprocessor wipes all spaces
         # except those it wants as a boundary marker.
-        space_pseudo = PseudoByteMapping.BYTE_TO_PSEUDO.get(" ".encode("utf-8")[0])
-        vocab = {"".join(map(PseudoByteMapping.BYTE_TO_PSEUDO.get, byte_sequence)).replace(space_pseudo, " "): i
+        SPACE = " "
+        SPACE_BYTE = SPACE.encode("utf-8")[0]
+        SPACE_PSEUDO = PseudoByteMapping.BYTE_TO_PSEUDO.get(SPACE_BYTE)
+        vocab = {"".join(map(PseudoByteMapping.BYTE_TO_PSEUDO.get, byte_sequence)).replace(SPACE_PSEUDO, SPACE): i
                  for byte_sequence, i in bytes_vocab.items()}
-        substituteKey(vocab, " ", space_pseudo)  # The byte you need for encoding actual spaces needs to be kept.
+        substituteKey(vocab, SPACE, SPACE_PSEUDO)  # The byte you need for encoding actual spaces needs to be kept.
 
         # Need to make room for the marker itself as a 257th atom (kind of like a special).
         if self._marker.detached and self._marker.substitute not in vocab:
@@ -182,7 +170,7 @@ class BPEVocabulariser(Vocabulariser):
         trainer = trainers.BpeTrainer(
             vocab_size=self._size,
             show_progress=True,
-            special_tokens=SPECIAL_TYPES.all_special_tokens,
+            special_tokens=DEFAULT_FIVE_SPECIALS.all_special_tokens,
             initial_alphabet=list(PseudoByteMapping.PSEUDO_TO_BYTE) if self._byte_based else [],  # after https://huggingface.co/docs/tokenizers/training_from_memory
             max_token_length=self._maxlen
         )
@@ -206,6 +194,7 @@ class BPEVocabulariser(Vocabulariser):
 
         iterable = self._preprocessSentencesToSentences(iterable) if not is_wordfile else self._preprocessWordsToPretokens_approx(iterable)  # TODO: I wonder if SP prefixes every TSV entry with a SoW. If not, you can use the non-approximative _counter variant here too.
 
+        required_chars = [k for k in PseudoByteMapping.PSEUDO_TO_BYTE if k != " "] if self._byte_based else []
         sentencepiece.SentencePieceTrainer.Train(
             model_type="bpe",
 
@@ -217,7 +206,7 @@ class BPEVocabulariser(Vocabulariser):
             model_prefix=output_prefix.as_posix(),
 
             # Alphabet
-            required_chars=[], #[k for k in PseudoByteMapping.PSEUDO_TO_BYTE if k != " "] if self._byte_based else [],  # TODO: Required characters must have a frequency > 0 otherwise you get an error. https://github.com/google/sentencepiece/blob/d8f741853847553169444afc12c00f4bbff3e9ce/src/bpe_model_trainer.cc#L37
+            required_chars=[], #required_chars  # TODO: Required characters must have a frequency > 0 otherwise you get an error. https://github.com/google/sentencepiece/blob/d8f741853847553169444afc12c00f4bbff3e9ce/src/bpe_model_trainer.cc#L37
             # byte_fallback=self._alphabet.byte_fallback,
             character_coverage=1.0 if self._byte_based else 0.9995,
 
@@ -234,7 +223,7 @@ class BPEVocabulariser(Vocabulariser):
             vocabulary_output_piece_score=True,
 
             # We assume no special tokens.
-            control_symbols=[],
+            control_symbols=DEFAULT_FIVE_SPECIALS.all_special_tokens,
             user_defined_symbols=[],
 
             # Preprocessing is expected to be done by one of our preprocessors.
@@ -248,9 +237,31 @@ class BPEVocabulariser(Vocabulariser):
             allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
         )
 
-        # TODO: Negate the IDs in the .vocab file and convert it to a vocab.json file.
-        # TODO: Since required_chars doesn't work, you should also insert all the missing required_chars and pop the
-        #       same amount off the end of the vocabulary.
+        # First, parse the resulting .vocab file and turn it into a str -> int dictionary.
+        vocab = OrderedDict()
+        for typ, id in iterateTsv(output_prefix.with_suffix(".vocab")):
+            if "-" not in id:  # This is a special token; Kudo doesn't give IDs to it.
+                print(f"Found type with uncounted ID ({typ}). Probably a special type. Skipping it.")
+                continue
+
+            id = -int(id)
+            vocab[typ] = id
+
+        # Second, find all the characters that are yet to be added to the vocab.
+        if self._marker.detached and self._marker.substitute not in required_chars:
+            required_chars.append(self._marker.substitute)
+        required_chars = [c for c in required_chars if c not in vocab]
+
+        # Pop off the top len(required_chars) BPE types (as if training stopped slightly earlier) and substitute them by those characters.
+        removed_types = [l[0] for l in kargmax(vocab, len(required_chars))]
+        for old, new in zip(removed_types,required_chars):
+            substituteKey(vocab, old, new)
+
+        # Third, replace the Kudo space marker by our own custom space marker, and write out.
+        vocab = {typ.replace(KudoSpaceMarker.substitute, self._marker.substitute): id for typ,id in vocab.items()}
+        with open(output_prefix.parent / "vocab.json", "w", encoding="utf-8") as handle:
+            json.dump(vocab, ensure_ascii=False, indent=4)
+
         return output_prefix.parent
 
     @staticmethod
@@ -271,7 +282,7 @@ class BPEVocabulariser(Vocabulariser):
 
         # Combine everything
         vocab = {c: i for i, c in enumerate(
-            SPECIAL_TYPES.all_special_tokens +
+            DEFAULT_FIVE_SPECIALS.all_special_tokens +
             sorted(alphabet) +
             list(produced_types)
         )}

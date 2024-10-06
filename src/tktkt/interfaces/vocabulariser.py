@@ -4,6 +4,7 @@ from pathlib import Path
 from collections import Counter
 
 from datasets.arrow_dataset import DatasetInfoMixin
+from transformers import SpecialTokensMixin
 from modest.formats.tsv import iterateTsv
 
 from .preparation import Preprocessor
@@ -12,10 +13,18 @@ from ..util.timing import datetimeDashed
 from ..util.types import Comparable, NamedIterable
 from ..util.iterables import streamProgress
 
-UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers.
+UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers, but in some order.
 Vocab = Dict[str, int]
 
 TokenSortingKey = Callable[[str], Comparable]
+
+DEFAULT_FIVE_SPECIALS = SpecialTokensMixin(
+    pad_token="<pad>",
+    bos_token="<s>",
+    eos_token="</s>",
+    unk_token="<unk>",
+    mask_token="<mask>"
+)  # The argument mapping is reconstructed with .special_tokens_map; the list of values is .all_special_tokens
 
 
 class Vocabulariser(ABC):
@@ -149,7 +158,7 @@ class Vocabulariser(ABC):
         )
 
     @classmethod
-    def load(cls, file_or_folder: Path, sorting_key: Optional[TokenSortingKey]=None, existing_types: Union[Vocab,UnidentifiedVocab]=None) -> Vocab:
+    def load(cls, file_or_folder: Path, existing_types: Union[Vocab,UnidentifiedVocab]=None, sorting_key: Optional[TokenSortingKey]=None) -> Vocab:
         if existing_types is None:
             existing_types = dict()
 

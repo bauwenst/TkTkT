@@ -60,3 +60,7 @@ class PowerNormalisation(BatchNormalisation):
             return normalise_then_ln_then_softmax(values, temperature=self.tau)
         else:
             return ln_then_softmax(values, temperature=self.tau)
+
+    def resetTemperature(self, new_value: float):
+        self.tau = new_value
+        self.power = 1/new_value

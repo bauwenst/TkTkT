@@ -84,12 +84,12 @@ class StochasticTokeniserMultiplexer(TokeniserMultiplexer_PreprocessThenMultiple
                 total = sum(probabilities)
                 probabilities = [p/total for p in probabilities]
 
-        self.rng = npr.default_rng(seed)
-        self.p = np.array(probabilities)
-        self.n = len(self.subtokenisers)
+        self._rng = npr.default_rng(seed)
+        self._distribution = np.array(probabilities)
+        self._n = len(self.subtokenisers)
 
     def select(self) -> int:
-        return self.rng.choice(self.n, p=self.p)  # .choice() because sadly, .integers() has no probability mass argument.
+        return self._rng.choice(self._n, p=self._distribution)  # .choice() because sadly, .integers() has no probability mass argument.
 
 
 class StochasticTokeniserMultiplexer_SharedDomain(StochasticTokeniserMultiplexer, TokeniserWithFiniteTypeDomain):
@@ -116,16 +116,34 @@ class StochasticTokeniserMultiplexer_SharedDomain(StochasticTokeniserMultiplexer
                 assert ref_tokeniser.idToType(i) == tokeniser.idToType(i)
 
         # Use this for all method calls.
-        self.domain_and_range = ref_tokeniser
+        self._domain_and_range = ref_tokeniser
 
     def typeToId(self, t: str) -> int:
-        return self.domain_and_range.typeToId(t)
+        return self._domain_and_range.typeToId(t)
 
     def ids(self) -> Iterable[int]:
-        return self.domain_and_range.ids()
+        return self._domain_and_range.ids()
 
     def idToType(self, i: int) -> str:
-        return self.domain_and_range.idToType(i)
+        return self._domain_and_range.idToType(i)
 
     def types(self) -> Iterable[str]:
-        return self.domain_and_range.types()
+        return self._domain_and_range.types()
+
+
+class StochasticTokeniserSwitch(StochasticTokeniserMultiplexer_SharedDomain):
+    """
+    Multiplexer that only takes two tokenisers (with the same domain) and uses a more efficient sampler than
+    npr.choice() to choose the tokeniser.
+    """
+
+    def __init__(self, preprocessor: Preprocessor, tokeniser1: TokeniserWithFiniteTypeDomain, tokeniser2: TokeniserWithFiniteTypeDomain, p: float=0.5):
+        """
+        :param p: Probability of sampling tokeniser 2. This way, the [0,1] interval is a slider that ranges
+                  from always tokeniser 1 to always tokeniser 2.
+        """
+        super().__init__(preprocessor, [tokeniser1, tokeniser2], probabilities=[(1-p), p])
+        self.threshold = p
+
+    def select(self) -> int:
+        return self._rng.random() < self.threshold

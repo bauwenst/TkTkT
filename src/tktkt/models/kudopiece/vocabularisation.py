@@ -12,7 +12,7 @@ import sentencepiece
 from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
+from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable, DEFAULT_FIVE_SPECIALS
 from ...util.iterables import streamPrint, streamProgress, T
 
 
@@ -171,7 +171,7 @@ class KudoPieceTrainer(Vocabulariser):
             vocabulary_output_piece_score=True,
 
             # We assume no special tokens.
-            control_symbols=[],
+            control_symbols=DEFAULT_FIVE_SPECIALS.all_special_tokens,
             user_defined_symbols=[],
 
             # Preprocessing is expected to be done by one of our preprocessors.
@@ -185,10 +185,10 @@ class KudoPieceTrainer(Vocabulariser):
             allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
         )
 
-        return output_prefix.with_suffix(".model")
+        return output_prefix.parent
 
     def _addSpace(self, word: str) -> str:
         return " " * (self._boundary_style == BoundaryMarkerLocation.START) + word + " " * (self._boundary_style == BoundaryMarkerLocation.END)
 
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        return [typ for typ,_  in iterateTsv(file_or_folder)]
+        return [typ for typ,_  in iterateTsv(file_or_folder / "spm.vocab")]
