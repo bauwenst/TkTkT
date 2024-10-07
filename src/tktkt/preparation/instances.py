@@ -171,7 +171,7 @@ class SentencePiecePreprocessor(ModernEnglishPreprocessor):
 
     TODO: Wondering what to do with the marker substitute.
     """
-    def __init__(self, marker: BoundaryMarker, truncate_text_after_chars: int=1_000_000):
+    def __init__(self, marker: BoundaryMarker, prefix_space_already_added: bool=False, truncate_text_after_chars: int=1_000_000):
         super().__init__(marker, truncate_text_after_chars)
-        self.splitter = ModernEnglishPretokeniser(BoundaryMarker(substitute=" ", detached=True, location=marker.location),
+        self.splitter = ModernEnglishPretokeniser(BoundaryMarker(substitute=" ", detached=True, location=marker.location) if not prefix_space_already_added else BoundaryMarker("", detached=True, location=BoundaryMarkerLocation.START),  # Empty dummy marker.
                                                   do_split_after_placing_boundaries=False)

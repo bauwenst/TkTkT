@@ -16,11 +16,10 @@ The bottom one can be implemented as yes-no-yes.
 That means we really only need support for yes-no-yes and yes-no-no. Hence, there is always a global preprocessor
 (sometimes an identity) which determines the pretokens over which we multiplex tokenisers. Whether the subtokeniser
 preprocesses extra is then just a boolean decision.
-
-TODO: Rework the hierarchy to reflect this. It means all multiplexers can have the same parent.
 """
 from typing import List, Iterable
 from abc import abstractmethod
+from dataclasses import dataclass
 
 import numpy as np
 import numpy.random as npr
@@ -28,48 +27,39 @@ import numpy.random as npr
 from ..interfaces.tokeniser import Tokeniser, Preprocessor, TokeniserWithFiniteTypeDomain
 
 
-class _TokeniserMultiplexer(Tokeniser):
+@dataclass
+class MultiplexedPreprocessor:
+    global_preprocessor: Preprocessor  # This preprocessor's pretokens are sent to different tokenisers. Recommended: a simple whitespace tokeniser.
+    specific_preprocessors: bool
 
-    def __init__(self, preprocessor: Preprocessor, subtokenisers: List[Tokeniser]):
+
+class TokeniserMultiplexer(Tokeniser):
+
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[Tokeniser]):
         assert subtokenisers
-        super().__init__(preprocessor=preprocessor)
+        super().__init__(preprocessor=preprocessor.global_preprocessor)
         self.subtokenisers = subtokenisers
+        self._use_specific_preprocessors = preprocessor.specific_preprocessors
 
     @abstractmethod
     def select(self) -> int:
         pass
 
-
-class TokeniserMultiplexer_PreprocessThenMultiplex(_TokeniserMultiplexer):
-    """
-    Applies a single preprocessor, and then for each resulting pretoken, selects a tokeniser to segment it.
-    """
-    def __init__(self, preprocessor: Preprocessor, subtokenisers: List[Tokeniser]):
-        super().__init__(preprocessor=preprocessor, subtokenisers=subtokenisers)
-
     def tokenise(self, pretoken: str) -> List[str]:
-        return self.subtokenisers[self.select()].tokenise(pretoken)
+        subtokeniser = self.subtokenisers[self.select()]
+        # print(f"\tPretoken <{pretoken}> will be tokenised by {subtokeniser.getName()}")
+        if self._use_specific_preprocessors:
+            return subtokeniser.prepareAndTokenise(pretoken)
+        else:
+            return subtokeniser.tokenise(pretoken)
 
 
-class TokeniserMultiplexer_MultiplexThenPreprocess(_TokeniserMultiplexer):
-    """
-    For each sentence, selects a preprocessor-tokeniser pair and runs both.
-    """
-    def __init__(self, subtokenisers: List[Tokeniser]):
-        super().__init__(preprocessor=None, subtokenisers=subtokenisers)  # Note: This means all accesses to .preprocessor are invalid.
-
-    def prepareAndTokenise(self, text: str) -> List[str]:
-        return self.subtokenisers[self.select()].prepareAndTokenise(text)
-
-    def tokenise(self, pretoken: str) -> List[str]:
-        raise RuntimeError("This multiplexer has no .tokenise() method, because it must ensure the right preprocessor has been used to generate the given pretoken.")
-
-
-class StochasticTokeniserMultiplexer(TokeniserMultiplexer_PreprocessThenMultiplex):
+class StochasticTokeniserMultiplexer(TokeniserMultiplexer):
     """
     Sample tokenisers proportional according to a given probability mass.
     """
-    def __init__(self, preprocessor: Preprocessor, subtokenisers: List[Tokeniser], probabilities: List[float]=None, seed: int=0):
+    def __init__(self, preprocessor: MultiplexedPreprocessor,
+                 subtokenisers: List[Tokeniser], probabilities: List[float]=None, seed: int=0):
         super().__init__(preprocessor=preprocessor, subtokenisers=subtokenisers)
 
         if probabilities is None:
@@ -97,7 +87,8 @@ class StochasticTokeniserMultiplexer_SharedDomain(StochasticTokeniserMultiplexer
     StochasticTokeniserMultiplexer where all the multiplexed tokenisers share the same domain-to-range mapping.
     Note: domain and range should be small enough to be enumerated into a set.
     """
-    def __init__(self, preprocessor: Preprocessor, subtokenisers: List[TokeniserWithFiniteTypeDomain], probabilities: List[float]=None, seed: int=0):
+    def __init__(self, preprocessor: MultiplexedPreprocessor,
+                 subtokenisers: List[TokeniserWithFiniteTypeDomain], probabilities: List[float]=None, seed: int=0):
         super().__init__(preprocessor, subtokenisers, probabilities, seed)
 
         # Check whether the first tokeniser's domain<->range mapping can be used as a stand-in for all others.
@@ -137,7 +128,8 @@ class StochasticTokeniserSwitch(StochasticTokeniserMultiplexer_SharedDomain):
     npr.choice() to choose the tokeniser.
     """
 
-    def __init__(self, preprocessor: Preprocessor, tokeniser1: TokeniserWithFiniteTypeDomain, tokeniser2: TokeniserWithFiniteTypeDomain, p: float=0.5):
+    def __init__(self, preprocessor: MultiplexedPreprocessor,
+                 tokeniser1: TokeniserWithFiniteTypeDomain, tokeniser2: TokeniserWithFiniteTypeDomain, p: float=0.5):
         """
         :param p: Probability of sampling tokeniser 2. This way, the [0,1] interval is a slider that ranges
                   from always tokeniser 1 to always tokeniser 2.

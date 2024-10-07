@@ -19,7 +19,7 @@ class HuggingFaceBPETokeniser(HuggingFaceTokeniser):
         backend_of_backend_of_backend = BPE(vocab=vocab, merges=merges, dropout=dropout if 0.0 < dropout <= 1.0 else None)
         backend_of_backend            = Tokenizer(model=backend_of_backend_of_backend)
         backend                       = PreTrainedTokenizerFast(tokenizer_object=backend_of_backend)
-
         super().__init__(backend)
+
         if preprocessor is not None:
             self.preprocessor = preprocessor

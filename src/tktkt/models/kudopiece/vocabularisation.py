@@ -181,7 +181,7 @@ class KudoPieceTrainer(Vocabulariser):
 
             # Preprocessing is expected to be done by one of our preprocessors.
             normalization_rule_name="identity",
-            add_dummy_prefix=True,
+            add_dummy_prefix=False,
             remove_extra_whitespaces=False,
             split_by_unicode_script=False,
             split_by_number=False,
@@ -195,5 +195,6 @@ class KudoPieceTrainer(Vocabulariser):
     def _addSpace(self, word: str) -> str:
         return " " * (self._boundary_style == BoundaryMarkerLocation.START) + word + " " * (self._boundary_style == BoundaryMarkerLocation.END)
 
+    @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
         return [typ for typ,_  in iterateTsv(file_or_folder / "spm.vocab")]

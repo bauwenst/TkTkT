@@ -164,14 +164,20 @@ class Vocabulariser(ABC):
 
         n_specials = len(existing_types)
         if isinstance(existing_types, dict):
-            assert sorted(existing_types.values()) == list(range(n_specials))
+            assert sorted(existing_types.values()) == list(range(n_specials))  # TODO: Kinda arbitrary constraint.
         else:
             existing_types = {t: i for i,t in enumerate(existing_types)}
 
-        tokeniser_vocab = cls._assignIdentifiers(cls._load(file_or_folder), sorting_key=sorting_key, starting_id=n_specials)
+        tokeniser_types = set(cls._load(file_or_folder))
+        missing_types = []
         for t in existing_types:
-            if t in tokeniser_vocab:
-                print(f"Warning: special token {t} (id: {existing_types[t]}) is already part of the vocabulary (id: {tokeniser_vocab[t]}). The latter id will be kept. "
-                      f"In the future, there will likely be support to keep both at the same time.")
+            if t in tokeniser_types:
+                print(f"Warning: special token {t} is already part of the vocabulary. "
+                      f"In the future, there will likely be support to keep both at the same time. "
+                      f"For now, we will not add the special token with a new ID.")
+            else:
+                missing_types.append(t)
 
-        return existing_types | tokeniser_vocab
+        tokeniser_vocab = cls._assignIdentifiers(cls._load(file_or_folder), sorting_key=sorting_key, starting_id=len(missing_types))
+        special_vocab   = {t: i for i,t in enumerate(missing_types)}
+        return special_vocab | tokeniser_vocab
