@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Iterable, Dict, Union
+from collections import OrderedDict
 
 import re
 import regex
@@ -66,6 +67,40 @@ class Truncate(TextMapper):
 
     def convert(self, text: str) -> str:
         return text[:self.cap]
+
+
+class TruncateOnNearestWhitespace(TextMapper):
+    """
+    Same as Truncate(), except you go looking for the nearest whitespace to the left or right of the limit.
+    If you can't find any within a certain patience, this is entirely equivalent to Truncate().
+    """
+    def __init__(self, desired_character_limit: int, patience: int=50, forwards_search: bool=False):
+        """
+        :param patience: How many characters at most the space can be removed from the character at the desired limit.
+                         For example, patience=1 allows finding a space before/after the last character that would be included.
+        """
+        last_normal_index = desired_character_limit-1  # Index of the last character we want included.
+        if forwards_search:
+            self._lower = last_normal_index             # Index of the first character to detect whitespace at.
+            self._upper = last_normal_index+patience+1  # 1+index of the last character to detect whitespace at.
+        else:
+            self._lower = max(0, last_normal_index - patience)
+            self._upper = last_normal_index+1
+
+        self._largest_normal_length = desired_character_limit
+        self._forwards = forwards_search
+
+    def convert(self, text: str) -> str:
+        if len(text) <= self._largest_normal_length:
+            return text
+
+        try:  # Try-except because we expect most cases to find a space.
+            if self._forwards:
+                return text[:text.index(" ", self._lower, self._upper)]
+            else:
+                return text[:text.rindex(" ", self._lower, self._upper)]
+        except:
+            return text[:self._largest_normal_length]
 
 
 class FilterRegex(TextMapper):
@@ -311,14 +346,14 @@ class PseudoByteMapping(InvertibleTextMapper):
         Same mapping except without any hardcoding.
         """
         offset = 0
-        mappings = dict()
+        mappings = OrderedDict()
         for byte in range(256):
             representation = chr(byte)
             if representation.isspace() or len(representation.__repr__()) == 6:  # Cannot be printed properly in a text file.
-                mappings[byte] = chr(256 + offset)
+                representation = chr(256 + offset)
                 offset += 1
-            else:
-                mappings[byte] = representation
+
+            mappings[byte] = representation
 
         return mappings
 

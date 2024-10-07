@@ -2,7 +2,7 @@
 General new types.
 """
 from abc import abstractmethod
-from typing import Protocol, TypeVar, Iterable, Callable
+from typing import Protocol, TypeVar, Iterable, Callable, Iterator
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
@@ -19,8 +19,20 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
     def __iter__(self):
         return self._iterable.__iter__()
 
-    def map(self, f: Callable[[T],T2]) -> "NamedIterable[T2]":
-        return NamedIterable(map(f, self), name=self.name)
+    def map(self, func: Callable[[T],T2]) -> "NamedIterable[T2]":
+        return NamedIterable(mapped(func, self), name=self.name)
+
+
+class mapped(Iterable[T2]):
+    """
+    Reusable version of map(). The latter is consumed after iterating over it once, even if the mapped iterable isn't.
+    """
+    def __init__(self, func: Callable[[T],T2], iterable: Iterable[T]):
+        self._function = func
+        self._iterable = iterable
+
+    def __iter__(self) -> Iterator[T2]:
+        return map(self._function, self._iterable)
 
 
 class Comparable(Protocol):

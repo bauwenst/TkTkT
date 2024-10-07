@@ -1,4 +1,5 @@
 from typing import TypeVar, Dict, List
+from collections import OrderedDict
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -9,7 +10,7 @@ def invertdict(d: Dict[K,V], noninjective_ok=True) -> Dict[V,K]:
     Keys become values, values become keys.
     Values must be hashable in that case.
     """
-    d_inv = {v: k for k,v in d.items()}
+    d_inv = OrderedDict((v,k) for k,v in d.items())  # If the given dictionary is ordered, the resulting dictionary keeps that order.
 
     # Uh oh!
     if not noninjective_ok and len(d) != len(d_inv):

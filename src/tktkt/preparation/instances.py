@@ -57,7 +57,7 @@ RobertaPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), RobertaPr
 class TruncateAndNormalise(MapperSequence):
     def __init__(self, truncate_after_chars: int):
         super().__init__([
-            Truncate(truncate_after_chars),
+            TruncateOnNearestWhitespace(truncate_after_chars),
             HuggingFaceNormaliser(tn.NFKC())
         ])
 

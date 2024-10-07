@@ -6,14 +6,14 @@ import numpy as np
 from scipy.stats import entropy as _scipy_entropy
 
 from ..interfaces.tokeniser import TokeniserWithFiniteTypeDomain
-
+from ..util.iterables import streamProgress
 
 DEFAULT_RENYI_ALPHA = 2.5
 
 
 def shannonEntropy(probabilities: Iterable[float]):
     # return -np.sum(probabilities * np.log2(probabilities))
-    return _scipy_entropy(pk=probabilities, base=2)  # Deals with p_i == 0.
+    return _scipy_entropy(pk=list(probabilities), base=2)  # Deals with p_i == 0.
 
 
 def renyiEntropy(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPHA):
@@ -28,7 +28,7 @@ def renyiEntropy(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPH
     For evaluating tokenisers, alpha = 2.5 has been found to be best (when used for efficiency, not entropy).
     https://aclanthology.org/2023.acl-long.284v2.pdf
     """
-    probabilities = np.array(probabilities)
+    probabilities = np.array(list(probabilities))
     if alpha == 1.0:
         return shannonEntropy(probabilities)
 
@@ -53,7 +53,7 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
 
     The middle fraction doesn't mean anything, but it is between the lower and upper bound.
     """
-    probabilities = np.array(probabilities)
+    probabilities = np.array(list(probabilities))  # You need this list() because numpy has weird behaviour for e.g. dict.values().
     V = probabilities.size
     H_a = renyiEntropy(probabilities, alpha=alpha)
     H_0 = np.log2(V)
@@ -72,7 +72,7 @@ def tokenDistributionFromSentences(tokeniser: TokeniserWithFiniteTypeDomain, cor
     for t in tokeniser.types():
         type_frequencies[t] = 0
 
-    for sentence in corpus:
+    for sentence in streamProgress(corpus, "Tokenising"):
         tokens = tokeniser.prepareAndTokenise(sentence)
         for t in tokens:
             type_frequencies[t] += 1

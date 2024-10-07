@@ -38,6 +38,11 @@ class KudoPieceArguments_Algorithm:
 
 
 class KudoPieceTrainer(Vocabulariser):
+    """
+    Wrapper around the SentencePiece trainer for KudoPiece.
+    This trainer has quite a large memory footprint. Expect every million sentences to consume about 80 GiB of RAM
+    (given that the sentences are no longer than 8192 characters).
+    """
 
     def __init__(self, preprocessor: Preprocessor,
                  final_vocab_size: int, word_boundary_location: BoundaryMarkerLocation,
