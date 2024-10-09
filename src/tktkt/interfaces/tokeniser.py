@@ -21,7 +21,7 @@ class Tokeniser(ABC):
             tokens.extend(self.tokenise(pretoken))
         return tokens
 
-    def getName(self):  # Can be overridden if your name varies depending on the configuration.
+    def getName(self) -> str:  # Can be overridden if your name varies depending on the configuration.
         return self.__class__.__name__
 
 

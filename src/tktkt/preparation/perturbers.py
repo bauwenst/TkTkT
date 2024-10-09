@@ -1,9 +1,10 @@
-from abc import abstractmethod, ABC
 from typing import Tuple, Dict, List, Iterable
+from abc import abstractmethod, ABC
 
 from functools import reduce
 import numpy as np
 import numpy.random as npr
+from string import ascii_lowercase
 
 from ..util.functions import softmax, relu
 from .mappers import TextMapper
@@ -21,10 +22,12 @@ class Perturber(TextMapper):
         """
         :param p: Chance of perturbing the input at all.
         """
+        assert 0 <= p <= 1
         self.p = p
 
     def convert(self, text: str) -> str:
         if RNG.random() < self.p:
+            # print("Perturbing:", text)
             return self.perturb(text)
         else:
             return text
@@ -58,7 +61,10 @@ class FixedTruncate(Perturber):
         return text[self.start:relu(len(text)-self.end)]
 
 
-class PerturbationPointSampler(ABC):
+########################################################################################################################
+
+
+class StringIndexSampler(ABC):
     """
     Given a string, generates the points where we want to cause a perturbation.
     """
@@ -68,7 +74,7 @@ class PerturbationPointSampler(ABC):
         pass
 
 
-class FixedUniformSampler(PerturbationPointSampler):
+class FixedUniformSampler(StringIndexSampler):
     """
     Choose a random amount of characters between a given minimum and maximum,
     then randomly chooses exactly that amount of character positions.
@@ -82,7 +88,7 @@ class FixedUniformSampler(PerturbationPointSampler):
 
     def sample(self, characters: str) -> Iterable[int]:
         N = len(characters)
-        n = RNG.integers(range(min(N,self.min), min(N,self.max)+1))
+        n = RNG.integers(low=min(N,self.min), high=min(N,self.max)+1)
         return RNG.choice(N, size=n, replace=False)
 
 
@@ -95,7 +101,7 @@ class ConstantSampler(FixedUniformSampler):
         super().__init__(n, n)
 
 
-class ProportionalSampler(PerturbationPointSampler):
+class ProportionalSampler(StringIndexSampler):
     """
     Every character has the same probability of being chosen.
 
@@ -111,7 +117,7 @@ class ProportionalSampler(PerturbationPointSampler):
         return (i for i in range(len(characters)) if RNG.random() < self.local_p)
 
 
-class GeometricSampler(PerturbationPointSampler):
+class GeometricSampler(StringIndexSampler):
     """
     Instead of choosing the amount of perturbations uniformly, it is now geometrically distributed, although capped
     between the minimum and maximum. After that, they are chosen uniformly.
@@ -140,22 +146,57 @@ class GeometricSampler(PerturbationPointSampler):
         return RNG.choice(N, size=n, replace=False)
 
 
-class Pop(Perturber):
+########################################################################################################################
 
-    def __init__(self, p: float, sampler: PerturbationPointSampler):
-        super().__init__(p)
-        self.sampler = sampler
+
+class CharacterPerturber(Perturber):
+    """
+    Perturber that works by randomly sampling characters and then perturbing the individual characters.
+    """
+    
+    def __init__(self, global_p: float, sampler: StringIndexSampler):
+        super().__init__(global_p)
+        self._sampler = sampler
+    
+
+class Pop(CharacterPerturber):
 
     def perturb(self, text: str) -> str:
-        pop_indices = set(self.sampler.sample(text))
+        pop_indices = set(self._sampler.sample(text))
         return "".join(
             map(lambda i: text[i],
                 filter(lambda i: i not in pop_indices,
                        range(0, len(text)))))  # join is faster than building a string with += https://stackoverflow.com/a/1350289/9352077
 
 
+class Insert(CharacterPerturber):
+
+    def perturb(self, text: str) -> str:
+        indices = list(self._sampler.sample(text))
+        lookup = dict(zip(
+            indices,
+            RNG.integers(low=0, high=len(ascii_lowercase), size=len(indices))
+        ))
+        return "".join(
+            map(lambda i: text[i] + ascii_lowercase[lookup[i]] if i in lookup else text[i],
+                range(0, len(text))))
+
+
+class Substitute(CharacterPerturber):
+
+    def perturb(self, text: str) -> str:
+        indices = list(self._sampler.sample(text))
+        lookup = dict(zip(
+            indices,
+            RNG.integers(low=0, high=len(ascii_lowercase), size=len(indices))
+        ))
+        return "".join(
+            map(lambda i: ascii_lowercase[lookup[i]] if i in lookup else text[i],
+                range(0, len(text))))
+
+
 import clavier
-class SubstituteKeyboardTypo(Perturber):
+class SubstituteKeyboardTypo(CharacterPerturber):
     """
     Uses QWERTY keyboard layout to perturb characters in the word. Characters closer on the keyboard have a higher probability.
 
@@ -168,14 +209,13 @@ class SubstituteKeyboardTypo(Perturber):
 
     PMF = Tuple[np.ndarray,List[str]]
 
-    def __init__(self, p: float, sampler: PerturbationPointSampler, temperature: float=1.0):
+    def __init__(self, p: float, sampler: StringIndexSampler, temperature: float=1.0):
         """
         :param temperature: Should be any real number greater than 0. Closer to 0 (colder) makes keys very close to the
                             given key much more likely than keys further away. Closer to infinity (hotter) makes distance
                             between keys matter less.
         """
-        super().__init__(p)
-        self.sampler = sampler
+        super().__init__(p, sampler)
 
         self.keyboard = clavier.load_qwerty()
         self.supported_keys = {k for k in self.keyboard.keys() if k.isalpha()}
@@ -227,6 +267,9 @@ class SubstituteKeyboardTypo(Perturber):
         return "".join(
             map(lambda i: self._perturbCharacter(text[i]) if i in sub_indices else text[i],
                 range(0, len(text))))
+
+
+########################################################################################################################
 
 
 class SeriesPerturber(Perturber):

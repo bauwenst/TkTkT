@@ -29,3 +29,6 @@ class KudoPieceTokeniser(TokeniserWithVocabDict):
     def tokenise(self, pretoken: str) -> List[str]:
         tokens = self.core.EncodeAsPieces(pretoken, enable_sampling=True, nbest_size=self._k, alpha=self._alpha)
         return tokens
+
+    def getName(self) -> str:
+        return f"KudoPiece(k={self._k},α={self._alpha})"
