@@ -5,6 +5,7 @@ import numpy.random as npr
 from .generationbased import TokeniserWithVocabDict, Preprocessor, Vocab
 from ...util.arrays import *
 from ...util.strings import segmentUsingIndices
+from ...util.printing import sgnprint
 
 
 class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
@@ -131,9 +132,12 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
     def getName(self) -> str:  # Properties in order of how much they alter the behaviour of the tokeniser.
         return "GRaMPa(" + \
             ("inf," if self._accept_all_types else "") + \
-            (f"S(t={self.renormalisation.tau})" if isinstance(self.renormalisation, SoftmaxNormalisation)
-            else f"P(t={self.renormalisation.tau})" if isinstance(self.renormalisation, PowerNormalisation)
+            (f"S(t={sgnprint(self.renormalisation.tau)})" if isinstance(self.renormalisation, SoftmaxNormalisation)
+            else f"P(t={sgnprint(self.renormalisation.tau)})" if isinstance(self.renormalisation, PowerNormalisation)
             else "") + \
             f",l={self.min_len}" + \
             (",R2L" if self.decode_backwards else ",L2R") + \
         ")"
+
+
+GRaMPa = RandomVocabSegmentation_GreedyMarkov

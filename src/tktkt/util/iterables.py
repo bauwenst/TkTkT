@@ -90,8 +90,8 @@ def streamPrint(iterable: Iterable[T]) -> Iterable[T]:
         yield thing
 
 
-def streamProgress(iterable: Iterable[T], show_as: Optional[str]=None) -> Iterable[T]:
-    return tqdm(iterable, desc=show_as)
+def streamProgress(iterable: Iterable[T], show_as: Optional[str]=None, known_size: Optional[int]=None) -> Iterable[T]:
+    return tqdm(iterable, desc=show_as, total=known_size, smoothing=0.1)
 
 
 # Endpoints below

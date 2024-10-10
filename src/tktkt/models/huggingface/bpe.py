@@ -21,5 +21,9 @@ class HuggingFaceBPETokeniser(HuggingFaceTokeniser):
         backend                       = PreTrainedTokenizerFast(tokenizer_object=backend_of_backend)
         super().__init__(backend)
 
+        self._dropout_as_string = str(dropout)  # Saving it explicitly as a string because we do not want to give the impression you can change this.
         if preprocessor is not None:
             self.preprocessor = preprocessor
+
+    def getName(self) -> str:
+        return super().getName() + "(p=" + self._dropout_as_string + ")"
