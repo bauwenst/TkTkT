@@ -19,6 +19,7 @@ class KudoPieceTokeniser(TokeniserWithVocabDict):
         """
         self._k = kbest
         self._alpha = smoothing_power
+        self._is_stochastic = kbest > 1 or kbest == -1
 
         self.core = SentencePieceProcessor()
         self.core.Init(model_file.as_posix())
@@ -27,7 +28,7 @@ class KudoPieceTokeniser(TokeniserWithVocabDict):
         super().__init__(preprocessor, vocab=vocab)
 
     def tokenise(self, pretoken: str) -> List[str]:
-        tokens = self.core.EncodeAsPieces(pretoken, enable_sampling=True, nbest_size=self._k, alpha=self._alpha)
+        tokens = self.core.EncodeAsPieces(pretoken, enable_sampling=self._is_stochastic, nbest_size=self._k, alpha=self._alpha)
         return tokens
 
     def getName(self) -> str:
