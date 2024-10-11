@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+from typing import Optional
 
 from transformers import PreTrainedTokenizerFast
 from tokenizers import Tokenizer

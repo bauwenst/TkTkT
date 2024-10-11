@@ -4,7 +4,7 @@ Interface for tokenisers that want to be compatible with the HuggingFace suite.
 Indeed, this has nothing to do with having a tokeniser that runs on HuggingFace internally, because that would be just
 another member of tktkt.models. Rather, this is about needs to be implemented in order to become a HuggingFace tokeniser.
 """
-from typing import List, Optional, Tuple, Mapping, Dict, Iterable
+from typing import List, Optional, Tuple, Mapping, Iterable
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -109,7 +109,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
         super().__init__(**kwargs)
 
     def _tokenize(self, text, **kwargs) -> List[str]:
-        return self.backend.tokenise(text, **kwargs)
+        return self.backend.tokenise(text)  #, **kwargs)  # TODO: Supporting HF's kwargs isn't important, right?
 
     @property
     def vocab_size(self) -> int:
@@ -128,7 +128,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
         return self.backend.idToType(index)
 
     def tokenize(self, text: str, **kwargs) -> List[str]:
-        return self.backend.prepareAndTokenise(text, **kwargs)
+        return self.backend.prepareAndTokenise(text)  #, **kwargs)
 
     def convert_tokens_to_string(self, tokens: List[str]) -> str:
         return self.backend.preprocessor.undo(tokens)

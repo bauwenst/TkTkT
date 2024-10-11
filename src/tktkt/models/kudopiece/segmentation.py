@@ -32,4 +32,4 @@ class KudoPieceTokeniser(TokeniserWithVocabDict):
         return tokens
 
     def getName(self) -> str:
-        return f"KudoPiece(k={self._k},α={self._alpha})"
+        return f"KudoPiece(ℓ={self._k},α={self._alpha})"
