@@ -1,37 +1,88 @@
-from typing import Tuple, Iterable, List
+from typing import Tuple, Iterable, List, TypeVar, Generic
 from collections import Counter
+from abc import ABC, abstractmethod
 
-from ..interfaces.tokeniser import Tokeniser
+from ..interfaces.tokeniser import Tokeniser, Preprocessor
+from ..preparation.instances import IdentityPreprocessor
+from ..util.iterables import streamProgress
 
 
-def exactMatches(texts: Iterable[str], tk1: Tokeniser, tk2: Tokeniser) -> Tuple[float,int,int]:
+R = TypeVar("R")  # Result from computing the metric.
+
+class ComparisonMetric(ABC, Generic[R]):
+
+    def __init__(self, texts: Iterable[str], n_repeats: int, global_preprocessor: Preprocessor=None):
+        self._iterable = texts
+        self._repeats = n_repeats
+        if global_preprocessor is None:
+            global_preprocessor = IdentityPreprocessor()
+        self._preprocessor = global_preprocessor
+
+    @abstractmethod
+    def _reset(self):
+        """Clear the metric for a new run."""
+        pass
+
+    @abstractmethod
+    def _add(self, global_pretoken: str, tk1: Tokeniser, tk2: Tokeniser):
+        """Add a sample to this object by comparing the tokenisation of both tokenisers on the given pretoken."""
+        pass
+
+    @abstractmethod
+    def _compute(self) -> R:
+        """Using all the collected samples, produce the output of the metric."""
+        pass
+
+    def compare(self, tk1: Tokeniser, tk2: Tokeniser) -> R:
+        self._reset()
+        for text in streamProgress(self._iterable):
+            pretokens = self._preprocessor.do(text)
+            for pretoken in pretokens:
+                for _ in range(self._repeats):
+                    self._add(pretoken, tk1, tk2)
+
+        return self._compute()
+
+
+class ExactMatches(ComparisonMetric[Tuple[float,int,int]]):
     """
-    Count how many out of a given amount of texts is tokenised into exactly the same strings by the two tokenisers.
+    Count how many out of a given amount of texts is tokenised into exactly the same tokens by the two tokenisers.
     """
-    n_matches = 0
-    n_total   = 0
-    for text in texts:
-        n_matches += tk1.prepareAndTokenise(text) == tk2.prepareAndTokenise(text)
-        n_total   += 1
 
-    return n_matches/n_total if n_total else 1, n_matches, n_total
+    def _reset(self):
+        self._n_matches = 0
+        self._n_total = 0
+
+    def _add(self, global_pretoken: str, tk1: Tokeniser, tk2: Tokeniser):
+        self._n_matches += tk1.prepareAndTokenise(global_pretoken) == tk2.prepareAndTokenise(global_pretoken)
+        self._n_total   += 1
+
+    def _compute(self) -> R:
+        return self._n_matches / self._n_total if self._n_total else 1, self._n_matches, self._n_total
 
 
-def microMacroTokenJaccard(texts: Iterable[str], tk1: Tokeniser, tk2: Tokeniser) -> Tuple[float, float]:
-    sum_intersection = 0
-    sum_union        = 0
-    sum_jaccard = 0
-    n_total     = 0
-    for text in texts:
-        J, num, denom = jaccard(tk1.prepareAndTokenise(text), tk2.prepareAndTokenise(text))
-        sum_jaccard += J
-        n_total += 1
+class MicroMacroTokenJaccard(ComparisonMetric[Tuple[float, float]]):
+    """
+    Gives the micro-average and macro-average of Jaccard similarity of the token sequences produced by the given tokenisers.
+    """
 
-        sum_intersection += num
-        sum_union        += denom
+    def _reset(self):
+        self._sum_intersection = 0
+        self._sum_union        = 0
+        self._sum_jaccard = 0
+        self._n_total     = 0
 
-    return sum_intersection/sum_union if sum_union else 1, \
-           sum_jaccard/n_total if n_total else 1
+    def _add(self, global_pretoken: str, tk1: Tokeniser, tk2: Tokeniser):
+        J, num, denom = jaccard(tk1.prepareAndTokenise(global_pretoken), tk2.prepareAndTokenise(global_pretoken))
+        self._sum_jaccard += J
+        self._n_total     += 1
+
+        self._sum_intersection += num
+        self._sum_union        += denom
+
+    def _compute(self) -> R:
+        return sum_intersection/sum_union if sum_union else 1, \
+               sum_jaccard/n_total if n_total else 1
 
 
 def jaccard(tokens1: List[str], tokens2: List[str]) -> Tuple[float,int,int]:

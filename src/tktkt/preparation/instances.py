@@ -15,23 +15,21 @@ NoSpaceMarker       = BoundaryMarker("",        detached=False, location=Boundar
 
 IdentityPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), IdentityPretokeniser())
 
-TraditionalPretokeniser = PretokeniserSequence([
-    WhitespacePretokeniser(destructive=True),
-    PunctuationPretokeniser(HyphenMode.EXCLUDED)
-])
 
 class BoundariesFromSpacesPretokeniser(PretokeniserSequence):
     """
     Generalisation of the RoBERTa/GPT-2 tokeniser. Principles it holds by:
         - Punctuation is always isolated from non-punctuation.
         - Word boundaries are only placed where there was a space originally.
+    I recommend against using this. Use the ModernPretokeniser instead.
 
     The original implementation uses a start-of-word Ġ and is byte-based. For example, a sentence
         This is a (test) sentënce.
     becomes
         ĠThis // Ġis // Ġa // Ġ( // test // ) // ĠsentÃ«nce // .
 
-    My implementation allows customising the boundary marker and turning off the byte-based behaviour.
+    This implementation is more general than RoBERTa/GPT-2 since it allows customising the boundary marker and allows
+    turning off the byte-based behaviour.
     """
     def __init__(self, marker: BoundaryMarker, byte_based: bool):
         super().__init__([
@@ -54,12 +52,30 @@ RobertaPretokeniser = BoundariesFromSpacesPretokeniser(marker=RobertaSpaceMarker
 # ])
 RobertaPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), RobertaPretokeniser)
 
+
 class TruncateAndNormalise(MapperSequence):
     def __init__(self, truncate_after_chars: int):
         super().__init__([
             TruncateOnNearestWhitespace(truncate_after_chars),
             HuggingFaceNormaliser(tn.NFKC())
         ])
+
+
+TraditionalPretokeniser = PretokeniserSequence([
+    WhitespacePretokeniser(destructive=True),
+    PunctuationPretokeniser(HyphenMode.EXCLUDED)
+])
+
+class TraditionalPreprocessor(Preprocessor):
+    """
+    Traditional, word-based preprocessor that just splits on spaces and non-hyphen punctuation.
+    """
+    def __init__(self, truncate_after_chars: int=1_000_000):
+        super().__init__(
+            uninvertible_mapping=TruncateAndNormalise(truncate_after_chars),
+            invertible_mapping=IdentityMapper(),
+            splitter=TraditionalPretokeniser()
+        )
 
 
 class ModernEnglishPretokeniser(PretokeniserSequence):
@@ -89,12 +105,12 @@ class ModernEnglishPretokeniser(PretokeniserSequence):
 class ModernEnglishPreprocessor(Preprocessor):
     def __init__(self, marker: BoundaryMarker, truncate_text_after_chars: int=1_000_000):
         super().__init__(
-            TruncateAndNormalise(truncate_text_after_chars),
-            IdentityMapper(),
-            ModernEnglishPretokeniser(marker)
+            uninvertible_mapping=TruncateAndNormalise(truncate_text_after_chars),
+            invertible_mapping=IdentityMapper(),
+            splitter=ModernEnglishPretokeniser(marker)
         )
 
-CommonsensePreprocessor = ModernEnglishPreprocessor
+CommonsensePreprocessor = ModernEnglishPreprocessor  # Backwards-compatibility
 
 
 class ModernEnglishPretokeniser_ByteCompatible(ModernEnglishPretokeniser):

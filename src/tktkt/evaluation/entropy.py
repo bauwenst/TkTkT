@@ -41,7 +41,7 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
     uniform distribution of the same size. At alpha = 2.5, this fraction correlates highly with downstream performance.
 
     This function computes three quantities according to https://aclanthology.org/2023.acl-long.284v2.pdf:
-        - Simplified lower bound:         H_alpha / ceil(H_0)   (by analogy of theorem 4.5 to theorem 3.9)
+        - Simplified lower bound:         H_alpha / ceil(H_0)   (by analogy of theorem 4.5 to theorem 3.9; see below)
         - Simplified fraction in between: H_alpha / H_0
         - Simplified upper bound:   ceil(H_alpha) / H_0   (simplified equation 21)
 
@@ -50,6 +50,9 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
           instead, bounds are used, which can be expressed explicitly based on Rényi entropy.
         - The full expressions for these bounds contain a covariance term in the numerator. This is said to be small and
           negative by the authors, so the upper bound is slightly higher than it needs to be.
+          For the lower bound, analogising the theorems is correct according to Vilém Zouhar, but leaving out the
+          covariance term is not (it is unknown in size and can be negative). Hence, beware that the lower bound
+          should not be treated as the true lower bound but rather as a new, arbitrary, related metric.
 
     The middle fraction doesn't mean anything, but it is between the lower and upper bound.
     """
