@@ -170,16 +170,19 @@ class Pop(CharacterPerturber):
 
 
 class Insert(CharacterPerturber):
+    """
+    Put a random lowercase character before the sampled characters.
+    """
 
     def perturb(self, text: str) -> str:
-        indices = list(self._sampler.sample(text))
+        indices = list(self._sampler.sample(text + " "))  # Extra position to be able to put something after the string.
         lookup = dict(zip(
             indices,
             RNG.integers(low=0, high=len(ascii_lowercase), size=len(indices))
         ))
         return "".join(
-            map(lambda i: text[i] + ascii_lowercase[lookup[i]] if i in lookup else text[i],
-                range(0, len(text))))
+            map(lambda i: ascii_lowercase[lookup[i]] + text[i] if i in lookup else text[i],
+                range(0, len(text)))) + lookup.get(len(text), "")
 
 
 class Substitute(CharacterPerturber):

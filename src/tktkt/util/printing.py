@@ -1,11 +1,13 @@
 import time
 from typing import Iterable, List
 
-def dprint(d: dict):
+def dprint(d: dict, indent: int=0):
     """
     Print (top-level) dictionary keys and values.
     """
     for k,v in d.items():
+        if indent:
+            print("\t"*indent, end="")
         print(k, ":", v)
 
 
