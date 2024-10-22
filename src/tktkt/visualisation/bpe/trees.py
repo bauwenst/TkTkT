@@ -133,7 +133,7 @@ class BpeVisualiser:
         self.weighter = weighting_function
 
     def tokenise_visualised(self, pretoken: str, intermediates: bool=False) -> Tuple[List[str], Union[MergeTrace, List[MergeTrace]]]:
-        return self.applyMerges_visualised(self.tokeniser.boundary_marker.intoCharacters(pretoken), intermediates=intermediates)
+        return self.applyMerges_visualised(self.tokeniser._boundary_marker.intoCharacters(pretoken), intermediates=intermediates)
 
     def applyMerges_visualised(self, characters: Iterable[str], intermediates: bool=False) -> Tuple[List[str], Union[MergeTrace, List[MergeTrace]]]:
         """
