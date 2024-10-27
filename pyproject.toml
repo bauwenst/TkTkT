@@ -40,3 +40,7 @@ github = [
     "fiject               @ git+https://github.com/bauwenst/fiject",
     "clavier              @ git+https://github.com/MaxHalford/clavier"
 ]
+
+# Include data and tokeniser files.
+[tool.setuptools.package-data]
+"*" = ["*.txt"]
