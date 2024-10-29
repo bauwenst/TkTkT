@@ -3,11 +3,18 @@ from typing import List
 
 def indent(level: int, multiline_string: str, tab: str=" "*4) -> str:
     """
-    Prefix each line in the given string by the given tab.
+    Prefix each line in the given string by the given tab (except the last line if it is empty).
     """
+    # As a one-liner: "".join(tab + line + "\n" for line in s.splitlines())
     lines = multiline_string.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+        add_empty_line = True
+    else:
+        add_empty_line = False
+
     lines = [tab*level + line for line in lines]
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"*add_empty_line
 
 
 def alignCharacter(multiline_string: str, character_to_align: str) -> str:

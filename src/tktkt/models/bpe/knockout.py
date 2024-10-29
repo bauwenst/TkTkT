@@ -84,7 +84,7 @@ class BPEKnockout(DeterministicBPETokeniserWithLanguage):
         (rather than wrapping it), and *also* apply knockout using the given language.
         """
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        marker = detectBoundaryMarker(hf_bpe_tokenizer)
+        marker = detectBoundaryMarkerFromTokeniser(hf_bpe_tokenizer)
         # byte_based = detectByteBased(tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
@@ -122,7 +122,7 @@ class ReBPE(DeterministicBPETokeniserWithLanguage):
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str], iterations: int, backwards_compatible: bool) -> Self:
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        marker = detectBoundaryMarker(hf_bpe_tokenizer)
+        marker = detectBoundaryMarkerFromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
             boundary_marker=marker,

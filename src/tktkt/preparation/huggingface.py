@@ -88,6 +88,12 @@ class HuggingFacePreprocessorForWords(Preprocessor):
 
 
 def detectByteBased(hf_tokeniser: PreTrainedTokenizerBase) -> bool:
+    """
+    Detect whether the given tokeniser uses a preprocessor with pseudo-byte characters.
+    The reason why we don't have this kind of detector for a TkTkT tokeniser is that the latter already has a
+    transparently accessible preprocessor field. The reason you have this detector is so that you can go from a
+    conjoined preprocessor-tokeniser pair from HuggingFace to a TkTkT preprocessor and then a TkTkT tokeniser.
+    """
     tests = [
         ("號", "èĻŁ")
     ]
@@ -105,7 +111,7 @@ def detectByteBased(hf_tokeniser: PreTrainedTokenizerBase) -> bool:
     return True
 
 
-def detectBoundaryMarker(hf_tokeniser: PreTrainedTokenizerBase) -> BoundaryMarker:
+def detectBoundaryMarkerFromTokeniser(hf_tokeniser: PreTrainedTokenizerBase) -> BoundaryMarker:
     """
     Assumes a couple of things about the marker:
         - It will always appear attached to another letter, even though we assume it starts out as "detached" during tokenisation.

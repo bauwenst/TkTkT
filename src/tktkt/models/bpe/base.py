@@ -11,7 +11,7 @@ from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 from ...interfaces.preparation import TextMapper, Preprocessor
 from ...interfaces.tokeniser import Vocab
 from ...preparation.boundaries import BoundaryMarker
-from ...preparation.huggingface import detectBoundaryMarker, detectByteBased, HuggingFacePreprocessor, HuggingFacePreprocessorForWords
+from ...preparation.huggingface import detectBoundaryMarkerFromTokeniser, HuggingFacePreprocessor, HuggingFacePreprocessorForWords
 
 MergeList = List[str]
 
@@ -118,7 +118,7 @@ class ClassicBPE(DeterministicBPETokeniser):
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, for_words: bool=True) -> Self:
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        marker = detectBoundaryMarker(hf_bpe_tokenizer)
+        marker = detectBoundaryMarkerFromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessorForWords(hf_bpe_tokenizer) if for_words else HuggingFacePreprocessor(hf_bpe_tokenizer),
 

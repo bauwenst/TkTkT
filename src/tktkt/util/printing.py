@@ -86,8 +86,14 @@ def sgnprint(number: float) -> str:
     return f"+"*(number >= 0) + number.__repr__()
 
 
-def pluralise(number: int, singular: str, plural_suffix: str="s") -> str:
-    return f"{number} {singular}" + plural_suffix*(number > 1)
+def pluralise(number: int, singular: str, plural_suffix: str="s", plural: str="") -> str:
+    if not plural:
+        plural = singular + plural_suffix
+    return f"{number} " + (singular if number == 1 else plural)  # 0 dogs, 1 dog, 2 dogs
+
+
+def ordinal(number: int) -> str:
+    return f"{number}{'st' if number == 1 else 'nd' if number == 2 else 'rd' if number == 3 else 'th'}"
 
 
 def logger(msg: str):

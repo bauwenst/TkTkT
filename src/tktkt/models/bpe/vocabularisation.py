@@ -72,8 +72,9 @@ class BPEVocabulariser(Vocabulariser):
 
     @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        path = file_or_folder / "vocab.json"
-        with open(path, "r", encoding="utf-8") as handle:
+        if file_or_folder.is_dir():
+            file_or_folder = file_or_folder / "vocab.json"
+        with open(file_or_folder, "r", encoding="utf-8") as handle:
             vocab = json.load(handle)
         return sorted(vocab, key=vocab.get)
 
@@ -263,7 +264,7 @@ class BPEVocabulariser(Vocabulariser):
 
         # Deduce merges
         merges = self.deduceMergesFromVocab(sorted(vocab, key=vocab.get), boundary_marker=self._marker)
-        self._storeMerges(merges, out_folder)
+        self._storeMerges(merges, output_prefix.parent)
 
         return output_prefix.parent
 
@@ -317,7 +318,10 @@ class BPEVocabulariser(Vocabulariser):
 
     @classmethod
     def loadMerges(cls, file_or_folder: Path) -> Merges:
-        with open(file_or_folder / "merges.txt", "r", encoding="utf-8") as handle:
+        if file_or_folder.is_dir():
+            file_or_folder = file_or_folder / "merges.txt"
+
+        with open(file_or_folder, "r", encoding="utf-8") as handle:
             return [tuple(line.strip("\r\n").split(" ")) for line in handle
                     if line.strip("\r\n") and not line.startswith("#version")]
 

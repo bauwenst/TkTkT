@@ -66,6 +66,8 @@ def getVocabStats(prep_and_vocab: TokeniserWithVocabDict,
     """
     Note: if the preprocessor of the tokeniser adds characters that are supposed to be token-building units yet consist
     of multiple characters (like </w>), this function's results are wrong.
+
+    :param do_log_segmentations: Because segmentations of a string s scale as O(2^|s|), taking the log means scaling as O(|s|).
     """
     if counts is None:
         counts = dict()
