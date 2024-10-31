@@ -5,7 +5,7 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯, defaultTokeniserFiles
+from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, defaultTokeniserFiles
 from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath, SennrichTokeniserPath
 
 from .base import TokeniserBuilder, VocabularyBuilder, T, A
@@ -23,7 +23,6 @@ from ..models.random.pathmarkov import GRaMPa, PowerNormalisation
 from ..models.ngram.alphabet import UnicodeTokeniser
 from ..files.paths import relativeToCwd, TkTkTPaths
 from ..wrappers.multiplexing import StochasticTokeniserSwitch, MultiplexedPreprocessor
-from ..interfaces.vocabulariser import DEFAULT_FIVE_SPECIALS
 from ..util.trie import PrefixTrie, SuffixTrie
 
 
@@ -54,44 +53,50 @@ def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
     )
 
 
-class Builder_Vocab_BPE(VocabularyBuilder[Tuple[Vocab,Merges]]):
+class Builder_Vocab_BPE(VocabularyBuilder[Merges]):
     pass
 
 
 class Vocab_BPE40k_Oscar30M_en(Builder_Vocab_BPE):
     def buildVocabulary(self) -> Vocab:
-        return self.buildAdditionals()[0]
+        files = getEnglishBpeFiles()
+        assert isinstance(files, SennrichTokeniserPath)
+        return BPEVocabulariser.load(file_or_folder=files.getPaths()[0], existing_types=self._specials)
 
     def buildAdditionals(self):
         files = getEnglishBpeFiles()
-        assert isinstance(files, SennrichTokeniserPath)
-        return BPEVocabulariser.load(file_or_folder=files.getPaths()[0], existing_types=self._specials), files.loadMerges()
+        return files.loadMerges()
 
 
 class Vocab_BPE32ki_SlimPajama3M(Builder_Vocab_BPE):
     def buildVocabulary(self) -> Vocab:
-        return self.buildAdditionals()[0]
+        downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="vocab.json"))
+        return BPEVocabulariser.load(file_or_folder=downloaded_vocab, existing_types=self._specials)
 
     def buildAdditionals(self) -> A:
-        downloaded_vocab  = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="vocab.json"))
         downloaded_merges = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="merges.txt"))
-        return BPEVocabulariser.load(file_or_folder=downloaded_vocab, existing_types=self._specials), \
-               BPEVocabulariser.loadMerges(file_or_folder=downloaded_merges)
+        return BPEVocabulariser.loadMerges(file_or_folder=downloaded_merges)
 
 
-class Builder_Vocab_KudoPiece(VocabularyBuilder[Dict[str,float]]):
+class Builder_Vocab_KudoPiece(VocabularyBuilder[Path]):  # If you want to use HuggingFace, you'd want a Dict[str,float].
     pass
 
 
 class Vocab_KudoPiece30k_BooksWiki_en(Builder_Vocab_KudoPiece):
-    def buildVocabulary(self, specials: Vocab=None):
+    def buildVocabulary(self):
         return AutoTokenizer.from_pretrained("albert/albert-base-v2").get_vocab()
+
+    def buildAdditionals(self):
+        return Path(hf_hub_download(repo_id="albert/albert-base-v2", filename="spiece.model"))
 
 
 class Vocab_KudoPiece32ki_SlimPajama3M(Builder_Vocab_KudoPiece):
-    def buildVocabulary(self, specials: Vocab=None):
+    def buildVocabulary(self):
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.vocab"))
-        return KudoPieceTrainer.load(file_or_folder=downloaded_vocab, existing_types=specials)
+        return KudoPieceTrainer.load(file_or_folder=downloaded_vocab, existing_types=self._specials)
+
+    def buildAdditionals(self):
+        return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.model"))
 
 
 def detectBoundaryMarkerFromVocabulary(vocab: Vocab, threshold: float=0.5) -> BoundaryMarker:
@@ -216,12 +221,11 @@ class Builder_English_KudoPiece(TokeniserBuilder[KudoPieceTokeniser]):
         self._kbest = kbest
         self._alpha = alpha
 
-    def buildTokeniser(self):  # FIXME: You actually need to know the file path for SentencePiece...
-        vocab = KudoPieceTrainer.load(self._folder, existing_types=DEFAULT_FIVE_SPECIALS.all_special_tokens)
+    def buildTokeniser(self):
         return KudoPieceTokeniser(
             preprocessor=self._prep,
-            model_file=self._folder / "spm.model",
-            vocab=vocab,
+            model_file=self._vocab.buildAdditionals(),
+            vocab=self._vocab.buildVocabulary(),
 
             kbest=self._kbest,
             smoothing_power=self._alpha

@@ -10,7 +10,7 @@ from modest.formats.tsv import iterateTsv
 from .preparation import Preprocessor
 from ..files.paths import TkTkTPaths
 from ..util.timing import datetimeDashed
-from ..util.types import Comparable, NamedIterable
+from ..util.types import Comparable, NamedIterable, HuggingfaceDataset
 from ..util.iterables import streamProgress
 
 UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers, but in some order.
@@ -151,7 +151,7 @@ class Vocabulariser(ABC):
     def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]]) -> Path:
         return self._vocabulariseFromSentences(string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name=""))
 
-    def vocabulariseFromHf(self, dataset: DatasetInfoMixin, text_field: str):
+    def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str) -> Path:
         return self._vocabulariseFromSentences(
             NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else "")
                 .map(lambda example: example[text_field])

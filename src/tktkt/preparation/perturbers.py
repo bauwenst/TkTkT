@@ -182,7 +182,7 @@ class Insert(CharacterPerturber):
         ))
         return "".join(
             map(lambda i: ascii_lowercase[lookup[i]] + text[i] if i in lookup else text[i],
-                range(0, len(text)))) + lookup.get(len(text), "")
+                range(0, len(text)))) + (ascii_lowercase[lookup[len(text)]] if len(text) in lookup else "")
 
 
 class Substitute(CharacterPerturber):

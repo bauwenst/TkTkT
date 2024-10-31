@@ -96,6 +96,27 @@ def ordinal(number: int) -> str:
     return f"{number}{'st' if number == 1 else 'nd' if number == 2 else 'rd' if number == 3 else 'th'}"
 
 
+def roundHuman(number: float, round_to: int=2, base2: bool=False, trim_zeroes: bool=True):
+    """
+    Round numbers up to the given amount of digits + 1, hiding the rest in a letter suffix like K, M, G, ...
+    For example, 999987 becomes 999.99K when rounded to two decimals. Rounded to one decimal it becomes 1.0M.
+    Adaptation of https://stackoverflow.com/a/49955617/9352077.
+    If you want something even more powerful (including for values in [-1,1]), see https://stackoverflow.com/a/71833808/9352077.
+    """
+    if base2:
+        base     = 1024
+        suffixes = ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi']
+    else:
+        base     = 1000
+        suffixes = ['', 'K', 'M', 'G', 'T', 'P']
+
+    magnitude = 0
+    while abs(number) >= base and magnitude < len(suffixes)-1:
+        number = round(number / base, round_to)
+        magnitude += 1
+    return f"{number:.{round_to}f}".rstrip("0"*trim_zeroes).rstrip(".") + suffixes[magnitude]
+
+
 def logger(msg: str):
     print("[" + time.strftime('%H:%M:%S') + "]", msg)
 

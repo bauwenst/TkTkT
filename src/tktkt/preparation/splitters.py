@@ -81,12 +81,14 @@ class PretokeniserSequence(Pretokeniser):
 
     def split(self, text: str) -> List[str]:
         current_pretokens = [text]
+        # print(current_pretokens)
         for pretokeniser in self.sequence:
             generated_pretokens = []
             for pretoken in current_pretokens:
                 generated_pretokens.extend(pretokeniser.split(pretoken))
 
             current_pretokens = generated_pretokens
+            # print("\t->", pretokeniser.getName(), "->", current_pretokens)
 
         return current_pretokens
 

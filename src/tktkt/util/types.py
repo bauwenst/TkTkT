@@ -2,7 +2,10 @@
 General new types.
 """
 from abc import abstractmethod
-from typing import Protocol, TypeVar, Iterable, Callable, Iterator
+from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union
+from datasets import Dataset, IterableDataset
+
+HuggingfaceDataset = Union[Dataset, IterableDataset]
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
