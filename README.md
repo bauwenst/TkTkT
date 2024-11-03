@@ -1,4 +1,4 @@
-# TkTkT
+# TkTkT: the ToKeniser ToolKiT
 A collection of Pythonic subword tokenisers and text preprocessing tools, with full
 backwards- *and* forwards-compatibility with HuggingFace `tokenizers`!
 
