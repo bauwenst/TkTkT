@@ -2,6 +2,10 @@
 - The KudoPiece vocabulariser apparently does not split off hyphens at train time. That's because the SentencePiecePreprocessor
   has no hyphen nor digit splitting. Either set the "separate character families" option to be true, or find a way to
   sneak in any kind of pretoken (which would be the more general approach, e.g. for morpheme pretokenisers).
+- Add as morphological tokenisation metrics: 
+  - complete token match
+  - complete affix token match
+  - complete stem token match
 - We have the quite large technical debt of having `Vocab` be a simple dictionary. It should really be an object with:
   - A name for the vocabulary, because many tokenisers have the vocabularisation algorithm as a hyperparameter. 
   - Support for special tokens *even if* they alias the subword vocabulary (because special token strings are

@@ -214,6 +214,22 @@ class AsPhonemes(TextMapper):
                 self.model.phone_dict[word] = [phone_string.split(',')[0]]
 
 
+import nlpaug
+class PerturbWithNLPAug(TextMapper):
+    """
+    Wraps any object from the NLPaug package. See the possibilities with the following imports:
+        import nlpaug.augmenter.char as nac
+        import nlpaug.augmenter.word as naw
+        import nlpaug.augmenter.sentence as nas
+    """
+
+    def __init__(self, nlp_aug: nlpaug.Augmenter):
+        self._augmenter = nlp_aug
+
+    def convert(self, text: str) -> str:
+        return self._augmenter.augment(text)
+
+
 #####################################################################
 
 

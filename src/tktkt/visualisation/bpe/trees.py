@@ -173,7 +173,7 @@ class BpeVisualiser:
         else:
             return buffer, current_mergetree_sequence
 
-    def prepareAndTokenise_visualised(self, s: str) -> Tuple[str, str]:
+    def prepareAndTokenise_visualised(self, s: str) -> Tuple[List[str], str]:
         # Run the visualiser on every pretoken in the string
         tokens = []
         trees  = []
@@ -183,7 +183,7 @@ class BpeVisualiser:
             trees.extend(new_trees)
 
         # Convert to LaTeX
-        return " ".join(tokens), r"\resizebox{\linewidth}{!}{" + "\n" + self._treesToLatex(trees) + "}"
+        return tokens, r"\resizebox{\linewidth}{!}{" + "\n" + self._treesToLatex(trees) + "}"
 
     def prepareAndTokenise_visualised_animated(self, s: str) -> Tuple[str, str]:
         """

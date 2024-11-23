@@ -65,7 +65,7 @@ class Vocab_BPE40k_Oscar30M_en(Builder_Vocab_BPE):
 
     def buildAdditionals(self):
         files = getEnglishBpeFiles()
-        return files.loadMerges()
+        return [tuple(m.split(" ")) for m in files.loadMerges()]
 
 
 class Vocab_BPE32ki_SlimPajama3M(Builder_Vocab_BPE):
@@ -159,7 +159,7 @@ class Builder_English_BPE(TokeniserBuilder[HuggingFaceTokeniser]):
         self._vocab_builder = vocab
 
     def buildTokeniser(self):
-        vocab, merges = self._vocab_builder.buildVocabulary()
+        vocab, merges = self._vocab_builder.buildVocabulary(), self._vocab_builder.buildAdditionals()
         return HuggingFaceBPETokeniser(vocab, merges, dropout=self._dropout, preprocessor=self._prep)
         # english_bpe = getEnglishBpeFiles().toFastBPE()  # HuggingFace automatically sets a ByteBased tokenizers.pretokeniser on all RobertaTokenizerFast instances, which also implicitly adds a start-of-word Ġ as replacement for spaces.
         # return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
@@ -432,11 +432,12 @@ class Builder_Switch(TokeniserBuilder[StochasticTokeniserSwitch]):
 
 class Builder_GRaMPa(TokeniserBuilder[GRaMPa]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: VocabularyBuilder, minimal_length: int, temperature: float):
+    def __init__(self, preprocessor: Preprocessor, vocab: VocabularyBuilder, minimal_length: int, temperature: float, r2l_not_l2r: bool=False):
         self._prep = preprocessor
         self._vocab = vocab
         self._temp = temperature
         self._minlen = minimal_length
+        self._r2l = r2l_not_l2r
 
     def buildTokeniser(self):
         return GRaMPa(
@@ -446,7 +447,7 @@ class Builder_GRaMPa(TokeniserBuilder[GRaMPa]):
 
             probabilities_to_probabilities=PowerNormalisation(temperature=self._temp),
             minimal_token_length=self._minlen,
-            decode_backwards=False
+            decode_backwards=self._r2l
         )
 
 

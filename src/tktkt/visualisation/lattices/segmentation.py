@@ -10,9 +10,10 @@ You can represent this lattice in multiple ways:
 
 The point of this file is NOT to create this lattice. It should have been computed elsewhere already.
 """
-from typing import List
+from typing import List, Optional
 import numpy as np
 
+from ...models.random.graph import SegmentationGraph
 from ...models.viterbi.framework import ViterbiStepScores
 from ...util.strings import indent
 
@@ -92,33 +93,47 @@ class LinearDAGToTikz:
                 # Variations on "bend left" include:
                 #   - suffixing "left" by "=NUMBERcm" to have the arc deviate from the baseline by a fixed distance
                 #   - suffixing "left" by "=NUMBER" to have the arc leave at a unit circle angle in degrees (0 to 90 make sense)
-                angle = 20 + i*min(10, (90-20)/len(valid_ks))
+                angle = 20 + i*min(10.0, (90-20)/len(valid_ks))
                 tikz += f"    ({n}) edge[bend {arc_direction}={angle}, {label_location}] node[labelstyle] " "{" + f"{round(float(score_grid.get(n,k)),2)}"*do_arc_labels + "}" f" ({n+k+1})\n"
         tikz = tikz.rstrip() + ";\n"
 
         return self._wrapWithTikzPicture(tikz)
 
-    def visualiseBackpointers(self, backpointer_lists: List[List[int]], label_lists: List[list], node_values: list, characters: str= "",
-                              do_invert_pointers: bool=False):
+    def visualisePointerGraph(self, graph: SegmentationGraph, node_values: list=None, characters: str="",
+                              do_invert_pointers: bool=False, do_alternate_arcs: bool=True, do_arc_labels: bool=True):
         """
         Generates the TikZ code to visualise a backpointer grid.
 
-        :param do_invert_pointers: Whether to interpret the backpointers as forepointers instead.
+        :param node_values: Values to put inside the graph nodes.
+        :param characters: Values to put between the graph nodes.
+        :param do_invert_pointers: Whether to invert the arcs in the graph. Note that this has nothing to do with the
+            graph consisting of backpointers versus forepointers, because the whole point of a pointer is that it POINTS
+            from somewhere to somewhere, in the correct direction.
         """
         # Sanity checks
-        assert len(backpointer_lists) == len(label_lists)
+        assert len(graph.probabilities) == len(graph.pointers)
         assert all(len(backpointer_sublist) == len(label_sublist)
-                   for backpointer_sublist, label_sublist in zip(backpointer_lists, label_lists))
+                   for backpointer_sublist, label_sublist in zip(graph.probabilities, graph.pointers))
 
-        nodes = len(backpointer_lists)
+        nodes = len(graph.pointers)
 
         tikz = self._renderNodes(number_of_nodes=nodes, node_values=node_values, inter_node_values=characters)
 
         # Arcs
+        tikz += "\\draw\n"
         for n in range(nodes):
-            backpointers_to_here = backpointer_lists[n]
-            labels_to_here   = label_lists[n]
-
-            # TODO: What now? Any code reuse possible?
+            arc_direction  =  "left" if not do_alternate_arcs or n % 2 == 0 else "right"  # "left" actually means "arc goes over" and "right" means "arc goes under".
+            label_location = "above" if not do_alternate_arcs or n % 2 == 0 else "below"
+            for i,(n2,l) in enumerate(sorted(zip(graph.pointers[n], graph.probabilities[n]))):
+                # Variations on "bend left" include:
+                #   - suffixing "left" by "=NUMBERcm" to have the arc deviate from the baseline by a fixed distance
+                #   - suffixing "left" by "=NUMBER" to have the arc leave at a unit circle angle in degrees (0 to 90 make sense)
+                angle = 20 + i*min(10.0, (90-20)/len(graph.pointers[n]))
+                l = round(float(l),2)
+                start,end = n,n2  # Pointers are always in the right direction, regardless of whether they're backpointers (start > end) or forepointers (end > start).
+                if do_invert_pointers:
+                    start,end = end,start
+                tikz += f"    ({start}) edge[bend {arc_direction}={angle}, {label_location}" + ", dotted"*(l == 0.0) + "] node[labelstyle] " + "{" + str(l)*do_arc_labels + "}" + f" ({end})\n"
+        tikz = tikz.rstrip() + ";\n"
 
         return self._wrapWithTikzPicture(tikz)

@@ -50,7 +50,7 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
 
             indices = []
             current_index = 0
-            while current_index < len(pretoken):
+            while current_index < len(pretoken):  # Not len(pretoken)-1, because len(pretoken) == len(edges)-1 and hence len(pretoken) is actually a valid index, but of the last node, which has no outbound arcs.
                 indices.append(current_index)
                 current_index = self.rng.choice(edges[current_index], p=self.renormalisation.normalise(np.array(weights[current_index])))
 

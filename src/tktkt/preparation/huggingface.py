@@ -46,7 +46,13 @@ class HuggingFacePretokeniser(Pretokeniser):
 
     @staticmethod
     def fromFullTokeniser(hf_model: PreTrainedTokenizerFast) -> "HuggingFacePretokeniser":
-        return HuggingFacePretokeniser(hf_model.backend_tokenizer.pre_tokenizer, hf_model.backend_tokenizer.decoder)
+        encoder = hf_model.backend_tokenizer.pre_tokenizer
+        decoder = hf_model.backend_tokenizer.decoder
+        if encoder is None:
+            encoder = tp.Sequence([])
+        if decoder is None:
+            decoder = td.Sequence([])
+        return HuggingFacePretokeniser(encoder, decoder)
 
 
 class HuggingFacePreprocessor(Preprocessor):

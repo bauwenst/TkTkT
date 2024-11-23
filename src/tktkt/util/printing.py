@@ -11,6 +11,23 @@ def dprint(d: dict, indent: int=0):
         print(k, ":", v)
 
 
+def rprint(d: dict, indent: int=0):
+    """
+    Recursive dictionary printing.
+    """
+    print("{")
+    for k,v in d.items():
+        print("\t"*(indent+1), end="")
+        print(k, end="")
+        print(": ", end="")
+        if isinstance(v, dict):
+            rprint(v, indent+1)
+        else:
+            print(v)
+    print("\t"*indent, end="")
+    print("}")
+
+
 def lprint(l: Iterable, indent: int=0):
     """
     Print list elements.

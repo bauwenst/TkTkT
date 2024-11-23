@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import numpy.random as npr
 
+from ...interfaces import Preprocessor, Vocab
+from ...interfaces.tokeniser import TokeniserWithVocabDict
 from ...util.strings import segmentUsingIndices
 from ...util.arrays import *
 
@@ -43,7 +45,7 @@ class ForwardGraphSampler(SegmentationGraphSampler):
     def samplePath(self, graph: SegmentationGraph) -> List[int]:
         indices = []
         current_node = 0
-        while current_node < len(graph.pointers):
+        while current_node < len(graph.pointers) - 1:  # The last node in every path is len(graph.pointers) - 1 and it has no outbound arcs.
             indices.append(current_node)
             current_node = self.rng.choice(graph.pointers[current_node], p=self.renormalisation.normalise(np.array(graph.probabilities[current_node])))
         return indices
@@ -53,7 +55,7 @@ class ForwardGraphSampler(SegmentationGraphSampler):
         probability = 1
 
         current_node = 0
-        while current_node < len(graph.pointers):
+        while current_node < len(graph.pointers) - 1:
             indices.append(current_node)
 
             local_distribution = self.renormalisation.normalise(np.array(graph.probabilities[current_node]))
@@ -69,7 +71,7 @@ class ForwardGraphSampler(SegmentationGraphSampler):
 
         token_index  = 0
         current_node = 0
-        while current_node < len(graph.pointers):
+        while current_node < len(graph.pointers) - 1:
             next_node = path[token_index]
 
             local_distribution = self.renormalisation.normalise(np.array(graph.probabilities[current_node]))
@@ -87,7 +89,7 @@ class BackwardGraphSampler(SegmentationGraphSampler):
     def samplePath(self, graph: SegmentationGraph) -> List[int]:
         indices = []
         current_node = len(graph.pointers) - 1
-        while current_node > 0:
+        while current_node > 0:  # The last node in every path is 0 and it has no outbound arcs.
             current_node = self.rng.choice(graph.pointers[current_node], p=self.renormalisation.normalise(np.array(graph.probabilities[current_node])))  # "Greedy": rather than sampling across the full segmentation, we sample across one step and commit to it without care for the future. As long as there is a path to the start, its entry in p is nonzero.
             indices.append(current_node)
         return indices[::-1]
@@ -112,7 +114,7 @@ class BackwardGraphSampler(SegmentationGraphSampler):
         probability = 1
 
         token_index  = len(path) - 1
-        current_node = len(graph.pointers)
+        current_node = len(graph.pointers) - 1
         while current_node > 0:
             next_node = path[token_index]
 
@@ -126,9 +128,10 @@ class BackwardGraphSampler(SegmentationGraphSampler):
         return probability
 
 
-class GraphTokeniser:
+class GraphTokeniser(TokeniserWithVocabDict):
 
-    def __init__(self, sampler: SegmentationGraphSampler):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, sampler: SegmentationGraphSampler):
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
         self.sampler = sampler
 
     @abstractmethod
