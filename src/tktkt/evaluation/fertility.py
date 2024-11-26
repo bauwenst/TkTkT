@@ -54,10 +54,10 @@ class InferenceFertility:
     tokens_per_word_type: float        # [1/sum_w 1] * [sum_w len(tk(w))]
     tokens_per_word_token: float       # [1/sum_w f(w)] * [sum_w f(w)*len(tk(w))]
 
-    chars_per_word_type_token_micro: float   # [sum_w len(w)]/[sum_w len(tk(w))]
-    chars_per_word_token_token_micro: float  # [sum_w f(w)*len(w)]/[sum_w f(w)*len(tk(w))]
-    chars_per_word_type_token_macro: float   # [1/sum_w 1] * [sum_w len(w)/len(tk(w))]
-    chars_per_word_token_token_macro: float  # [1/sum_w f(w)] * [sum_w f(w)*len(w)/len(tk(w))]
+    chars_per_word_type_token_micro: float   # [sum_w len(w)]/[sum_w len(tk(w))]                or "average token length in a word list"
+    chars_per_word_token_token_micro: float  # [sum_w f(w)*len(w)]/[sum_w f(w)*len(tk(w))]      or "average token length in a corpus"
+    chars_per_word_type_token_macro: float   # [1/sum_w 1] * [sum_w len(w)/len(tk(w))]          or "average CPT ratio in a word list"
+    chars_per_word_token_token_macro: float  # [1/sum_w f(w)] * [sum_w f(w)*len(w)/len(tk(w))]  or "average CPT ratio in a corpus"
 
 
 def getVocabStats(prep_and_vocab: TokeniserWithVocabDict,

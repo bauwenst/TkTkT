@@ -197,4 +197,6 @@ class KudoPieceTrainer(Vocabulariser):
 
     @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        return [typ for typ,_  in iterateTsv(file_or_folder / "spm.vocab")]
+        if file_or_folder.is_dir():
+            file_or_folder = file_or_folder / "spm.vocab"
+        return [typ for typ,_ in iterateTsv(file_or_folder)]

@@ -111,7 +111,7 @@ class BPEVocabulariser(Vocabulariser):
         PRETOKEN_REGEX     = " ?"*(self._marker.location == BoundaryMarkerLocation.START) + "[^" + PRETOKEN_SEPARATOR + "]+" + " ?"*(self._marker.location == BoundaryMarkerLocation.END)
         bytes_vocab: Dict[bytes,int] = bpeasy.train_bpe(
             iterator=streamProgress(self._preprocessSentencesToSentences(sentence_iterable, sep=PRETOKEN_SEPARATOR)).__iter__(),
-            python_regex=PRETOKEN_REGEX,  # Splitting on spaces will reveal pretokens.
+            python_regex=PRETOKEN_REGEX,  # This regex is not the regex of what to split on, but the regex of pretokens.
             vocab_size=self._size,
             max_token_length=self._maxlen
         )
@@ -214,7 +214,9 @@ class BPEVocabulariser(Vocabulariser):
         if is_wordfile:
             iterable = self._preprocessWordsToPretokens_approx(iterable)  # TODO: I wonder if SP prefixes every TSV entry with a SoW. If not, you can use the non-approximative _counter variant here too.
         else:
-            iterable = self._preprocessSentencesToSentences(iterable)
+            iterable = self._preprocessSentencesToSentences(iterable, sep="𐁝")  # We needed a separator that counts as (1) a script different from punctuation/unknown (unlike e.g. 🂠 and ⛡) that (2) won't appear in natural language (unlike e.g. あ). In sentencepiece/data/scripts.txt, there is a separate class defined for Linear B, an ancient prototypical script. We use one of the Linear B characters whose usage is not understood by archeologists.
+
+        # print(repr(next(iter(iterable))))
 
         sentencepiece.SentencePieceTrainer.Train(
             model_type="bpe",
@@ -239,23 +241,26 @@ class BPEVocabulariser(Vocabulariser):
             # shrinking_factor=self._algorithm.shrinking_factor,
             # num_sub_iterations=self._algorithm.num_sub_iterations,
 
-            vocab_size=self._size,
+            vocab_size=self._size + 1,  # SentencePiece counts specials as belonging to |V| and <unk> is a special you can't turn off.
             hard_vocab_limit=True,
             vocabulary_output_piece_score=True,
 
-            # We assume no special tokens.
-            control_symbols=DEFAULT_FIVE_SPECIALS.all_special_tokens,
+            # We assume no special tokens. This is because |V| is supposed to be the amount of units with which to represent language, not which exist in the model total.
+            control_symbols=[],
             user_defined_symbols=[],
+            bos_id=-1,
+            eos_id=-1,
+            pad_id=-1,
 
             # Preprocessing is expected to be done by one of our preprocessors.
             normalization_rule_name="identity",
-            add_dummy_prefix=True,
+            add_dummy_prefix=False,  # Similar to HF's add_prefix_space. Should not be needed.
             remove_extra_whitespaces=False,
-            split_by_unicode_script=False,
-            split_by_number=False,
-            split_by_whitespace=not is_wordfile,
-            split_digits=isinstance(self.preprocessor, SentencePiecePreprocessor),
-            allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
+            split_by_whitespace=False,  # not is_wordfile,
+            split_by_unicode_script=True,  # What this means precisely is "different Unicode scripts cannot be next to each other in a token", where numbers don't count as having any script and can be used as glue. We do this because (1) we need a way to separate pretokens and (2) realistically, nobody would ever want mixed-script tokens. The only downside is that punctuation and letters no longer appear in the same tokens, which is annoying for English contractions.
+            split_by_number=True,  # Needed because SentencePiece treats numbers as belonging to any Unicode script, so if you have digit isolation in your preprocessor, you need this so that the pretoken separator (see above) doesn't glue together multiple pretokens. And if you don't have digit isolation, the only effect will be that letter and number sequences can't be in one token, which they shouldn't anyway just like multiple scripts.
+            split_digits=False,
+            allow_whitespace_only_pieces=False  # Ironically, setting this to False means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
         )
 
         # Get vocab

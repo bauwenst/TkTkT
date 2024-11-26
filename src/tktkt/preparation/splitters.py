@@ -312,6 +312,9 @@ class IsolateDigits(Pretokeniser):
 
 
 class EnglishApostrophes(Pretokeniser):
+    """
+    Splits English contractions ('ve, 'll, 'd, 's, 're, ...) off the rest of the word.
+    """
 
     def __init__(self, do_nt=True):
         if do_nt:

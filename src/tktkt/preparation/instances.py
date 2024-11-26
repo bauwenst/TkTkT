@@ -12,6 +12,8 @@ IsolatedSpaceMarker = BoundaryMarker("[SPACE]", detached=True,  location=Boundar
 KudoSpaceMarker     = BoundaryMarker("▁",       detached=True,  location=BoundaryMarkerLocation.START)     # Kudo 2018
 RobertaSpaceMarker  = BoundaryMarker("Ġ",       detached=True,  location=BoundaryMarkerLocation.START)     # Radford 2019
 NoSpaceMarker       = BoundaryMarker("",        detached=False, location=BoundaryMarkerLocation.START)
+PrefixWhitespaceAsMarker = BoundaryMarker(" ",  detached=True,  location=BoundaryMarkerLocation.START)
+SuffixWhitespaceAsMarker = BoundaryMarker(" ",  detached=True,  location=BoundaryMarkerLocation.END)
 
 IdentityPreprocessor = Preprocessor(IdentityMapper(), IdentityMapper(), IdentityPretokeniser())
 
@@ -185,9 +187,35 @@ class SentencePiecePreprocessor(ModernEnglishPreprocessor):
     of them by its own boundary marker. Hence, you want a preprocessor that does not split into finer pretokens than possible given
     that all pretokens will receive a boundary marker.
 
-    TODO: Wondering what to do with the marker substitute.
+    TODO: Wondering what to do with the 'substitute' field of the marker, since SP has its own "_" substitute.
     """
     def __init__(self, marker: BoundaryMarker, prefix_space_already_added: bool=False, truncate_text_after_chars: int=1_000_000):
         super().__init__(marker, truncate_text_after_chars)
-        self.splitter = ModernEnglishPretokeniser(BoundaryMarker(substitute=" ", detached=True, location=marker.location) if not prefix_space_already_added else BoundaryMarker("", detached=True, location=BoundaryMarkerLocation.START),  # Empty dummy marker.
+        self.splitter = ModernEnglishPretokeniser(NoSpaceMarker if prefix_space_already_added else BoundaryMarker(substitute=" ", detached=True, location=marker.location),  # Empty dummy marker.
                                                   do_split_after_placing_boundaries=False)
+
+
+class ModernEnglishPretokeniser_SentencePieceCompatible(PretokeniserSequence):
+    """
+    Variant that is better suited for training with the SentencePiece package, which has two pretokenisation constraints
+    to take into account (similar to the constraints taken into account for the byte-compatible preprocessor):
+        - All spaces are converted to a "_" boundary marker, so the boundary marker added by the preprocessor must be a space.
+        - The byte mapping must be such that all non-ASCII pseudo-byte characters, i.e. the characters that don't represent
+          themselves but represent bytes of larger characters, can be grouped into one token, which is only possible when
+          they belong to the same Unicode script. This is not the case for the HuggingFace pseudo-byte mapping, which includes
+          characters like ½ and ÷.
+    """
+    def __init__(self, marker_location: BoundaryMarkerLocation):
+        super().__init__([
+            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+            WhitespacePretokeniser(destructive=True),  # Remove all spaces
+            EnglishApostrophes(do_nt=True),
+
+            AddWordBoundary(BoundaryMarker(substitute=" ", detached=True, location=marker_location)),  # Add space as marker
+
+            PunctuationPretokeniser(HyphenMode.ONLY),
+            IsolateDigits(),
+            MapperAsPretokeniser(LatinPseudoByteMapping()),  # Space markers become Ġ
+
+            MapperAsPretokeniser(Replace("Ġ", " "))  # Ġ becomes space and SentencePiece will convert that into _
+        ])

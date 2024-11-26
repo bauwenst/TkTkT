@@ -151,15 +151,16 @@ def detectBoundaryMarkerFromVocabulary(vocab: Vocab, threshold: float=0.5) -> Bo
 
 class Builder_English_BPE(TokeniserBuilder[HuggingFaceTokeniser]):
     def __init__(self, preprocessor: Preprocessor=None, dropout: float=0.0, vocab: Builder_Vocab_BPE=Vocab_BPE40k_Oscar30M_en()):
-        if preprocessor is None:
-            preprocessor = ModernEnglishPreprocessor(marker=detectBoundaryMarkerFromVocabulary(vocab.buildVocabulary()))
-
         self._prep = preprocessor
         self._dropout = dropout
         self._vocab_builder = vocab
 
     def buildTokeniser(self):
-        vocab, merges = self._vocab_builder.buildVocabulary(), self._vocab_builder.buildAdditionals()
+        vocab = self._vocab_builder.buildVocabulary()
+        if self._prep is None:
+            self._prep = ModernEnglishPreprocessor(marker=detectBoundaryMarkerFromVocabulary(vocab))
+
+        merges = self._vocab_builder.buildAdditionals()
         return HuggingFaceBPETokeniser(vocab, merges, dropout=self._dropout, preprocessor=self._prep)
         # english_bpe = getEnglishBpeFiles().toFastBPE()  # HuggingFace automatically sets a ByteBased tokenizers.pretokeniser on all RobertaTokenizerFast instances, which also implicitly adds a start-of-word Ġ as replacement for spaces.
         # return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
@@ -213,19 +214,20 @@ class Builder_English_KudoPiece(TokeniserBuilder[KudoPieceTokeniser]):
     """
 
     def __init__(self, preprocessor: Preprocessor=None, vocab: Builder_Vocab_KudoPiece=Vocab_KudoPiece32ki_SlimPajama3M(), kbest: int=64, alpha: float=1.0):
-        if preprocessor is None:
-            preprocessor = SentencePiecePreprocessor(marker=detectBoundaryMarkerFromVocabulary(vocab.buildVocabulary()), prefix_space_already_added=True)  # Marker is only used for its location. I fucked up and set add_prefix to True when training the tokeniser, and now that option is baked into the .model file LMAO.
-
         self._prep = preprocessor
         self._vocab = vocab
         self._kbest = kbest
         self._alpha = alpha
 
     def buildTokeniser(self):
+        vocab = self._vocab.buildVocabulary()
+        if self._prep is None:
+            self._prep = SentencePiecePreprocessor(marker=detectBoundaryMarkerFromVocabulary(vocab), prefix_space_already_added=True)  # Marker is only used for its location. I fucked up and set add_prefix to True when training the tokeniser, and now that option is baked into the .model file LMAO.
+
         return KudoPieceTokeniser(
             preprocessor=self._prep,
             model_file=self._vocab.buildAdditionals(),
-            vocab=self._vocab.buildVocabulary(),
+            vocab=vocab,
 
             kbest=self._kbest,
             smoothing_power=self._alpha

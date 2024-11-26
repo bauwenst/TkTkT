@@ -27,7 +27,7 @@ class VocabularyBuilder(Generic[A], ABC):
         self._specials = specials
 
     @abstractmethod
-    def buildVocabulary(self) -> Vocab:
+    def buildVocabulary(self) -> Vocab:  # TODO: We may want to cache this.
         pass
 
     @abstractmethod

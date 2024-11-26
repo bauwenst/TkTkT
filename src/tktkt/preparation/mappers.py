@@ -5,6 +5,7 @@ from collections import OrderedDict
 import re
 import regex
 import requests
+import unicodedata
 
 from ..util.dicts import invertdict, insertKeyAlias
 
@@ -303,17 +304,27 @@ class MorphoChallengeCapitals(InvertibleMapperSequence):
         ])
 
 
-class PseudoByteMapping(InvertibleTextMapper):
+class ByteMapping(InvertibleTextMapper):
     """
     Converts each character to its UTF-8 encoding's "pseudo-bytes", which are themselves characters that each represent
     a unique byte, even though they in turn don't necessarily have any relationship to that byte.
     """
+
+    BYTE_TO_PSEUDO: Dict[int,str] = dict()
+    PSEUDO_TO_BYTE: Dict[str,int] = dict()
+    SPACING_BYTES = [9, 10, 13, 32]
 
     def convert(self, text: str) -> str:
         return "".join(map(self.BYTE_TO_PSEUDO.get, text.encode("utf-8")))
 
     def invert(self, text: str) -> str:
         return bytes(map(self.PSEUDO_TO_BYTE.get, text)).decode("utf-8", errors="replace")
+
+
+class PseudoByteMapping(ByteMapping):
+    """
+    Re-implements GPT-2's pseudo-byte mapping found at `transformers.models.gpt2.tokenization_gpt2.bytes_to_unicode`.
+    """
 
     @staticmethod
     def bytes_to_unicode_documented() -> Dict[int, str]:
@@ -375,4 +386,46 @@ class PseudoByteMapping(InvertibleTextMapper):
 
     BYTE_TO_PSEUDO = bytes_to_unicode_softcoded()
     PSEUDO_TO_BYTE = insertKeyAlias(invertdict(BYTE_TO_PSEUDO), existing_key="Ġ", alias_key=" ")  # Map spaces (which technically shouldn't be in encoded input) to the byte that G maps to.
-    SPACING_BYTES = [9, 10, 13, 32]
+
+
+class LatinPseudoByteMapping(ByteMapping):
+    """
+    Like PseudoByteMapping, except for every pseudo-byte character that is NOT a Latin letter, you check:
+    "Should what this represents (which can be either an ASCII character or a UTF-8 control byte) be groupable with any other byte?"
+        - If it's a UTF-8 control byte, the answer is always yes and you should remap it. This is true for
+          bytes 161-172, bytes 174-191, byte 215, and byte 247.
+        - If it's an ASCII character, the answer is no for two classes:
+            - Punctuation, EXCEPT for apostrophes, hyphens and underscores, which have some use for being grouped with letters if the user preprocesses their text such to make that available.
+            - Bytes 0-32 and byte 127, which are control symbols (but these are never checked anyway because their pseudo-byte character IS a Latin letter).
+    """
+
+    @staticmethod
+    def bytes_to_unicode() -> Dict[int,str]:
+        LATINISED_PUNCTUATIONS = {"-", "'", "_"}
+
+        mapping = PseudoByteMapping.bytes_to_unicode_softcoded()
+        remaps = dict()
+        offset = max(map(ord, mapping.values())) - 256 + 1  # offset value that hasn't been used yet.
+        for byte,pseudo in mapping.items():
+            pseudo_cat = unicodedata.category(pseudo)
+            try:
+                original_cat = unicodedata.category(bytes([byte]).decode("utf-8"))
+            except:
+                original_cat = ""
+
+            # Remap if you're punctuation that isn't originally punctuation, or if it is, when it is requested that you do.
+            if pseudo_cat == "Lo" or pseudo_cat == "No" or (
+                    (pseudo_cat.startswith("S") or pseudo_cat.startswith("P")) and (
+                            not(original_cat.startswith("P") or original_cat.startswith("S")) or
+                            pseudo in LATINISED_PUNCTUATIONS
+                    )
+            ) or pseudo == "µ":  # µ is called "MICRO SIGN" and is a special exception.
+                while not unicodedata.category(chr(256 + offset)).startswith("L"):  # Technically the L range has some bad characters, but not in the 128.
+                    offset += 1
+                remaps[byte] = chr(256 + offset)
+                offset += 1
+
+        return mapping | remaps
+
+    BYTE_TO_PSEUDO = bytes_to_unicode()
+    PSEUDO_TO_BYTE = insertKeyAlias(invertdict(BYTE_TO_PSEUDO), existing_key="Ġ", alias_key=" ")  # Map spaces (which technically shouldn't be in encoded input) to the byte that G maps to.

@@ -53,9 +53,10 @@ class Timer:
         self.t = time.perf_counter()
         return delta
 
-    def soFar(self):
+    def soFar(self, echo=False):
         total = round(time.perf_counter() - self.s, 5)
-        print(f"    [Total runtime of {total} seconds.]")
+        if echo:
+            print(f"    [Total runtime of {total} seconds.]")
         return total
 
     def lapCount(self):
