@@ -78,10 +78,11 @@ def drop(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
 
 
 def take(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
-    for i, thing in enumerate(iterable):
-        if i >= n:
-            break
-        yield thing
+    if n > 0:
+        for i, thing in enumerate(iterable):
+            yield thing
+            if i+1 == n:
+                break
 
 
 def streamPrint(iterable: Iterable[T]) -> Iterable[T]:
