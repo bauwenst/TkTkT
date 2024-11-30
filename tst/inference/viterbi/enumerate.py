@@ -1,4 +1,4 @@
-from tktkt.builders.english import getEnglishBpeFiles
+from tktkt.factories.deserialisation import getEnglishBpeFiles
 from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
 from tktkt.preparation.huggingface import HuggingFacePreprocessorForWords
 from tktkt.util.strings import segmentUsingIndices

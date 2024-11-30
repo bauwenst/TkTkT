@@ -2,13 +2,13 @@
 TODO: Find Valentin's hand-crafted list of prefixes and suffixes.
 FIXME: Definitely needs special handling for handling SoW/EoW in the base tokeniser.
 """
-from typing import Iterable, List, Type
+from typing import Iterable, Type
 from pathlib import Path
 
-from .segmentation import EnglishDerivator, Derivator
-from ...interfaces.tokeniser import TokeniserWithFiniteIdRange, TokeniserWithFiniteTypeDomain
+from .segmentation import Derivator
+from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain
 from ...util.timing import datetimeDashed
-from ...files.paths import TkTkTPaths
+from ...paths import TkTkTPaths
 
 FILESTEM_PREFICES = "prefices"
 FILESTEM_SUFFICES = "suffices"

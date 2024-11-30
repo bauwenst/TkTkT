@@ -58,18 +58,18 @@ def makeBPE3():
 
 def makeBPE4():
     """
-    And lastly, you can just use a builder.
+    And lastly, you can just use a factory.
     """
-    from tktkt.builders.english import Builder_English_BPE
-    return Builder_English_BPE().buildTokeniser()
+    from tktkt.factories.tokenisers import Factory_BPE
+    return Factory_BPE().buildTokeniser()
 
 
 def makeBPEknockout():
     """
     All the visualisation code also works for BPE-knockout, since it runs on the exact same backend.
     """
-    from tktkt.builders.english import Builder_English_BPEKnockout
-    return Builder_English_BPEKnockout().buildTokeniser()
+    from tktkt.factories.tokenisers import Factory_BPEKnockout
+    return Factory_BPEKnockout().buildTokeniser()
 
 
 if __name__ == "__main__":

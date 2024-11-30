@@ -9,7 +9,7 @@ from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 from modest.interfaces.morphologies import MorphologyVisitor, WordSegmentation, MorphSplit, FreeMorphSplit
 
 from ..util.printing import wprint
-from ..files.paths import TkTkTPaths
+from ..paths import TkTkTPaths
 from ..interfaces.tokeniser import Tokeniser, TokeniserWithFiniteIdRange
 
 

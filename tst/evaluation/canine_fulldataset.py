@@ -9,9 +9,9 @@ FIXME: This entire file should really be replaced by an evaluation-only LaMoTO s
 """
 from tst.preamble import *
 
-from lamoto.trainer.hyperparameters import *
+from lamoto.training.auxiliary.hyperparameters import *
 from lamoto.tasks.mbr import MBR, SUGGESTED_HYPERPARAMETERS_MBR
-from tktkt.builders.english import getEnglishCANINE
+from tktkt.factories.deserialisation import getEnglishCANINE
 
 # Model setup  TODO: I wonder how we can support loading completely custom models in LaMoTO.
 wrapper = getEnglishCANINE()
@@ -21,7 +21,7 @@ model.to("cuda")
 # Hyperparameters
 hp = SUGGESTED_HYPERPARAMETERS_MBR
 hp.TOKENISER = wrapper.characters_to_modelinput
-hp.HARD_STOPPING_CONDITION = AfterNEpochs(epochs=0, effective_batch_size=SUGGESTED_HYPERPARAMETERS_MBR.EXAMPLES_PER_EFFECTIVE_BATCH)
+hp.HARD_STOPPING_CONDITION = AfterNEpochs(epochs=0)
 
 # "Train", which is just an evaluation.
 mbr = MBR(dataset_out_of_context=True)

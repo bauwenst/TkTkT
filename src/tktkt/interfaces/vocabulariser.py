@@ -3,12 +3,11 @@ from typing import Dict, Callable, Iterable, Tuple, Optional, Union, List
 from pathlib import Path
 from collections import Counter
 
-from datasets.arrow_dataset import DatasetInfoMixin
 from transformers import SpecialTokensMixin
 from modest.formats.tsv import iterateTsv
 
 from .preparation import Preprocessor
-from ..files.paths import TkTkTPaths
+from ..paths import TkTkTPaths
 from ..util.timing import datetimeDashed
 from ..util.types import Comparable, NamedIterable, HuggingfaceDataset
 from ..util.iterables import streamProgress

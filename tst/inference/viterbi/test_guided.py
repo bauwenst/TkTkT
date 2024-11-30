@@ -4,11 +4,11 @@ from typing import Optional
 
 from tktkt.models.viterbi import *
 from tktkt.preparation.instances import RobertaPreprocessor, IdentityPreprocessor
-from tktkt.builders.english import Builder_English_BoMMaSum_BPE, getEnglishBpeFiles
+from tktkt.factories.tokenisers import Factory_BoMMaSum_BPE, getEnglishBpeFiles
 from tktkt.interfaces.tokeniser import Vocab, Preprocessor
 
 
-canine_viterbi = Builder_English_BoMMaSum_BPE().buildTokeniser()
+canine_viterbi = Factory_BoMMaSum_BPE().buildTokeniser()
 classifier: CharacterClassifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
 vocab = getEnglishBpeFiles().loadVocabulary()  # Determines how you should format the below example.
@@ -24,6 +24,8 @@ class PrototypingViterbi(ViterbiTokeniser):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int]):
         max_step = max_step or max(len(t) for t in vocab)
+        generator = BoundaryPrefixAndSuffixLengthExtended(punishment=0)
+        generator.setBackend(classifier)
         super().__init__(preprocessor, max_step, objectives=[
             ViterbiObjective(
                 # initial_score=1,
@@ -31,7 +33,7 @@ class PrototypingViterbi(ViterbiTokeniser):
                 #                                           vocab, reset_value=-INFTY),
                 # score_combiner=ScoreProduct()
                 initial_score=0,
-                score_generator=BoundaryPrefixAndSuffixExtendedAll(classifier, punishment=0),
+                score_generator=generator,
                 score_combiner=ScoreSum()
             ),
             ViterbiObjective(

@@ -1,8 +1,6 @@
-from tst.preamble import *
-
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
 from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
-from tktkt.files.paths import TkTkTPaths
+from tktkt.paths import TkTkTPaths
 
 prep = Preprocessor(IdentityMapper(), AppendSpace(front_not_back=True), IdentityPretokeniser())
 tk = KudoPieceTokeniser(prep, TkTkTPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_2024-02-27_16-09-37.model")

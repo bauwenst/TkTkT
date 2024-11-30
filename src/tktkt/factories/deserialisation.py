@@ -1,6 +1,6 @@
 from pathlib import Path
-from abc import ABC, abstractmethod
-from typing import Union, List, Dict
+from abc import abstractmethod
+from typing import Dict
 
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
@@ -9,13 +9,14 @@ from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerF
 from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, defaultTokeniserFiles
 from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath, SennrichTokeniserPath
 
-from ..interfaces.vocabulariser import Vocab, DEFAULT_FIVE_SPECIALS
+from ..interfaces.vocabulariser import Vocab
+from ..interfaces.factories import Deserialiser
 from ..models.bpe.vocabularisation import BPEVocabulariser, Merges
 from ..models.kudopiece.vocabularisation import KudoPieceTrainer
 from ..models.viterbi import HuggingFaceForBinaryCharacterClassification
 from ..preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ..util.trie import PrefixTrie, SuffixTrie
-from .paths import relativeToCwd, TkTkTPaths
+from ..paths import relativeToCwd, TkTkTPaths
 
 
 # TODO: Eventually, this should become a HF checkpoint.
@@ -42,39 +43,13 @@ def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
     )
 
 
-class VocabularyLoader(ABC):
-    """
-    Object that loads a specific instance of vocabularisation results stored to disk.
-
-    Note that it is vocabularisers that already have the knowledge of how to store to disk (and therefore also how to
-    load from disk), except when the file format exists somewhere out there but TkTkT doesn't support that training paradigm.
-
-    Vocabularisers represent an algorithm and file format, e.g. BPE in Sennrich format.
-    VocabularyLoaders represent the result of an algorithm and file content, e.g. the BPE vocab and merges resulting from
-    applying BPE with |V| = 32k to SlimPajama's first 3M examples.
-    """
-
-    def __init__(self, specials: Union[Vocab,List[str]]=DEFAULT_FIVE_SPECIALS.all_special_tokens):
-        self._specials = specials
-        self._vocab_cache = None
-
-    def buildVocabulary(self) -> Vocab:
-        if self._vocab_cache is None:
-            self._vocab_cache = self._buildVocabulary()
-        return self._vocab_cache
-
-    @abstractmethod
-    def _buildVocabulary(self) -> Vocab:
-        pass
-
-
-class BPE_VocabLoader(VocabularyLoader):
+class BPE_Deserialiser(Deserialiser):
     @abstractmethod
     def buildMerges(self) -> Merges:
         pass
 
 
-class Vocab_BPE40k_Oscar30M_en(BPE_VocabLoader):
+class BPE40k_Oscar30M_en(BPE_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
         files = getEnglishBpeFiles()
         assert isinstance(files, SennrichTokeniserPath)
@@ -85,7 +60,7 @@ class Vocab_BPE40k_Oscar30M_en(BPE_VocabLoader):
         return [tuple(m.split(" ")) for m in files.loadMerges()]
 
 
-class Vocab_BPE32ki_SlimPajama3M(BPE_VocabLoader):
+class BPE32ki_SlimPajama3M(BPE_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="vocab.json"))
         return BPEVocabulariser.load(file_or_folder=downloaded_vocab, existing_types=self._specials)
@@ -95,7 +70,7 @@ class Vocab_BPE32ki_SlimPajama3M(BPE_VocabLoader):
         return BPEVocabulariser.loadMerges(file_or_folder=downloaded_merges)
 
 
-class KudoPiece_VocabLoader(VocabularyLoader):
+class KudoPiece_Deserialiser(Deserialiser):
     @abstractmethod
     def getVocabFile(self) -> Path:
         pass
@@ -109,7 +84,7 @@ class KudoPiece_VocabLoader(VocabularyLoader):
         return out
 
 
-class Vocab_KudoPiece30k_BooksWiki_en(KudoPiece_VocabLoader):
+class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
         return AutoTokenizer.from_pretrained("albert/albert-base-v2").get_vocab()
 
@@ -117,7 +92,7 @@ class Vocab_KudoPiece30k_BooksWiki_en(KudoPiece_VocabLoader):
         return Path(hf_hub_download(repo_id="albert/albert-base-v2", filename="spiece.model"))
 
 
-class Vocab_KudoPiece32ki_SlimPajama3M(KudoPiece_VocabLoader):
+class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.vocab"))
         return KudoPieceTrainer.load(file_or_folder=downloaded_vocab, existing_types=self._specials)

@@ -23,12 +23,12 @@ TODO: There are two issues with our CANINE evaluation.
 """
 import json
 
-from tktkt.builders.english import *
+from tktkt.factories.tokenisers import *
 from tktkt.util.timing import datetimeDashed
 from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.viterbi.objectives_guided import *
 from tktkt.models.viterbi.objectives_postprocessors import *
-from tktkt.files.paths import TkTkTPaths
+from tktkt.paths import TkTkTPaths
 
 from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
@@ -67,19 +67,19 @@ def evaluateTokenisers(tokenisers: Iterable[Tokeniser]):
 
 def constructTokenisers():
     return [
-        Builder_English_KudoPiece(),
-        Builder_English_BoMMaSum_BPE(),
-        Builder_English_LeastToken_ULM(),
-        Builder_English_LeastTokenThenProbability_ULM(),
+        Factory_KudoPiece(),
+        Factory_BoMMaSum_BPE(),
+        Factory_LeastToken_ULM(),
+        Factory_LeastTokenThenProbability_ULM(),
     ]
 
 
 def constructTokenisers_BPE():  # 43, 45.9, 53.2, 52.4
     return [
-        Builder_English_BPE(),                    # Worst
-        Builder_English_LeastToken_BPE(),         # Better by +1%
-        Builder_English_BPEKnockout(),            # Best (+10% Pr, +25% Re)
-        Builder_English_LeastToken_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
+        Factory_BPE(),                    # Worst
+        Factory_LeastToken_BPE(),         # Better by +1%
+        Factory_BPEKnockout(),            # Best (+10% Pr, +25% Re)
+        Factory_LeastToken_BPEKnockout()  # Second-best (+9% Pr, +17% Re). So, surprisingly, the gain from going from BPE to Viterbi-BPE is much smaller than the loss for going from BPE-knockout to Viterbi-BPE-knockout
     ]
 
 
@@ -91,7 +91,7 @@ def constructTokenisers_boundaryScores():
 
     for g in generators:
         for t in transforms:
-            yield Builder_English_BoMMaSum_FromTransform_ULM(g, t, VocabularyConstraintExact)
+            yield Factory_BoMMaSum_FromTransform_ULM(g, t, VocabularyConstraintExact)
 
 
 def constructTokenisers_boundaryScorePunishments():
@@ -102,13 +102,13 @@ def constructTokenisers_boundaryScorePunishments():
     for low in lower_bounds:
         for t in transforms:
             for g in generators:
-                yield Builder_English_BoMMaSum_FromTransform_ULM(g, t(low, +1), VocabularyConstraintExact)
+                yield Factory_BoMMaSum_FromTransform_ULM(g, t(low, +1), VocabularyConstraintExact)
 
 
 def constructTokenisers_boundaryScoreLog():
     generators = [BoundaryScoresChosen, BoundaryScoresAll]
     for g in generators:
-        yield Builder_English_BoMMaSum_FromTransform_ULM(g, LogPT(), VocabularyConstraintExact)
+        yield Factory_BoMMaSum_FromTransform_ULM(g, LogPT(), VocabularyConstraintExact)
 
 
 def constructTokenisers_hardBoundaryViterbi():
@@ -131,13 +131,13 @@ def constructTokenisers_hardBoundaryViterbi():
             for p in punishments:
                 for n in normalisation:
                     g = gc(punishment=p, do_normalise=n)
-                    yield Builder_English_BoMMaSum_ULM(g, cc)
+                    yield Factory_BoMMaSum_ULM(g, cc)
 
 
 def constructTokenisers_suffixPunishments():
     punishments = [-0.5, -1, -1.5, -2, -2.5, -3, -3.5, -4, -4.5, -5, -5.5, -6, -6.5, -7, -7.5]
     for p in punishments:
-        yield Builder_English_BoMMaSum_ULM(
+        yield Factory_BoMMaSum_ULM(
             BoundarySuffixLength(punishment=p, do_normalise=True),
             VocabularyConstraintExact
         )
@@ -145,35 +145,35 @@ def constructTokenisers_suffixPunishments():
 
 def constructTokenisers_leasttoken():
     return [
-        Builder_English_LeastToken_ULM(),
-        Builder_English_LeastTokenThenProbability_ULM(),
-        Builder_English_ProbabilityThenLeastToken_ULM(),
+        Factory_LeastToken_ULM(),
+        Factory_LeastTokenThenProbability_ULM(),
+        Factory_ProbabilityThenLeastToken_ULM(),
     ]
 
 
 def constructTokenisers_dropout():
     return [
-        Builder_English_CanineBPEdropout(None),
-        Builder_English_CanineBPEdropout(0.5),
-        Builder_English_CanineBPEdropout(0.4),
-        Builder_English_CanineBPEdropout(0.3),
-        Builder_English_CanineBPEdropout(0.2),
-        Builder_English_CanineBPEdropout(0.1)
+        Factory_CanineBPEdropout(None),
+        Factory_CanineBPEdropout(0.5),
+        Factory_CanineBPEdropout(0.4),
+        Factory_CanineBPEdropout(0.3),
+        Factory_CanineBPEdropout(0.2),
+        Factory_CanineBPEdropout(0.1)
     ]
 
 
 def constructTokenisers_multiplicativeProbabilities():
     for scale in [0.25, 0.5, 0.75, 1.0, 1.1, 1.25]:
-        yield Builder_English_BoMMaProduct_ULM(PowerMBPT(power=1, scale=scale))
-    yield Builder_English_BoMMaProduct_ULM(DoublingMBPT())
+        yield Factory_BoMMaProduct_ULM(PowerMBPT(power=1, scale=scale))
+    yield Factory_BoMMaProduct_ULM(DoublingMBPT())
 
 
 def constructTokenisers_reBPE():
     for its in [1,2,3,4,5]:
-        yield Builder_English_ReBPE(iterations=its)
+        yield Factory_ReBPE(iterations=its)
 
 
 if __name__ == "__main__":
-    tokeniser_builders = constructTokenisers_suffixPunishments()
+    tokeniser_factories = constructTokenisers_suffixPunishments()
     ###
-    evaluateTokenisers(builder.buildTokeniser() for builder in tokeniser_builders)
+    evaluateTokenisers(f.buildTokeniser() for f in tokeniser_factories)
