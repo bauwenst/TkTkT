@@ -148,7 +148,7 @@ class Vocabulariser(ABC):
         return self._vocabulariseFromWords(NamedIterable(word_frequency_counter.items(), name=""))
 
     def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]]) -> Path:
-        return self._vocabulariseFromSentences(string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name=""))
+        return self._vocabulariseFromSentences(string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name="[unnamed]"))
 
     def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str) -> Path:
         return self._vocabulariseFromSentences(

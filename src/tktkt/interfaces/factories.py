@@ -48,5 +48,12 @@ class Deserialiser(ABC):
     def _buildVocabulary(self) -> Vocab:
         pass
 
+    @abstractmethod
     def preprocessor(self) -> Preprocessor:
+        """
+        The preprocessor that creates pretokens that can be tokenised into tokens of this vocabulary.
+        If the vocabulariser had no built-in preprocessor, then this matches the preprocessor used during vocabularisation.
+        This is e.g. not the case for packages like SentencePiece where spaces are converted into underscores after the
+        TkTkT preprocessor has finished its work.
+        """
         pass

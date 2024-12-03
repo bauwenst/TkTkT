@@ -28,7 +28,7 @@ class Factory_BPE(TokeniserFactory[HuggingFaceTokeniser]):
     def buildTokeniser(self):
         vocab = self._files.buildVocabulary()
         if self._prep is None:
-            self._prep = ModernEnglishPreprocessor(marker=detectBoundaryMarkerFromVocabulary(vocab))
+            self._prep = self._files.preprocessor()
 
         merges = self._files.buildMerges()
         return HuggingFaceBPETokeniser(vocab, merges, dropout=self._dropout, preprocessor=self._prep)
@@ -92,11 +92,11 @@ class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser]):
     def buildTokeniser(self):
         vocab = self._files.buildVocabulary()
         if self._prep is None:
-            self._prep = SentencePiecePreprocessor(marker=detectBoundaryMarkerFromVocabulary(vocab), prefix_space_already_added=True)  # Marker is only used for its location. I fucked up and set add_prefix to True when training the tokeniser, and now that option is baked into the .model file LMAO.
+            self._prep = self._files.preprocessorForSentencePieceInference()
 
         return KudoPieceTokeniser(
             preprocessor=self._prep,
-            model_file=self._files.getVocabFile(),
+            model_file=self._files.getModelFile(),
             vocab=vocab,
 
             kbest=self._kbest,

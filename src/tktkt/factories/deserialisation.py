@@ -5,6 +5,7 @@ from typing import Dict
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
 from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
+import json
 
 from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, defaultTokeniserFiles
 from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath, SennrichTokeniserPath
@@ -12,9 +13,9 @@ from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath, Sennric
 from ..interfaces.vocabulariser import Vocab
 from ..interfaces.factories import Deserialiser
 from ..models.bpe.vocabularisation import BPEVocabulariser, Merges
-from ..models.kudopiece.vocabularisation import KudoPieceTrainer
+from ..models.kudopiece.vocabularisation import KudoPieceVocabulariser
 from ..models.viterbi import HuggingFaceForBinaryCharacterClassification
-from ..preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
+from ..preparation.instances import *
 from ..util.trie import PrefixTrie, SuffixTrie
 from ..paths import relativeToCwd, TkTkTPaths
 
@@ -59,6 +60,11 @@ class BPE40k_Oscar30M_en(BPE_Deserialiser):
         files = getEnglishBpeFiles()
         return [tuple(m.split(" ")) for m in files.loadMerges()]
 
+    def preprocessor(self) -> Preprocessor:
+        return Preprocessor(
+            splitter=BoundariesFromSpacesPretokeniser(marker=RobertaSpaceMarker, byte_based=True)
+        )
+
 
 class BPE32ki_SlimPajama3M(BPE_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
@@ -69,36 +75,78 @@ class BPE32ki_SlimPajama3M(BPE_Deserialiser):
         downloaded_merges = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="merges.txt"))
         return BPEVocabulariser.loadMerges(file_or_folder=downloaded_merges)
 
+    def preprocessor(self) -> Preprocessor:
+        return ModernEnglishPreprocessor(marker=RobertaSpaceMarker)
+
 
 class KudoPiece_Deserialiser(Deserialiser):
     @abstractmethod
-    def getVocabFile(self) -> Path:
+    def getModelFile(self) -> Path:
         pass
 
+    @abstractmethod
     def loadProbabilities(self) -> Dict[str,float]:
-        out = dict()
-        with open(self.getVocabFile(), "r", encoding="utf-8") as handle:
-            for line in handle:
-                typ,prob = line.rstrip().split("\t")
-                out[typ] = float(prob)
-        return out
+        pass
+
+    @abstractmethod
+    def preprocessorForSentencePieceInference(self) -> Preprocessor:
+        """
+        The preprocessor to use when you are using this vocabulary's SentencePiece binary.
+        For example, if that binary adds a space to every input, then you should not add a space like you otherwise would.
+        """
+        pass
 
 
 class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
         return AutoTokenizer.from_pretrained("albert/albert-base-v2").get_vocab()
 
-    def getVocabFile(self) -> Path:
+    def loadProbabilities(self) -> Dict[str,float]:
+        tokeniser_path = Path(hf_hub_download(repo_id="albert/albert-base-v2", filename="tokenizer.json"))
+
+        out = dict()
+        with open(tokeniser_path, "r", encoding="utf-8") as handle:
+            d = json.load(handle)
+            for typ, prob in d["model"]["vocab"]:
+                out[typ] = float(prob)
+        return out
+
+    def getModelFile(self) -> Path:
         return Path(hf_hub_download(repo_id="albert/albert-base-v2", filename="spiece.model"))
+
+    def preprocessorForSentencePieceInference(self) -> Preprocessor:
+        return IdentityPreprocessor  # The Albert tokeniser probably has all its preprocessing baked into the spiece.model.
+
+    def preprocessor(self) -> Preprocessor:
+        preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=False)
+        preprocessor.splitter = PretokeniserSequence([
+            preprocessor.splitter,
+            MapperAsPretokeniser(ReplaceBoundary(" ", KudoSpaceMarker))
+        ])
+        return preprocessor
 
 
 class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.vocab"))
-        return KudoPieceTrainer.load(file_or_folder=downloaded_vocab, existing_types=self._specials)
+        return KudoPieceVocabulariser.load(file_or_folder=downloaded_vocab, existing_types=self._specials)
 
-    def getVocabFile(self) -> Path:
+    def getModelFile(self) -> Path:
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.model"))
+
+    def preprocessorForSentencePieceInference(self) -> Preprocessor:
+        return SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=True)  # E.g. say our preprocessor could produce a string "New York", will be sent to the tokeniser as "New York", which will turn it into " New York" and turn that into "_New_York".
+
+    def preprocessor(self) -> Preprocessor:
+        preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=False)
+        preprocessor.splitter = PretokeniserSequence([
+            preprocessor.splitter,
+            MapperAsPretokeniser(ReplaceBoundary(" ", KudoSpaceMarker))
+        ])
+        return preprocessor
+
+
+########################################################################################################################
 
 
 def detectBoundaryMarkerFromVocabulary(vocab: Vocab, threshold: float=0.5) -> BoundaryMarker:

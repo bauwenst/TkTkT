@@ -1,5 +1,4 @@
-from abc import ABC, abstractmethod
-from typing import List, Iterable, Dict, Union
+from typing import List, Iterable, Dict, Union, Set, Optional
 from collections import OrderedDict
 
 import re
@@ -7,31 +6,12 @@ import regex
 import requests
 import unicodedata
 
+from .boundaries import BoundaryMarker
+from ..interfaces.preparation import TextMapper, InvertibleTextMapper, Pretokeniser, FiniteCharacterSet, _PreprocessorComponentSequence
 from ..util.dicts import invertdict, insertKeyAlias
 
 
-class TextMapper(ABC):
-    """
-    Turns one string into another string. By default, this is not invertible.
-    """
-    @abstractmethod
-    def convert(self, text: str) -> str:
-        pass
-
-
-class InvertibleTextMapper(TextMapper):
-    """
-    Turns one string into another string and can deduce the original from the result.
-    """
-    @abstractmethod
-    def invert(self, text: str) -> str:
-        pass
-
-
-#####################################################################
-
-
-class MapperSequence(TextMapper):
+class MapperSequence(TextMapper, _PreprocessorComponentSequence):
 
     def __init__(self, submappers: List[TextMapper]):
         self.sequence = submappers
@@ -40,6 +20,10 @@ class MapperSequence(TextMapper):
         for mapper in self.sequence:
             text = mapper.convert(text)
         return text
+
+    def __iter__(self):
+        for mapper in self.sequence:
+            yield from iter(mapper)
 
 
 class Stripper(TextMapper):
@@ -170,7 +154,6 @@ class LimitRepetitions(TextMapper):
         return "".join(new_text)
 
 
-from .splitters import Pretokeniser
 class DilatePretokens(TextMapper):
     """
     Ensure there are spaces everywhere a pretokeniser indicates there need to be.
@@ -183,12 +166,15 @@ class DilatePretokens(TextMapper):
         return " ".join(self.p.split(text))
 
 
-class AsPhonemes(TextMapper):
+class AsPhonemes(FiniteCharacterSet):
 
     def __init__(self, dictionary_language: str="eng-us"):
         import text2phonemesequence as TeetwoPiece
         self.model = TeetwoPiece.Text2PhonemeSequence(language="", pretrained_g2p_model='charsiu/g2p_multilingual_byT5_small_100', is_cuda=True)
         self._initialiseLanguageDictionary(language=dictionary_language)
+
+    def getCharacters(self) -> Set[str]:  # FIXME: I actually have no clue where to even find the IPA. Best I can find is https://github.com/rhasspy/gruut-ipa which has _VOWELS and _CONSONANTS, but I don't know if that's enough.
+        raise NotImplementedError
 
     def convert(self, text: str) -> str:
         return self.model.infer_sentence(text)
@@ -234,7 +220,7 @@ class PerturbWithNLPAug(TextMapper):
 #####################################################################
 
 
-class InvertibleMapperSequence(InvertibleTextMapper):
+class InvertibleMapperSequence(InvertibleTextMapper, _PreprocessorComponentSequence):
 
     def __init__(self, submappers: List[InvertibleTextMapper]):
         self.sequence = submappers
@@ -248,6 +234,10 @@ class InvertibleMapperSequence(InvertibleTextMapper):
         for mapper in reversed(self.sequence):
             text = mapper.invert(text)
         return text
+
+    def __iter__(self):
+        for mapper in self.sequence:
+            yield from iter(mapper)
 
 
 class IdentityMapper(InvertibleMapperSequence):
@@ -288,6 +278,33 @@ class Replace(InvertibleTextMapper):
         return text.replace(self.new, self.old)
 
 
+class ReplaceBoundary(InvertibleTextMapper):
+    """
+    Replace, but only at the start or the end of the string.
+    """
+
+    def __init__(self, old: str, marker: BoundaryMarker):
+        self.old = BoundaryMarker(substitute=old, detached=marker.detached, location=marker.location)
+        self.new = marker
+
+    def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
+        return self.new
+
+    def convert(self, text: str) -> str:
+        root, marker_found = self.old.isolate(text)
+        if marker_found:
+            return self.new.concatenate(root, self.new.substitute)
+        else:
+            return text
+
+    def invert(self, text: str) -> str:
+        root, marker_found = self.new.isolate(text)
+        if marker_found:
+            return self.old.concatenate(root, self.old.substitute)
+        else:
+            return text
+
+
 class MorphoChallengeCapitals(InvertibleMapperSequence):
     """
     The MorphoChallenge (http://morpho.aalto.fi/events/morphochallenge/) defines a character mapping for Turkish text
@@ -304,7 +321,7 @@ class MorphoChallengeCapitals(InvertibleMapperSequence):
         ])
 
 
-class ByteMapping(InvertibleTextMapper):
+class ByteMapping(InvertibleTextMapper, FiniteCharacterSet):
     """
     Converts each character to its UTF-8 encoding's "pseudo-bytes", which are themselves characters that each represent
     a unique byte, even though they in turn don't necessarily have any relationship to that byte.
@@ -384,6 +401,9 @@ class PseudoByteMapping(ByteMapping):
 
         return mappings
 
+    def getCharacters(self) -> List[str]:
+        return list(PseudoByteMapping.bytes_to_unicode_softcoded().values())
+
     BYTE_TO_PSEUDO = bytes_to_unicode_softcoded()
     PSEUDO_TO_BYTE = insertKeyAlias(invertdict(BYTE_TO_PSEUDO), existing_key="Ġ", alias_key=" ")  # Map spaces (which technically shouldn't be in encoded input) to the byte that G maps to.
 
@@ -426,6 +446,9 @@ class LatinPseudoByteMapping(ByteMapping):
                 offset += 1
 
         return mapping | remaps
+
+    def getCharacters(self) -> List[str]:
+        return list(LatinPseudoByteMapping.bytes_to_unicode().values())
 
     BYTE_TO_PSEUDO = bytes_to_unicode()
     PSEUDO_TO_BYTE = insertKeyAlias(invertdict(BYTE_TO_PSEUDO), existing_key="Ġ", alias_key=" ")  # Map spaces (which technically shouldn't be in encoded input) to the byte that G maps to.

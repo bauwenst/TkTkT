@@ -4,7 +4,7 @@ from typing import List, Optional
 from sentencepiece import SentencePieceProcessor
 
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
-from .vocabularisation import KudoPieceTrainer
+from .vocabularisation import KudoPieceVocabulariser
 
 
 class KudoPieceTokeniser(TokeniserWithVocabDict):
@@ -24,7 +24,7 @@ class KudoPieceTokeniser(TokeniserWithVocabDict):
         self.core = SentencePieceProcessor()
         self.core.Init(model_file.as_posix())
         if vocab is None:
-            vocab = KudoPieceTrainer.load(model_file.with_suffix(".vocab"), existing_types=special_tokens)
+            vocab = KudoPieceVocabulariser.load(model_file.with_suffix(".vocab"), existing_types=special_tokens)
         super().__init__(preprocessor, vocab=vocab)
 
     def tokenise(self, pretoken: str) -> List[str]:

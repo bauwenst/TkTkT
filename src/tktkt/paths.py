@@ -3,7 +3,7 @@ import os
 import re
 from typing import List
 
-PATH_PACKAGE = Path(__file__).resolve().parent.parent
+PATH_PACKAGE = Path(__file__).resolve().parent
 PATH_ROOT    = PATH_PACKAGE.parent.parent  # Can only be accessed if the package was installed in editable mode.
 
 # Output setup: if we can detect that you're running from inside the package project, we assume you don't want CWD.

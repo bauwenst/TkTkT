@@ -160,37 +160,24 @@ Let's say you want to train and load an English ULM tokeniser. You are, of cours
 because its Python interface is a thin wrapper around a command-line call, not allowing autocompletion in your IDE.
 In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in TkTkT because many tokenisers are based on a language model of unigrams).
 
-First we call the trainer with relevant training arguments:
+First we instantiate a preprocessor, and call the trainer with relevant training arguments:
 
 ```python
-from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
+from tktkt.preparation.instances import ModernEnglishPreprocessor_SentencePieceCompatible, BoundaryMarkerLocation
 from tktkt.models.kudopiece.vocabularisation import *
-from string import ascii_letters
 
 ### Your data iterator goes here.
 sentence_corpus: Iterable[str] = ...
 ###
 
-preprocessor = Preprocessor(
-    IdentityMapper(),
-    AppendSpace(front_not_back=True),
-    IdentityPretokeniser()
+preprocessor = ModernEnglishPreprocessor_SentencePieceCompatible(
+    marker_location=BoundaryMarkerLocation.START
 )
 
-args_alpha = KudoPieceArguments_Alphabet(
-    required_chars=list(ascii_letters),
-    byte_fallback=True,
-    character_coverage=0.9995
-)
-
-args_algo = KudoPieceArguments_Algorithm()
-
-trainer = KudoPieceTrainer(
+trainer = KudoPieceVocabulariser(
     preprocessor=preprocessor,
-    word_boundary_location=BoundaryMarkerLocation.START,
     final_vocab_size=40_000,
-    alphabet_arguments=args_alpha,
-    algorithm_arguments=args_algo,
+    arguments=KudoPieceArguments(character_coverage=0.9995),
     file_stem="tutorial"
 )
 model_path = trainer.vocabulariseFromStringIterable(sentence_corpus)

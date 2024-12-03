@@ -1,10 +1,10 @@
 """
 Some common instantiations of preparation functions.
 """
-from ..interfaces.preparation import Preprocessor
 from .splitters import *
 from .mappers import *
 from .huggingface import *
+from ..interfaces.preparation import Preprocessor
 
 # Most common space markers
 SennrichSpaceMarker = BoundaryMarker("</w>",    detached=False, location=BoundaryMarkerLocation.END)       # Sennrich 2016
@@ -180,19 +180,32 @@ class ModernEnglishPreprocessor_ByteCompatible(ModernEnglishPreprocessor):
         return pseudobytes
 
 
-class SentencePiecePreprocessor(ModernEnglishPreprocessor):
+class SentencePiecePreprocessor_SpaceConcatenable(ModernEnglishPreprocessor):
     """
     Preprocessor compatible with the SentencePiece package, which does its own preprocessing (both for BPE and for KudoPiece).
     In particular: you can give pretokens to SentencePiece by separating them by spaces, but SentencePiece will prefix each
     of them by its own boundary marker. Hence, you want a preprocessor that does not split into finer pretokens than possible given
     that all pretokens will receive a boundary marker.
 
-    TODO: Wondering what to do with the 'substitute' field of the marker, since SP has its own "_" substitute.
+    Note: This is an imperfect approximation of the ModernEnglishPreprocessor. In particular, it doesn't split numbers
+    and it doesn't split hyphenated words, which means hyphens will appear in subwords.
+    Pretokens resulting from this pretokeniser can be concatenated with spaces and then fed into a SentencePiece vocabulariser.
     """
-    def __init__(self, marker: BoundaryMarker, prefix_space_already_added: bool=False, truncate_text_after_chars: int=1_000_000):
+    def __init__(self, marker_location: BoundaryMarkerLocation, prefix_space_already_added: bool=False, truncate_text_after_chars: int=1_000_000):
+        """
+        :param prefix_space_already_added: Whether the tokeniser that follows after this is expected to add a space to
+                                           every pretoken it receives or not. Normally, this should always be False; the
+                                           only reason it would be True is if you accidentally set add_dummy_prefix to True
+                                           when vocabularising, whose effect is to add a space in front of the sentences in
+                                           the dataset during training (not in front of every pretoken, because the concept
+                                           of "pretoken" doesn't exist in SentencePiece; there are uncrossable boundaries
+                                           within a string, but it always remains one sentence) and this carries over to
+                                           adding a space in front of every pretoken during inference because TkTkT sends
+                                           individual pretokens to the tokeniser, which SP sees as one-word sentences.
+        """
+        marker = NoSpaceMarker if prefix_space_already_added else BoundaryMarker(substitute=" ", detached=True, location=marker_location)
         super().__init__(marker, truncate_text_after_chars)
-        self.splitter = ModernEnglishPretokeniser(NoSpaceMarker if prefix_space_already_added else BoundaryMarker(substitute=" ", detached=True, location=marker.location),  # Empty dummy marker.
-                                                  do_split_after_placing_boundaries=False)
+        self.splitter = ModernEnglishPretokeniser(marker, do_split_after_placing_boundaries=False)
 
 
 class ModernEnglishPretokeniser_SentencePieceCompatible(PretokeniserSequence):
@@ -204,18 +217,108 @@ class ModernEnglishPretokeniser_SentencePieceCompatible(PretokeniserSequence):
           themselves but represent bytes of larger characters, can be grouped into one token, which is only possible when
           they belong to the same Unicode script. This is not the case for the HuggingFace pseudo-byte mapping, which includes
           characters like ½ and ÷.
+
+    Pretokens resulting from this pretokeniser should be concatenated with an exotic Unicode character from a script
+    known to SentencePiece that will never be used, and then fed into a SentencePiece vocabulariser. Do NOT concatenate
+    these with spaces.
+
+    This pretokeniser actually has a more generalisable ordering than the normal ModernEnglishPretokeniser:
+        1. Split into coarse pretokens that should receive a boundary.
+        2. To each pretoken, add a character (front, back or in between) that (1) will not interfere with the rest of the
+           subpretokenisers that follow and (2) has an invertible result when sent through the alphabet mapping of choice. In this case, it's a space character.
+        3. Split into fine pretokens to inhibit the tokeniser.
+        4. Apply the alphabet mapping. You now have no guarantee that any of your usual splitters still works, and in fact,
+           in this pretokeniser, hyphen and apostrophe splitting won't work anymore, for example. The ModernEnglishPretokeniser
+           does not take this into account and just assumes that the alphabet mapping keeps hyphens and apostrophes intact.
+        5. Invert the space character's mapping result and replace it by your word boundary of choice. In the case of
+           SentencePiece, it must be a space because the built-in preprocessor turns spaces into boundaries itself.
+
+    ---
+
+    A note on vocabulariser-specific preprocessors:
+    In an ideal world (which we aren't far from), every vocabulariser respects pretokens EXACTLY, i.e. no substrings
+    are vocabularised that aren't present in the pretokens (unless single characters), and thus we can select our
+    preprocessor P1 before selecting our vocabulariser.
+
+    Sadly, with bad vocabularisers, our hand is forced. We're forced to rewrite our preprocessor (say, P2) such that
+    it results in a hopefully isomorphic pretoken space. Then, you basically have three choices:
+    1. Use the vocabulary as-is (in B space) and use P2+B as the effective preprocessor, like in training.
+        - If the inferencer is good: use P2 + B, a small extra preprocessor that models the vocabulariser's built-in (the B is forcibly added because the vocabulary is in B space).
+        - If the inferencer is bad: somehow change your preprocessor to be able to use the vocabulary.
+            - If this is the original inferencer (e.g. SP ULM): use P2.
+            - If this is another inferencer (e.g. SaGe with ULM vocab): use either
+                - P2 + B + BB2 in the input and inv(B2) + inv(BB2) in the output, or
+                - P2 + P2B2 in the input and inv(B2) + inv(P2B2) + B in the output.
+    2. Use the vocabulary as-is (in B space), but use P1+P1B+B during inference as effective preprocessor, unlike the P2+B in training.
+        - If the inferencer is good: use P1 + P1B + B. There is some expectation that P1 + P1B is almost exactly equivalent to P2, which means P1B could look like inv(P1) + P2.
+        - If the inferencer is bad:
+            - If this is the original inferencer (e.g. SP ULM): use P1 + P1B.
+            - If this is another inferencer (e.g. SaGe with ULM vocab): use either
+                - P1 + P1B + B + BB2 in the input and inv(B2) + inv(BB2) in the output, or
+                - P1 + P1B2 in the input and inv(B2) + inv(P1B2) + P1B + B in the output.
+    3. Adapt the vocabulary to P1 and use P1 as your preprocessor. I.e.: effective preprocessor in training was P2+B, but in inference it's truly P1.
+        - If the inferencer is good: use P1.
+        - If the inferencer is bad: use P1 + P1B in the input and inv(B) + inv(P1B) in the output
+    If you assume that you only use good inferencers (e.g. use SentencePiece to make BPE and TkTkT to infer BPE),
+    OR that the only bad inferencer you use is the one that accompanies the vocabulariser (e.g. using SPM BPE), in
+    both cases these would be the preprocessors to write (other than P1 and P2):
+        1. Only B
+        2. P1B and B
+        3. Nothing, but to initially convert the vocabulary, you effectively need
+           inv(B) + inv(P1B), which are expected to be the same as inv(B) + inv(P2) + P1 (with the caveat that you
+           may need to keep track of whether there was a boundary marker, since P1 will always add a boundary marker even if there wasn't any).
+           So really, P1B and B as well.
+    It is only in (3) that you can actually use the alphabet of your pre-written preprocessor P1.
     """
-    def __init__(self, marker_location: BoundaryMarkerLocation):
+    def __init__(self, marker_location: BoundaryMarkerLocation, add_builtin_preprocessor: bool=False):
+        """
+        :param add_builtin_preprocessor: Whether to append SentencePiece's built-in preprocessor to the result.
+                                         You want to do this if you want to use this preprocessor but not pass its results
+                                         to a SentencePiece model, while still getting into the same preprocessing space.
+        """
+        self._location = marker_location
+        space_marker = BoundaryMarker(substitute=" ", detached=True, location=marker_location)
+        kudo_marker  = BoundaryMarker(substitute=KudoSpaceMarker.substitute, detached=True, location=marker_location)
         super().__init__([
+            # Generate pretokens that need a boundary
             PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
             WhitespacePretokeniser(destructive=True),  # Remove all spaces
             EnglishApostrophes(do_nt=True),
 
-            AddWordBoundary(BoundaryMarker(substitute=" ", detached=True, location=marker_location)),  # Add space as marker
+            # Add a space boundary, because we know what it becomes under the byte mapping.
+            AddWordBoundary(space_marker),
 
+            # Generate sub-pretokens
             PunctuationPretokeniser(HyphenMode.ONLY),
             IsolateDigits(),
+
+            # Mapping
             MapperAsPretokeniser(LatinPseudoByteMapping()),  # Space markers become Ġ
 
-            MapperAsPretokeniser(Replace("Ġ", " "))  # Ġ becomes space and SentencePiece will convert that into _
-        ])
+            # Map image of spaces back to spaces, because SentencePiece will convert spaces to _
+            MapperAsPretokeniser(ReplaceBoundary("Ġ", space_marker))
+        ] + [
+            MapperAsPretokeniser(ReplaceBoundary(" ", kudo_marker))
+        ]*add_builtin_preprocessor)
+
+    def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
+        """
+        The effective boundary marker of this SentencePiece pretokeniser is "_", because either add_builtin_preprocessor
+        was true and it actually is, or you use it in front of a SentencePiece model and it converts to "_".
+        """
+        return BoundaryMarker(substitute=KudoSpaceMarker.substitute, detached=True, location=self._location)
+
+
+class ModernEnglishPreprocessor_SentencePieceCompatible(Preprocessor):
+    """
+    For details, see the documentation for ModernEnglishPretokeniser_SentencePieceCompatible.
+    """
+    def __init__(self, marker_location: BoundaryMarkerLocation, add_builtin_preprocessor: bool=False, truncate_text_after_chars: int=1_000_000):
+        super().__init__(
+            uninvertible_mapping=TruncateAndNormalise(truncate_after_chars=truncate_text_after_chars),
+            invertible_mapping=IdentityMapper(),
+            splitter=ModernEnglishPretokeniser_SentencePieceCompatible(marker_location=marker_location, add_builtin_preprocessor=add_builtin_preprocessor)
+        )
+
+    def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
+        return self.splitter.getBoundaryMarker()

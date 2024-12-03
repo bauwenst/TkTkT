@@ -1,80 +1,21 @@
 """
 Pretokenisation, i.e. splitting text into the units that will be tokenised separately.
 """
-from typing import List, Tuple
-from abc import ABC, abstractmethod
+from typing import List, Optional
 from enum import Enum
 
 from tokenizers import Regex
 from tokenizers import pre_tokenizers as tp
-from tokenizers import decoders as td
-from transformers import PreTrainedTokenizerFast
 from string import punctuation as BASIC_PUNCTUATION
 import re
 import regex  # Has \p{} classes
 
-from ..preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
+from .boundaries import BoundaryMarker, BoundaryMarkerLocation
+from ..interfaces.preparation import Pretokeniser, InvertibleTextMapper, _PreprocessorComponentSequence
 from ..util.iterables import intercalate
 
 
-class Pretokeniser(ABC):
-    """
-    A note on the design of pretokenisers: you want pretokenisers to be invertible to get back to a single string, but
-    especially with sequentially applied pretokenisers, this is ill-defined (because fundamentally, list.extend isn't
-    invertible). There are three ways you can implement un-splitting:
-
-            1. "".join(map(invertOne, tokens)) or
-            2. "".join(invertMany(tokens)) or
-            3. invertString("".join(tokens))
-
-    This matters because for example, the ALBERT ULM decoder is something like "".join(tokens).replace("_", " ").strip(),
-    which means that inverting single tokens can never produce spaces. Spaces are only protected when they appear
-    in tokens that are surrounded by other tokens during decoding. This is an example of an invertMany, like all HuggingFace pretokenisers.
-
-    1 and 3 are special cases of 2, where respectively
-        invertMany(tokens) == map(invertOne, tokens)
-        invertMany(tokens) == [invertString("".join(tokens))]
-    A class may elect to use such implementations.
-    """
-
-    @abstractmethod
-    def split(self, text: str) -> List[str]:
-        """
-        Split an entire text (e.g. a sentence) into smaller pre-token strings.
-        It is these pre-token strings that will SEPARATELY be passed to the tokeniser.
-        """
-        pass
-
-    @abstractmethod
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
-        """
-        Invert any string transformations applied in the process of splitting a string into pretokens.
-        May also apply a merging operation into a smaller list if that is appropriate.
-        """
-        pass  # For example, [invertToken(t) for t in tokens], but you should make this explicit because it's not necessarily the case.
-
-    def invertToken(self, pretoken: str) -> str:
-        """
-        Takes (part of) a pretoken and undoes any character transformations that were applied during pretokenisation.
-        Tricky, because this isn't necessarily possible: for example, if you mapped from 1 Unicode charactere to >1 bytes,
-        and the tokeniser separated those bytes into separate tokens, converting one token at a time will not work.
-        """
-        return "".join(self.invertTokens([pretoken]))
-
-    def unsplit(self, tokens: List[str]) -> str:
-        """
-        Inverts the splitting operation.
-        """
-        return "".join(self.invertTokens(tokens))
-
-    def __call__(self):  # Just in case you accidentally add parentheses to an already-instantiated Pretokeniser object.
-        return self
-
-    def getName(self):
-        return self.__class__.__name__
-
-
-class PretokeniserSequence(Pretokeniser):
+class PretokeniserSequence(Pretokeniser, _PreprocessorComponentSequence):
 
     def __init__(self, sub_pretokenisers: List[Pretokeniser]):
         self.sequence = sub_pretokenisers
@@ -98,6 +39,13 @@ class PretokeniserSequence(Pretokeniser):
             pretokens = pretokeniser.invertTokens(pretokens)
             # print("\t->", pretokeniser.getName() + "⁻¹", "->", pretokens)
         return pretokens
+
+    def getName(self) -> str:
+        return "Sequence(" + "+".join([p.getName() for p in self.sequence]) + ")" if self.sequence else "Identity"
+
+    def __iter__(self):
+        for pretokeniser in self.sequence:
+            yield from iter(pretokeniser)
 
 
 class IdentityPretokeniser(Pretokeniser):
@@ -234,6 +182,9 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
     def __init__(self, replacement: BoundaryMarker):
         self.marker = replacement
 
+    def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
+        return self.marker
+
     def split(self, text: str) -> List[str]:
         if not text.strip():
             return [] if not(self.marker.location == BoundaryMarkerLocation.ISOLATED and text) else [self.marker.substitute]
@@ -343,6 +294,9 @@ class AddWordBoundary(Pretokeniser):
     def __init__(self, marker: BoundaryMarker):
         self.marker = marker
 
+    def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
+        return self.marker
+
     def split(self, text: str) -> List[str]:
         if self.marker.location == BoundaryMarkerLocation.ISOLATED:
             return [self.marker.substitute, text]
@@ -363,8 +317,7 @@ class AddWordBoundary(Pretokeniser):
         return super().getName() + "(" + "+"*(self.marker.location == BoundaryMarkerLocation.END) + self.marker.substitute + "+"*(self.marker.location == BoundaryMarkerLocation.START) + ")"
 
 
-from .mappers import InvertibleTextMapper
-class MapperAsPretokeniser(Pretokeniser):
+class MapperAsPretokeniser(Pretokeniser, _PreprocessorComponentSequence):
     """
     When used in a sequence of pretokenisers, this allows you to apply a text->text mapping on individual pretokens
     produced by another pretokeniser. In HuggingFace, for example, you can't do this.
@@ -372,6 +325,9 @@ class MapperAsPretokeniser(Pretokeniser):
 
     def __init__(self, mapper: InvertibleTextMapper):
         self.core = mapper
+
+    def __iter__(self):
+        yield from iter(self.core)
 
     def split(self, text: str) -> List[str]:
         return [self.core.convert(text)]

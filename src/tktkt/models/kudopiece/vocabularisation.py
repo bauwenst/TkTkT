@@ -4,15 +4,14 @@ Why not use `tokenizers`? Because I trust Kudo himself more than HuggingFace (si
 and at least he has documentation that exists.
 """
 from pathlib import Path
-from typing import List, Iterable, Tuple
+from typing import Iterable, Tuple
 from dataclasses import dataclass
 
-from tqdm.auto import tqdm
-import sentencepiece
+import sentencepiece as spm
 from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable, DEFAULT_FIVE_SPECIALS
+from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
 from ...util.iterables import streamPrint, streamProgress, T
 
 
@@ -21,33 +20,28 @@ def progress(iterable: Iterable[T]) -> Iterable[T]:
     return streamProgress(iterable)
 
 
+EXOTIC_SCRIPT_PRETOKEN_SEPARATOR = "𐁝"  # We needed a separator that counts as (1) a script different from punctuation/unknown (unlike e.g. 🂠 and ⛡) that (2) won't appear in natural language (unlike e.g. あ). In sentencepiece/data/scripts.txt, there is a separate script class defined for Linear B, an ancient prototypical script. We use one of the Linear B characters whose usage is not understood by archeologists.
+
+
 @dataclass
-class KudoPieceArguments_Alphabet:
-    required_chars: List[str]  # NOTE: If you use a pseudo-byte mapping, DO NOT include the " " character.
-    byte_fallback: bool
+class KudoPieceArguments:
     character_coverage: float=0.9995
+    skip_sentences_over_length: int=2**13  # 2**13 == 8192
 
-
-@dataclass
-class KudoPieceArguments_Algorithm:
     initial_vocab_size: int=1_000_000
-    maximum_token_length: int=16
+    maximum_token_length: int=64
     shrinking_factor: float=0.75
     num_sub_iterations: int=2
-    skip_sentences_over_length: int=2**13
 
 
-class KudoPieceTrainer(Vocabulariser):
+class KudoPieceVocabulariser(Vocabulariser):
     """
     Wrapper around the SentencePiece trainer for KudoPiece.
     This trainer has quite a large memory footprint. Expect every million sentences to consume about 80 GiB of RAM
     (given that the sentences are no longer than 8192 characters).
     """
 
-    def __init__(self, preprocessor: Preprocessor,
-                 final_vocab_size: int, word_boundary_location: BoundaryMarkerLocation,
-                 alphabet_arguments: KudoPieceArguments_Alphabet,
-                 algorithm_arguments: KudoPieceArguments_Algorithm,
+    def __init__(self, preprocessor: Preprocessor, final_vocab_size: int, arguments: KudoPieceArguments,
                  file_stem: str="kudopiece"):
         """
         Trainer for KudoPiece (a.k.a. ULM) tokenisers.
@@ -120,15 +114,13 @@ class KudoPieceTrainer(Vocabulariser):
         """
         super().__init__(name="kudopiece", preprocessor=preprocessor)
 
-        if word_boundary_location == BoundaryMarkerLocation.ISOLATED:
+        self._marker = preprocessor.getBoundaryMarker()
+        if self._marker.location == BoundaryMarkerLocation.ISOLATED:
             raise ValueError("KudoPiece only supports start-of-word and end-of-word boundary markers.")
 
-        self._alphabet = alphabet_arguments
-        self._algorithm = algorithm_arguments
+        self._arguments = arguments
         self._size = final_vocab_size
         self._stem = file_stem
-
-        self._boundary_style = word_boundary_location
 
     def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
         """
@@ -141,62 +133,79 @@ class KudoPieceTrainer(Vocabulariser):
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
         return self._withSentencepieceTrainer(
-            self._preprocessSentencesToSentences(sentence_iterable),  # FIXME: The problem with having pretokens be space-separated is that sentencepiece is going to turn something like "ĠBPE - knockout" into ["_ĠBPE", "_-", "_knockout"] which is wrong. An easy fix is to not put any SoW and to not segment beyond word-level.
+            self._preprocessSentencesToSentences(sentence_iterable, sep=EXOTIC_SCRIPT_PRETOKEN_SEPARATOR),
             is_wordfile=False
         )
 
     def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> Path:
         output_prefix = self._makeOutputFolder(string_iterable.name) / "spm"
 
-        sentencepiece.SentencePieceTrainer.Train(
+        alphabet = self.preprocessor.getAlphabet()
+        required_characters = alphabet.getCharacters() if alphabet else []
+
+        KudoPieceVocabulariser._callSentencePieceTrainer(
+            actual_vocab_size=self._size,
             model_type="unigram",
 
             # I/O
             sentence_iterator=progress(string_iterable).__iter__(),
             input_format="tsv" if is_wordfile else "",
-            max_sentence_length=self._algorithm.skip_sentences_over_length,
+            max_sentence_length=self._arguments.skip_sentences_over_length,
             train_extremely_large_corpus=True,  # Why not, right?
             model_prefix=output_prefix.as_posix(),
 
             # Alphabet
-            required_chars=self._alphabet.required_chars,
-            byte_fallback=self._alphabet.byte_fallback,
-            character_coverage=self._alphabet.character_coverage,
+            required_chars=required_characters,
+            character_coverage=1.0 if required_characters else self._arguments.character_coverage,
 
             # Algorithm
-            treat_whitespace_as_suffix=self._boundary_style == BoundaryMarkerLocation.END,
+            treat_whitespace_as_suffix=self._marker.location == BoundaryMarkerLocation.END,
 
-            seed_sentencepiece_size=self._algorithm.initial_vocab_size,
-            max_sentencepiece_length=self._algorithm.maximum_token_length,
-            shrinking_factor=self._algorithm.shrinking_factor,
-            num_sub_iterations=self._algorithm.num_sub_iterations,
-
-            vocab_size=self._size,
-            hard_vocab_limit=True,
-            vocabulary_output_piece_score=True,
-
-            # We assume no special tokens.
-            control_symbols=DEFAULT_FIVE_SPECIALS.all_special_tokens,
-            user_defined_symbols=[],
-
-            # Preprocessing is expected to be done by one of our preprocessors.
-            normalization_rule_name="identity",
-            add_dummy_prefix=False,
-            remove_extra_whitespaces=False,
-            split_by_unicode_script=False,
-            split_by_number=False,
-            split_by_whitespace=not is_wordfile,
-            split_digits=False,  # TODO: Does this also prevent the "_" prefix to stick to the first digit? If yes, we want this if using a SentencePiecePreprocessor.
-            allow_whitespace_only_pieces=False  # Ironically, this means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
+            seed_sentencepiece_size=self._arguments.initial_vocab_size,
+            max_sentencepiece_length=self._arguments.maximum_token_length,
+            shrinking_factor=self._arguments.shrinking_factor,
+            num_sub_iterations=self._arguments.num_sub_iterations,
         )
 
         return output_prefix.parent
 
     def _addSpace(self, word: str) -> str:
-        return " " * (self._boundary_style == BoundaryMarkerLocation.START) + word + " " * (self._boundary_style == BoundaryMarkerLocation.END)
+        return " " * (self._marker.location == BoundaryMarkerLocation.START) + word + " " * (self._marker.location == BoundaryMarkerLocation.END)
 
     @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
         if file_or_folder.is_dir():
             file_or_folder = file_or_folder / "spm.vocab"
         return [typ for typ,_ in iterateTsv(file_or_folder)]
+
+    @staticmethod
+    def _callSentencePieceTrainer(actual_vocab_size: int, **remaining_arguments):
+        """
+        Calls the SentencePieceTrainer.Train function by passing the given kwargs to it and imputing a bunch of
+        standard arguments.
+        """
+        spm.SentencePieceTrainer.Train(
+            **remaining_arguments,
+
+            vocab_size=actual_vocab_size + 1,  # SentencePiece counts specials as belonging to |V| and <unk> is a special you can't turn off.
+            hard_vocab_limit=True,
+            byte_fallback=False,
+            vocabulary_output_piece_score=True,
+
+            # We assume no special tokens. This is because |V| is supposed to be the amount of units with which to represent language, not which exist in the model total.
+            control_symbols=[],
+            user_defined_symbols=[],
+            bos_id=-1,
+            eos_id=-1,
+            pad_id=-1,
+
+            # Preprocessing is expected to be done by one of our preprocessors.
+            normalization_rule_name="identity",
+            add_dummy_prefix=False,  # Similar to HF's add_prefix_space. Should not be needed.
+            remove_extra_whitespaces=False,
+            split_by_whitespace=False,
+            split_by_unicode_script=True,  # What this means precisely is "different Unicode scripts cannot be next to each other in a token", where numbers don't count as having any script and can be used as glue. We do this because (1) we need a way to separate pretokens and (2) realistically, nobody would ever want mixed-script tokens. The only downside is that punctuation and letters no longer appear in the same tokens, which is annoying for English contractions.
+            split_by_number=True,  # Needed because SentencePiece treats numbers as belonging to any Unicode script, so if you have digit isolation in your preprocessor, you need this so that the pretoken separator (see above) doesn't glue together multiple pretokens. And if you don't have digit isolation, the only effect will be that letter and number sequences can't be in one token, which they shouldn't anyway just like multiple scripts.
+            split_digits=False,
+            allow_whitespace_only_pieces=False  # Ironically, setting this to False means that you DO split whitespace into separate pieces. This adheres most to typical behaviour. https://github.com/google/sentencepiece/issues/984
+        )
