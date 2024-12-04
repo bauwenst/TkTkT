@@ -99,6 +99,7 @@ class KudoPiece_Deserialiser(Deserialiser):
 
 class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser):
     def _buildVocabulary(self) -> Vocab:
+        # self._specials  # TODO: I wonder how to handle custom specials.
         return AutoTokenizer.from_pretrained("albert/albert-base-v2").get_vocab()
 
     def loadProbabilities(self) -> Dict[str,float]:
@@ -118,6 +119,7 @@ class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser):
         return IdentityPreprocessor  # The Albert tokeniser probably has all its preprocessing baked into the spiece.model.
 
     def preprocessor(self) -> Preprocessor:
+        # We assume the ALBERT people didn't use the pretoken separator trick, and probably just used spaces.
         preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=False)
         preprocessor.splitter = PretokeniserSequence([
             preprocessor.splitter,

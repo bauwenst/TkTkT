@@ -1,6 +1,8 @@
+<img src="./doc/logo.png">
+
 # TkTkT: the ToKeniser ToolKiT
 A collection of Pythonic subword tokenisers and text preprocessing tools, with full
-backwards- *and* forwards-compatibility with HuggingFace `tokenizers`!
+backwards- *and* forwards-compatibility with HuggingFace `tokenizers`. One package to rule them all.
 
 Quick navigation:
 - <a href="#installation">Installation</a>
@@ -10,7 +12,7 @@ Quick navigation:
 
 ## Features
 ### Supported tokenisers
-All subword tokenisers are defined under `tktkt.models`. Many of these can be instantiated without much background knowledge using the builders in `tktkt.builders`.
+All subword tokenisers are defined under `tktkt.models`. Many of these can be instantiated without much background knowledge using the builders in `tktkt.factories`.
 Also, **any HuggingFace tokeniser** can be wrapped into a TkTkT tokeniser, and **any TkTkT tokeniser** can be wrapped into a HuggingFace tokeniser.
 
 Currently, the package implements:
@@ -32,29 +34,59 @@ Currently, the package implements:
   - Segmentation
   - Trainer
 - Character/byte **N-grams**.
+- **SaGe** ([Yehezkel & Pinter, 2023](https://aclanthology.org/2023.eacl-main.45/)) vocabularisation.
 - **Randomised** segmentation from a given subword vocabulary.
 
 Currently work in progress:
 - A family of Viterbi-driven tokenisers.
 - Morfessor family
 
+TkTkT also has classes to alternate between tokenisers across pretokens.
+
+### Preprocessing
+TkTkT has a rich set of text mappings and pretokenisers that preprocess text before it is tokenised, including
+support for stochastic perturbation. Unlike other libraries, preprocessors are objects, not regular expressions.
+This allows much more powerful processing than regex, whilst being more easy to read. See if you can understand 
+this arguably complicated transformation:
+```python
+from tktkt.preparation.splitters import *
+from tktkt.preparation.mappers import PseudoByteMapping
+from tktkt.preparation.instances import RobertaSpaceMarker
+
+class ExamplePretokeniser(PretokeniserSequence):
+    def __init__(self):
+        super().__init__([
+            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+            WhitespacePretokeniser(destructive=True),
+            EnglishApostrophes(do_nt=True),
+            
+            MapperAsPretokeniser(PseudoByteMapping()),
+            AddWordBoundary(RobertaSpaceMarker),
+            
+            IsolateDigits(),
+            PunctuationPretokeniser(HyphenMode.ONLY)
+        ])
+```
+
 ### Evaluation metrics
 TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
 - *Fertility* statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
-- Morphological boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
+- *Morphological* boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
   position in a word.
-- Richness of token contexts with *accessor variety*.
 - Entropy-based measures, including *Rényi efficiency*.
-- Comparison between two tokenisers: how much they tokenise words exactly the same, and how much their split points overlap.
+- Richness of token contexts with *accessor variety*.
+- *Comparison* between two tokenisers: how much they tokenise words exactly the same, and how much their split points overlap.
 
 ### Visualisers
 The following tokenisation procedures can be visualised:
 - BPE/BTE: the final merge tree (in regular LaTeX), as well as an animated progression of the merges (in LaTeX Beamer).
 
 ## Architecture
+### Main interfaces
 The goal of TkTkT is to provide a straightforward Pythonic interface for everything-tokenisation, and to be as 
 object-oriented as possible. The main interfaces are found under `tktkt.interfaces`. 
 
+#### Segmentation
 Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
 
 - The `Tokeniser` class has two important methods: 
@@ -74,7 +106,33 @@ supported:
   No assumption is made about how this mapping happens. HuggingFace's `PreTrainedTokenizer` is an example of these.
 - `TokeniserWithVocabDict`: same as above, but the mapping is made by an explicit dictionary.
 
-TkTkT also has wrapper classes (in `tktkt.wrappers`) to extend existing tokenisers with an ID mapping.
+For ease-of-use, many `Tokeniser` classes have a `TokeniserFactory` defined for them that simplify the instantiation process.
+
+#### Vocabularisation
+To learn the parameters of a `Tokeniser` (e.g. BPE merges), there is the `Vocabulariser` class.
+It can learn from word-count files or from corpora of sentences. It takes a `Preprocessor` exactly like `Tokeniser`,
+except `Vocabulariser` is for training the tokeniser (vocabularisation) and `Tokeniser` is for inference (segmentation).
+
+To make it easier to load the results of a vocabularisation run from storage back into Python, there are `Deserialiser`s
+to do this for you. Often, a `TokeniserFactory` will take a `Deserialiser` to provide it any files.
+
+### Submodules
+The packages is divided into the following submodules:
+- `tktkt.interfaces`: contains the main parent classes from which all other classes derive. 
+  - The most important classes are `TextMapper`, `Pretokeniser`, `Preprocessor`, `Vocabulariser`, `Tokeniser`, `Deserialiser`, and `TokeniserFactory`.
+- `tktkt.preparation`: contains all the text preprocessing tools.
+  - `tktkt.preparation.instances`: contains a bunch of pre-defined preprocessors so you don't have to.
+    Check out the `ModernEnglishPreprocessor`, for example.
+- `tktkt.models`: contains all the tokenisation (i.e. vocabularisation and/or segmentation) algorithms.
+- `tktkt.wrappers`: contains classes that wrap around existing tokenisers to equip them with more features.
+  - `tktkt.wrappers.multiplexing`: alternate between multiple tokenisers within the same sentence.
+  - `tktkt.wrappers.hashingvocab`: add a string-to-integer mapping to a `Tokeniser` that can produce any substring, turning it into a `TokeniserWithFiniteIdRange`.
+- `tktkt.factories`: contains a bunch of pre-defined constructor calls, for both vocabularies and tokenisers:
+  - `tktkt.factories.deserialisation`: contains classes that load the files for specific tokenisers.
+  - `tktkt.factories.tokenisers`: contains tokeniser factories.
+- `tktkt.evaluation`: contains procedures to quantify a `Tokeniser` with through inference.
+- `tktkt.visualisation`: contains procedures to generate explanatory LaTeX code about some models.
+- `tktkt.util`: contains tools peripheral to tokenisation, like string formatting, combinatoric calculations, iterable functions, timing, etc...
 
 ## Installation
 ### Non-editable (recommended)
@@ -196,7 +254,7 @@ tokeniser = KudoPieceTokeniser(preprocessor=preprocessor, model_file=model_path)
 print(tokeniser.prepareAndTokenise("Hello there, my good friend!"))
 ```
 
-## Why does this exist if we have HuggingFace `tokenizers`?
+## Why does this package exist if we have HuggingFace `tokenizers`?
 First of all, note again that TkTkT has backwards compatibility with HuggingFace `tokenizers`. 
 There are wrapper classes for tokenisers under `tktkt.models.huggingface` and for normalisers/pretokenisers under
 `tktkt.preparation.huggingface`.

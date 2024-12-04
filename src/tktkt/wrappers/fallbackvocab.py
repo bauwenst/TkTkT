@@ -9,7 +9,8 @@ class TokeniserWithByteFallback(TokeniserWithVocabDict):
     The idea is that instead of producing an UNK, you still encode the given string losslessly, e.g. by turning it into
     Unicode bytes which are then added to the existing vocabulary.
 
-    Not the same as a byte-based tokeniser, which actually segments strings of bytes.
+    Not the same as a byte-based tokeniser, which FIRST applies a byte-based mapping and THEN tokenises. This one FIRST
+    tokenises and THEN applies a byte-based mapping.
     """
 
     def __init__(self, tokeniser_with_unks: TokeniserWithVocabDict, crude_fallback: bool=False):
@@ -24,7 +25,7 @@ class TokeniserWithByteFallback(TokeniserWithVocabDict):
         self.byte_types = {i: f"[BYTE {i}]" for i in range(256)}
         for typ in self.byte_types.values():
             if typ in self.core.vocab:
-                raise ValueError("Surrogate type already exists in core vocabulary:", typ)
+                raise ValueError(f"Surrogate type already exists in core vocabulary: {typ}")
 
         first_available_id = max(self.core.vocab.values()) + 1
         combined_vocabulary = self.core.vocab | {typ: first_available_id+i for i,typ in enumerate(self.byte_types.values())}

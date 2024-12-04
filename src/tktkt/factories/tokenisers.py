@@ -315,7 +315,7 @@ class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
         return GRaMPa(
             preprocessor=self._prep,
             vocab=self._vocab_file.buildVocabulary(),
-            # unk_type=self._vocab._specials.unk_token,
+            # unk_type=self._vocab_file._specials,  # TODO: Better handling for this.
 
             probabilities_to_probabilities=PowerNormalisation(temperature=self._temp),
             minimal_token_length=self._minlen,
@@ -324,6 +324,11 @@ class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
 
 
 class Factory_SwitchyGrampa_ULM(TokeniserFactory[StochasticTokeniserSwitch]):
+    """
+    Note: the multiplexer's global preprocessor and the GRaMPa preprocessor are both predetermined to be respectively
+    a whitespace+punctuation splitter and a ModernEnglishPreprocessor. If you don't like these defaults, then just use
+    the StochasticTokeniserSwitch constructor directly or make your own factory.
+    """
 
     def __init__(self, files: KudoPiece_Deserialiser=KudoPiece32ki_SlimPajama3M(), p: float=0.5,
                  temperature: float=1.0, l_min: int=1,
@@ -364,6 +369,11 @@ class Factory_SwitchyGrampa_ULM(TokeniserFactory[StochasticTokeniserSwitch]):
 
 
 class Factory_SwitchyGrampa_BPE(TokeniserFactory[StochasticTokeniserSwitch]):
+    """
+    Note: the multiplexer's global preprocessor and the BPE/GRaMPa preprocessor are both predetermined to be respectively
+    a whitespace+punctuation splitter and a ModernEnglishPreprocessor. If you don't like these defaults, then just use
+    the StochasticTokeniserSwitch constructor directly or make your own factory.
+    """
 
     def __init__(self, files: BPE_Deserialiser=BPE32ki_SlimPajama3M(), p: float=0.5,
                  temperature: float=1.0, l_min: int=1,
