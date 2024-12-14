@@ -79,7 +79,7 @@ class PunctuationPretokeniser(Pretokeniser):
     """
 
     def __init__(self, hyphen_mode: HyphenMode=HyphenMode.INCLUDED, protect_apostrophes_without_spaces: bool=True,
-                 group_adjacent_spaces_with_punctuation: BoundaryMarkerLocation=BoundaryMarkerLocation.ISOLATED):
+                 group_adjacent_spaces_with_punctuation: Optional[BoundaryMarkerLocation]=None):
         punctuation = PunctuationPretokeniser.buildPunctuationString(hyphen_mode)
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
         punctuation_escaped_no_accent = punctuation_escaped.replace("'", "")
@@ -229,6 +229,7 @@ class WhitespacePretokeniser(Pretokeniser):
         """
         :param destructive: If false, whitespace is not removed, but just separated from other characters.
         """
+        self._keep_spaces = not destructive
         if destructive:
             self.pattern = re.compile(r"[\s​]+")
         else:
@@ -238,8 +239,46 @@ class WhitespacePretokeniser(Pretokeniser):
         pretokens = self.pattern.split(text)
         return [t for t in pretokens if t]
 
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: This is actually very wrong. If you start out with > 1 pretoken, and only one of them (or neither) is split on a space, then inverting by putting a space between EVERY pretoken is clearly wrong.
+        if self._keep_spaces:
+            return pretokens
+        else:
+            return list(intercalate(pretokens, " "))
+
+
+class SplitNextToWhitespace(Pretokeniser):
+
+    def __init__(self, before_not_after: bool=True):
+        if before_not_after:
+            self.pattern = re.compile(r"(?:^|\s|​)[^\s​]*")
+        else:
+            self.pattern = re.compile(r"[^\s​]+(?:$|\s|​)")  # The + is intentional, although I can't really explain why it works.
+        self._before_not_after = before_not_after
+
+    def split(self, text: str) -> List[str]:
+        return self.pattern.findall(text)
+
     def invertTokens(self, pretokens: List[str]) -> List[str]:
-        return list(intercalate(pretokens, " "))
+        buffer = []
+        new_pretokens = []
+        if self._before_not_after:
+            for pretoken in pretokens:
+                if not pretoken[0].isspace() and buffer:  # => This is not a boundary that was split on originally, so flush the buffer.
+                    new_pretokens.append("".join(buffer))
+                    buffer = []
+                buffer.append(pretoken)
+            if buffer:
+                new_pretokens.append("".join(buffer))
+        else:
+            for pretoken in reversed(pretokens):
+                if not pretoken[-1].isspace() and buffer:
+                    new_pretokens.insert(0, "".join(buffer))
+                    buffer = []
+                buffer.insert(0, pretoken)
+            if buffer:
+                new_pretokens.insert(0, "".join(buffer))
+
+        return new_pretokens
 
 
 class IsolateDigits(Pretokeniser):

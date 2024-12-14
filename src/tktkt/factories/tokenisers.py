@@ -28,7 +28,7 @@ class Factory_BPE(TokeniserFactory[HuggingFaceTokeniser]):
     def buildTokeniser(self):
         vocab = self._files.buildVocabulary()
         if self._prep is None:
-            self._prep = self._files.preprocessor()
+            self._prep = self._files.preprocessorEffective()  # Effective preprocessor because we use HuggingFace inference, which does not do built-in preprocessing.
 
         merges = self._files.buildMerges()
         return HuggingFaceBPETokeniser(vocab, merges, dropout=self._dropout, preprocessor=self._prep)
@@ -36,7 +36,7 @@ class Factory_BPE(TokeniserFactory[HuggingFaceTokeniser]):
         # return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
-class Factory_BPE_native(TokeniserFactory[ClassicBPE]):
+class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE]):
     def buildTokeniser(self) -> T:
         files = getEnglishBpeFiles()
         return ClassicBPE(
@@ -92,7 +92,7 @@ class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser]):
     def buildTokeniser(self):
         vocab = self._files.buildVocabulary()
         if self._prep is None:
-            self._prep = self._files.preprocessorForSentencePieceInference()
+            self._prep = self._files.preprocessorNative()  # Native preprocessor due to SentencePiece inference.
 
         return KudoPieceTokeniser(
             preprocessor=self._prep,
@@ -304,7 +304,8 @@ class Factory_Switch(TokeniserFactory[StochasticTokeniserSwitch]):
 
 class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab_file: Deserialiser, minimal_length: int, temperature: float, r2l_not_l2r: bool=False):
+    def __init__(self, preprocessor: Preprocessor=None, vocab_file: Deserialiser=KudoPiece32ki_SlimPajama3M(),
+                 minimal_length: int=1, temperature: float=1.0, r2l_not_l2r: bool=False):
         self._prep = preprocessor
         self._vocab_file = vocab_file
         self._temp = temperature
@@ -312,6 +313,9 @@ class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
         self._r2l = r2l_not_l2r
 
     def buildTokeniser(self):
+        if self._prep is None:
+            self._prep = self._vocab_file.preprocessorEffective()  # Effective preprocessor because GRaMPa inference has no built-in preprocessor.
+
         return GRaMPa(
             preprocessor=self._prep,
             vocab=self._vocab_file.buildVocabulary(),

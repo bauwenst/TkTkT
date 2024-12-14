@@ -37,11 +37,13 @@ class Deserialiser(ABC):
 
     def __init__(self, specials: Union[Vocab,List[str]]=DEFAULT_FIVE_SPECIALS.all_special_tokens):
         self._specials = specials
-        self._vocab_cache = None
+        self._vocab_cache: Vocab = None
 
     def buildVocabulary(self) -> Vocab:
         if self._vocab_cache is None:
             self._vocab_cache = self._buildVocabulary()
+            if set(self._specials) - set(self._vocab_cache):
+                raise RuntimeError(f"Error building vocabulary: some of the given specials ({set(self._specials) - set(self._vocab_cache)}) were not included.")
         return self._vocab_cache
 
     @abstractmethod
@@ -49,11 +51,20 @@ class Deserialiser(ABC):
         pass
 
     @abstractmethod
-    def preprocessor(self) -> Preprocessor:
+    def preprocessorEffective(self) -> Preprocessor:
         """
         The preprocessor that creates pretokens that can be tokenised into tokens of this vocabulary.
+
         If the vocabulariser had no built-in preprocessor, then this matches the preprocessor used during vocabularisation.
         This is e.g. not the case for packages like SentencePiece where spaces are converted into underscores after the
         TkTkT preprocessor has finished its work.
+        """
+        pass
+
+    @abstractmethod
+    def preprocessorNative(self) -> Preprocessor:
+        """
+        The preprocessor that creates pretokens usable by the software package that vocabularised this vocabulary and,
+        if applicable, can be used for inference with (only) that software package.
         """
         pass

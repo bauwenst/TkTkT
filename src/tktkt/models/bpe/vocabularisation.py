@@ -214,6 +214,12 @@ class BPEVocabulariser(Vocabulariser):
         return out_folder
 
     def _withSentencePieceTrainer(self, word_or_sentence_iterable: NamedIterable, is_wordfile: bool=False):
+        """
+        Benchmarks:
+            - Training from a HuggingFace dataset, it takes about 2 hours to stream the next 1 million lines.
+            - For 3M space-concatenated sentences and max token length 16, it takes about 30 minutes to train.
+            - For 5M exotic-concatenated sentences and max token length 32, it takes at least 769 GiB of RAM and over 8 hours to train.
+        """
         output_prefix = self._makeOutputFolder(word_or_sentence_iterable.name) / "spm"
 
         if is_wordfile:

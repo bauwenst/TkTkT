@@ -157,26 +157,55 @@ class Vocabulariser(ABC):
         )
 
     @classmethod
-    def load(cls, file_or_folder: Path, existing_types: Union[Vocab,UnidentifiedVocab]=None, sorting_key: Optional[TokenSortingKey]=None) -> Vocab:
+    def load(cls, file_or_folder: Path, existing_types: Union[Vocab,UnidentifiedVocab]=None, extras_first: bool=False, sorting_key: Optional[TokenSortingKey]=None) -> Vocab:
+        """
+        Load a vocabulary, i.e. a mapping from strings to integers, from a file/folder stored by this vocabulariser.
+        If you declare extra types with an identifier, those identifiers get priority assignment.
+        If you declare extra types without identifier, you can choose whether you want them in the front or the back
+        of the vocabulary. In both cases, when an extra type exists in the rest of the vocabulary, it is ignored there.
+        """
         if existing_types is None:
             existing_types = dict()
 
-        n_specials = len(existing_types)
+        # Reserve IDs (jump over these when you enumerate identifiers) and types (pretend like these don't exist)
         if isinstance(existing_types, dict):
-            assert sorted(existing_types.values()) == list(range(n_specials))  # TODO: Kinda arbitrary constraint.
+            reserved_types = set(existing_types.keys())
+            reserved_ids = set(existing_types.values())
         else:
-            existing_types = {t: i for i,t in enumerate(existing_types)}
+            existing_types = list(existing_types)
+            reserved_types = set(existing_types)
+            reserved_ids   = set(range(len(existing_types))) if extras_first else set()
 
-        tokeniser_types = set(cls._load(file_or_folder))
-        missing_types = []
-        for t in existing_types:
-            if t in tokeniser_types:
-                print(f"Warning: special token {t} is already part of the vocabulary. "
+        # Do the actual loading.
+        vocabulary = dict()
+        id = 0
+        for typ in cls._load(file_or_folder):
+            while id in reserved_ids:
+                id += 1
+
+            if typ in reserved_types:
+                print(f"Warning: special token {typ} is part of the vocabulary. "
                       f"In the future, there will likely be support to keep both at the same time. "
-                      f"For now, we will not add the special token with a new ID.")
-            else:
-                missing_types.append(t)
+                      f"For now, we will keep the newly requested ID and skip its place in the rest of the vocabulary.")
+                continue
+            elif typ in vocabulary:
+                print(f"Warning: token {typ} was generated more than once in the {cls.__name__}. Skipping its duplicate.")
+                continue
 
-        tokeniser_vocab = cls._assignIdentifiers(cls._load(file_or_folder), sorting_key=sorting_key, starting_id=len(missing_types))
-        special_vocab   = {t: i for i,t in enumerate(missing_types)}
-        return special_vocab | tokeniser_vocab
+            vocabulary[typ] = id
+            id += 1
+
+        # Finally, add the reserved types.
+        if isinstance(existing_types, dict):
+            vocabulary |= existing_types
+            assert list(sorted(vocabulary.values())) == list(range(len(vocabulary))), f"Some of the special tokens {existing_types} fall outside the contiguous vocabulary range."
+        else:
+            id = 0 if extras_first else len(vocabulary)
+            for typ in existing_types:
+                vocabulary[typ] = id
+                id += 1
+
+        return vocabulary
+        # tokeniser_vocab = cls._assignIdentifiers(cls._load(file_or_folder), sorting_key=sorting_key, starting_id=len(missing_types))
+        # special_vocab   = {t: i for i,t in enumerate(missing_types)}
+        # return special_vocab | tokeniser_vocab
