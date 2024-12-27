@@ -319,7 +319,7 @@ class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
         return GRaMPa(
             preprocessor=self._prep,
             vocab=self._vocab_file.buildVocabulary(),
-            # unk_type=self._vocab_file._specials,  # TODO: Better handling for this.
+            # unk_type=self._vocab_file._specials,  # TODO: Not really needed because if any character is out-of-vocabulary, GRaMPa breaks anyway.
 
             probabilities_to_probabilities=PowerNormalisation(temperature=self._temp),
             minimal_token_length=self._minlen,

@@ -79,7 +79,7 @@ class BPE32ki_SlimPajama3M(BPE_Deserialiser):
     """
     def _buildVocabulary(self) -> Vocab:
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="vocab.json"))
-        return BPEVocabulariser.load(file_or_folder=downloaded_vocab, existing_types=self._specials)
+        return BPEVocabulariser.load(file_or_folder=downloaded_vocab, existing_types=self._specials, extras_first=True)
 
     def buildMerges(self) -> Merges:
         downloaded_merges = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="merges.txt"))
