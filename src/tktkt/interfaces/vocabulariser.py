@@ -186,7 +186,7 @@ class Vocabulariser(ABC):
             if typ in reserved_types:
                 print(f"Warning: special token {typ} is part of the vocabulary. "
                       f"In the future, there will likely be support to keep both at the same time. "
-                      f"For now, we will keep the newly requested ID and skip its place in the rest of the vocabulary.")
+                      f"For now, we will keep the newly requested ID and overwrite its place in the original vocabulary.")
                 continue
             elif typ in vocabulary:
                 print(f"Warning: token {typ} was generated more than once in the {cls.__name__}. Skipping its duplicate.")

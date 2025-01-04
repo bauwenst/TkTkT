@@ -143,7 +143,7 @@ class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser):
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.vocab"))
 
     def _buildVocabulary(self) -> Vocab:
-        return KudoPieceVocabulariser.load(file_or_folder=self.getVocabFile(), existing_types=self._specials)
+        return KudoPieceVocabulariser.load(file_or_folder=self.getVocabFile(), existing_types=self._specials, extras_first=True)
 
     def getModelFile(self) -> Path:
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.model"))
