@@ -85,6 +85,12 @@ def take(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
                 break
 
 
+def filterOptionals(iterable: Iterable[Optional[T]]) -> Iterable[T]:
+    for thing in iterable:
+        if thing is not None:
+            yield thing
+
+
 def streamPrint(iterable: Iterable[T]) -> Iterable[T]:
     for thing in iterable:
         print(thing)
