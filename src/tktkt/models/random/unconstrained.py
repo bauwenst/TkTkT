@@ -1,5 +1,15 @@
 """
 Purely random segmentation without a vocabulary.
+
+All constrained random tokenisers have the precondition that there exists at least one segmentation, otherwise they will
+break in some way.
+    - The generator-based one will generate nothing and choose a number between 0 and 0 not including 0.
+    - The rejection-sampling-based one will sample forever.
+    - The Markov-based one will hit a node during decoding which has 0 incoming edges and hence you're stuck.
+
+There are many ways to solve this, most obviously using pseudobytes (they won't be interpretable but at least your
+tokeniser doesn't crash), and otherwise by checking beforehand if at least all characters are in the vocab and if
+not you return the characters and let them be [UNK]'ed.
 """
 from typing import List
 import numpy.random as npr
