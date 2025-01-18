@@ -1,4 +1,5 @@
 import time
+from math import sqrt
 
 
 def datetimeDashed() -> str:
@@ -30,43 +31,60 @@ class Timer:
     because evil processes like Windows Updater can hoard CPU usage and slow down the program's "actual" execution time.
     """
 
-    def __init__(self):
-        self.s = None
-        self.t = None
-        self.laps = []
+    def __init__(self, echo_indent: int=0):
+        self._s = None
+        self._t = None
+
+        self._n    = 0
+        self._sum  = 0
+        self._sum2 = 0
+        # self.laps = []
+
+        self._indent = echo_indent
 
     def start(self, echo=False):
         if echo:
-            print(f"    [Started timer at {time.strftime('%Y-%m-%d %H:%M:%S')}]")
+            print("\t"*self._indent + f"[Started timer at {time.strftime('%Y-%m-%d %H:%M:%S')}]")
         current_time = time.perf_counter()
-        self.s = current_time
-        self.t = current_time
+        self._s = current_time
+        self._t = current_time
 
     def lap(self, echo=False):
         current_time = time.perf_counter()
-        ### Safe zone (prints and other operations between ending the previous lap and starting the next)
-        delta = round(current_time - self.t, 5)
-        self.laps.append(delta)
+        ### Untimed zone (here happens everything in the small time between ending the previous lap and starting the next)
+        delta = round(current_time - self._t, 5)
+        self._n    += 1
+        self._sum  += delta
+        self._sum2 += delta**2
+        # self.laps.append(delta)
         if echo:
-            print(f"    [Cycle took {delta} seconds.]")
+            print("\t"*self._indent + f"[Cycle took {delta} seconds.]")
         ###
-        self.t = time.perf_counter()
+        self._t = time.perf_counter()
         return delta
 
     def soFar(self, echo=False):
-        total = round(time.perf_counter() - self.s, 5)
+        total = round(time.perf_counter() - self._s, 5)
         if echo:
-            print(f"    [Total runtime of {total} seconds.]")
+            print("\t"*self._indent + f"[Total runtime of {total} seconds.]")
         return total
 
     def lapCount(self):
-        return len(self.laps)
+        # return len(self.laps)
+        return self._n
 
     def totalLapTime(self):
         """
-        Slightly different from soFar() in that it sums all of the printed laps together, not including the current one.
+        Slightly different from soFar() in that it sums all of the printed laps together, but DOESN'T include how much
+        time has passed since the last lap.
         """
-        return sum(self.laps)
+        # return sum(self.laps)
+        return self._sum
 
     def averageLapTime(self):
         return self.totalLapTime() / self.lapCount() if self.lapCount() else 0
+
+    def stdLapTime(self):
+        """Standard deviation of the lap times."""
+        n = self.lapCount()
+        return sqrt( (self._sum2 - n * self.averageLapTime()**2) / (n-1) )

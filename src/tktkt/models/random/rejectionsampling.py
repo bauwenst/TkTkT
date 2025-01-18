@@ -102,8 +102,8 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
         eps = 1/prod(len(ps) or 1   for ps in graph.pointers)
 
         #   - Generate valid paths and retry based on eps and its probability.
+        # print(pretoken, eps)
         while True:
             indices, p = self.sampler.samplePathAndProb(graph)
             if self.rng.random() < eps/p:  # Probability of being emitted is P(generate)*P(accept) = p*eps/p = eps. To verify the direction of "<", note that when P(accept) = eps/p = 1, you must always accept the path, and indeed, rand() is always lower than 1.
-                print("emitted")
                 return segmentUsingIndices(pretoken, starts_of_tokens=indices)

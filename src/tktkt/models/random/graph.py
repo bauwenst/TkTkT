@@ -39,6 +39,10 @@ class SegmentationGraphSampler(ABC):
     def pathToProb(self, graph: SegmentationGraph, path: List[int]) -> float:
         pass
 
+    @abstractmethod
+    def totalPaths(self, graph: SegmentationGraph) -> int:
+        pass
+
 
 class ForwardGraphSampler(SegmentationGraphSampler):
 
@@ -67,11 +71,13 @@ class ForwardGraphSampler(SegmentationGraphSampler):
         return indices, probability
 
     def pathToProb(self, graph: SegmentationGraph, path: List[int]) -> float:
+        path = path + [len(graph.pointers)-1]  # If path already includes the final index, this doesn't hurt. Otherwise, it allows current_node to actually run until the final node.
         probability = 1
 
         token_index  = 0
         current_node = 0
         while current_node < len(graph.pointers) - 1:
+            token_index += 1
             next_node = path[token_index]
 
             local_distribution = self.renormalisation.normalise(np.array(graph.probabilities[current_node]))
@@ -79,9 +85,17 @@ class ForwardGraphSampler(SegmentationGraphSampler):
 
             current_node = next_node
             probability *= local_distribution[new_pointer_index]
-            token_index += 1
 
         return probability
+
+    def totalPaths(self, graph: SegmentationGraph) -> int:
+        n = len(graph.pointers)
+        totals = [0 for _ in range(n)]
+        totals[0] = 1
+        for i in range(n):
+            for j in graph.pointers[i]:
+                totals[j] += totals[i]
+        return totals[-1]
 
 
 class BackwardGraphSampler(SegmentationGraphSampler):
@@ -111,11 +125,14 @@ class BackwardGraphSampler(SegmentationGraphSampler):
         return indices[::-1], probability
 
     def pathToProb(self, graph: SegmentationGraph, path: List[int]) -> float:
+        if path[-1] != len(graph.pointers)-1:
+            path = path + [len(graph.pointers)-1]
         probability = 1
 
         token_index  = len(path) - 1
         current_node = len(graph.pointers) - 1
         while current_node > 0:
+            token_index -= 1
             next_node = path[token_index]
 
             local_distribution = self.renormalisation.normalise(np.array(graph.probabilities[current_node]))
@@ -123,9 +140,17 @@ class BackwardGraphSampler(SegmentationGraphSampler):
 
             current_node = next_node
             probability *= local_distribution[new_pointer_index]
-            token_index -= 1
 
         return probability
+
+    def totalPaths(self, graph: SegmentationGraph) -> int:
+        n = len(graph.pointers)
+        totals = [0 for _ in range(n)]
+        totals[-1] = 1
+        for i in range(n-1,-1,-1):
+            for j in graph.pointers[i]:
+                totals[j] += totals[i]
+        return totals[0]
 
 
 class GraphTokeniser(TokeniserWithVocabDict):
