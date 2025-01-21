@@ -2,7 +2,7 @@
 Mathematical computations that have to do with the combinatorics of string segmentation.
 No connection with any tokeniser.
 """
-from typing import List, Tuple, Dict, Sequence, Generator, Iterable
+from typing import List, Tuple, Dict, Sequence, Generator, Iterable, Iterator
 from itertools import permutations, combinations
 from functools import reduce
 from collections import Counter
@@ -57,20 +57,9 @@ def compositions_k(n: int, k: int) -> Generator[TokenLengths,None,None]:
         yield tuple([b - a for a, b in zip(indices[:-1], indices[1:])])
 
 
-def integerPartitions_k(n: int, k: int, upper_limit: int=None, memoisation: Dict[Tuple[int,int],List[TokenLengths]]=None) -> List[TokenLengths]:
-    """
-    Generates only the integer compositions of length k summing to n that are in ascending order, ignoring all permutations
-    of these. Importantly, this is **not** done by generating all binom(n-1)(k-1) compositions for better time complexity.
-    https://en.wikipedia.org/wiki/Integer_partition
-    https://math.stackexchange.com/a/4967437/615621
-
-    Less relevant in tokenisation because permutations of token lengths do not give the same segmentation. However, if
-    you need to subdivide the set of segmentations (and hence compositions) of a string by the permutation equivalence
-    class of the token lengths, this function will give you one representative result for each class.
-
-    :param n: total that the sequences must sum to.
-    :param k: amount of non-zero positive integers in the sequences.
-    """
+def integerPartitions_k_highMemory(n: int, k: int, upper_limit: int=None, memoisation: Dict[Tuple[int,int],List[TokenLengths]]=None) -> List[TokenLengths]:
+    """Deprecated high-memory implementation of integerPartitions_k that constructs all results in memory
+       simultaneously, and sorts the partitions right-to-left, both unlike integerPartitions_k."""
     assert not(n < 0 or k < 0 or (n == 0 and k != 0) or (n != 0 and k == 0))
 
     if memoisation is None:
@@ -95,6 +84,33 @@ def integerPartitions_k(n: int, k: int, upper_limit: int=None, memoisation: Dict
 
     memoisation[(n,k)] = results
     return results
+
+
+def integerPartitions_k(n: int, k: int, prefix: TokenLengths=()) -> Iterator[TokenLengths]:
+    """
+    Generates only the integer compositions of length k summing to n that are in ascending order, ignoring all permutations
+    of these. Importantly, this is **not** done by generating all binom(n-1)(k-1) compositions for better time complexity.
+    https://en.wikipedia.org/wiki/Integer_partition
+    https://math.stackexchange.com/a/4967437/615621
+
+    Less relevant in tokenisation because permutations of token lengths do not give the same segmentation. However, if
+    you need to subdivide the set of segmentations (and hence compositions) of a string by the permutation equivalence
+    class of the token lengths, this function will give you one representative result for each class.
+
+    :param n: total that the sequences must sum to.
+    :param k: amount of non-zero positive integers in the sequences.
+    """
+    assert not(n < 0 or k < 0 or (n == 0 and k != 0) or (n != 0 and k == 0))
+
+    if k == 0:
+        yield prefix
+        return  # The 'None' output by this return does not make its way to
+
+    lower_limit = n if k == 1 else prefix[-1] if prefix else 1  # Lower limit is either 1 (no history) or the last number used. When you only have one step left, the lower limit is not the last number used.
+    upper_limit = n // k                                        # Upper limit: you can't take a step so big that it exceeds n if repeated. Let's say you have n = 7 to cross in 3 steps. You can then output 2 at most, because if you output 3, you'll end up at 3*k == 9 > n. You can only start outputting step=3 at k=3 from n>=9 onward.
+
+    for step in range(lower_limit,upper_limit+1):
+        yield from integerPartitions_k(n-step, k-1, prefix=prefix + (step,))
 
 
 def permutationToIdentifier(permutation: Sequence) -> int:

@@ -19,6 +19,9 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
         self._iterable = iterable
         self.name = name
 
+        if hasattr(iterable, "__next__"):
+            raise TypeError("The given iteraBLE is an iteraTOR, and hence may not be re-iterable.")
+
     def __iter__(self):
         return self._iterable.__iter__()
 

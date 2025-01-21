@@ -52,13 +52,13 @@ class Timer:
     def lap(self, echo=False):
         current_time = time.perf_counter()
         ### Untimed zone (here happens everything in the small time between ending the previous lap and starting the next)
-        delta = round(current_time - self._t, 5)
+        delta = current_time - self._t
         self._n    += 1
         self._sum  += delta
         self._sum2 += delta**2
         # self.laps.append(delta)
         if echo:
-            print("\t"*self._indent + f"[Cycle took {delta} seconds.]")
+            print("\t"*self._indent + f"[Cycle took {round(delta,5)} seconds.]")
         ###
         self._t = time.perf_counter()
         return delta
