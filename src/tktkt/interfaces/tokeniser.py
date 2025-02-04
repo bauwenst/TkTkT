@@ -24,6 +24,9 @@ class Tokeniser(ABC):
     def getName(self) -> str:  # Can be overridden if your name varies depending on the configuration.
         return self.__class__.__name__
 
+    def __repr__(self):
+        return self.getName()
+
 
 class TokeniserWithFiniteIdRange(Tokeniser):
 

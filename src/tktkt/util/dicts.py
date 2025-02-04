@@ -54,7 +54,7 @@ def getByValue(d: Dict[K,V], value: V) -> List[K]:
 
 
 def argmax(d: Dict[K,V]) -> List[K]:
-    """Finds the keys belonging to the largest value in the dictionary."""
+    """Finds the keys belonging to the largest value in the dictionary. Could be ~n. I do it in ~2n."""
     return getByValue(d, max(d.values()))
 
 

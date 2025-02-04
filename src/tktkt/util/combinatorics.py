@@ -57,10 +57,33 @@ def compositions_k(n: int, k: int) -> Generator[TokenLengths,None,None]:
         yield tuple([b - a for a, b in zip(indices[:-1], indices[1:])])
 
 
-def integerPartitions_k_highMemory(n: int, k: int, upper_limit: int=None, memoisation: Dict[Tuple[int,int],List[TokenLengths]]=None) -> List[TokenLengths]:
+def integerPartitions_k(n: int, k: int, prefix: TokenLengths=()) -> Iterator[TokenLengths]:
+    """
+    Generates only the integer compositions of length k summing to n that are in ascending order, ignoring all permutations
+    of these. Importantly, this is **not** done by generating all binom(n-1)(k-1) compositions for better time complexity.
+    https://en.wikipedia.org/wiki/Integer_partition
+    https://math.stackexchange.com/a/4967437/615621
+
+    :param n: total that the sequences must sum to.
+    :param k: amount of non-zero positive integers in the sequences.
+    """
+    assert not(n < 0 or k < 0 or (n == 0 and k != 0) or (n != 0 and k == 0)), f"Illegal pair of (n,k): {n,k}"
+
+    if k == 0:
+        yield prefix
+        return  # The 'None' output by this return does not make its way to the output of the generator.
+
+    lower_limit = n if k == 1 else prefix[-1] if prefix else 1  # Lower limit is either 1 (no history) or the last number used. When you only have one step left, the lower limit is not the last number used.
+    upper_limit = n // k                                        # Upper limit: you can't take a step so big that it exceeds n if repeated. Let's say you have n = 7 to cross in 3 steps. You can then output 2 at most, because if you output 3, you'll end up at 3*k == 9 > n. You can only start outputting step=3 at k=3 from n>=9 onward.
+
+    for step in range(lower_limit,upper_limit+1):
+        yield from integerPartitions_k(n-step, k-1, prefix=prefix + (step,))
+
+
+def _integerPartitions_k_highMemory(n: int, k: int, upper_limit: int=None, memoisation: Dict[Tuple[int,int],List[TokenLengths]]=None) -> List[TokenLengths]:
     """Deprecated high-memory implementation of integerPartitions_k that constructs all results in memory
        simultaneously, and sorts the partitions right-to-left, both unlike integerPartitions_k."""
-    assert not(n < 0 or k < 0 or (n == 0 and k != 0) or (n != 0 and k == 0))
+    assert not(n < 0 or k < 0 or (n == 0 and k != 0) or (n != 0 and k == 0)), f"Illegal pair of (n,k): {n,k}"
 
     if memoisation is None:
         memoisation = dict()
@@ -84,33 +107,6 @@ def integerPartitions_k_highMemory(n: int, k: int, upper_limit: int=None, memois
 
     memoisation[(n,k)] = results
     return results
-
-
-def integerPartitions_k(n: int, k: int, prefix: TokenLengths=()) -> Iterator[TokenLengths]:
-    """
-    Generates only the integer compositions of length k summing to n that are in ascending order, ignoring all permutations
-    of these. Importantly, this is **not** done by generating all binom(n-1)(k-1) compositions for better time complexity.
-    https://en.wikipedia.org/wiki/Integer_partition
-    https://math.stackexchange.com/a/4967437/615621
-
-    Less relevant in tokenisation because permutations of token lengths do not give the same segmentation. However, if
-    you need to subdivide the set of segmentations (and hence compositions) of a string by the permutation equivalence
-    class of the token lengths, this function will give you one representative result for each class.
-
-    :param n: total that the sequences must sum to.
-    :param k: amount of non-zero positive integers in the sequences.
-    """
-    assert not(n < 0 or k < 0 or (n == 0 and k != 0) or (n != 0 and k == 0))
-
-    if k == 0:
-        yield prefix
-        return  # The 'None' output by this return does not make its way to
-
-    lower_limit = n if k == 1 else prefix[-1] if prefix else 1  # Lower limit is either 1 (no history) or the last number used. When you only have one step left, the lower limit is not the last number used.
-    upper_limit = n // k                                        # Upper limit: you can't take a step so big that it exceeds n if repeated. Let's say you have n = 7 to cross in 3 steps. You can then output 2 at most, because if you output 3, you'll end up at 3*k == 9 > n. You can only start outputting step=3 at k=3 from n>=9 onward.
-
-    for step in range(lower_limit,upper_limit+1):
-        yield from integerPartitions_k(n-step, k-1, prefix=prefix + (step,))
 
 
 def permutationToIdentifier(permutation: Sequence) -> int:
@@ -201,10 +197,9 @@ def getLOCKey(token_lengths: TokenLengths) -> int:
         n_shorter_segmentations += countSegmentationsOfKTokens(n, smaller_k)
 
     # + Sizes of all preceding permutation equivalence classes for (n,k), in order.
-    equivalence_classes = equivalenceClassesForSegmentationsOfKTokens(n,k)
     this_class = tuple(sorted(token_lengths))
     n_segmentations_equalength_lowerclass = 0
-    for c in equivalence_classes:
+    for c in equivalenceClassesForSegmentationsOfKTokens(n,k):
         if c == this_class:
             break
         n_segmentations_equalength_lowerclass += equivalenceClassSize(c)
@@ -212,3 +207,11 @@ def getLOCKey(token_lengths: TokenLengths) -> int:
     # + Its permutation number inside its own permutation equivalence class.
     n_segmentations_equalength_equiclass_lowerperm = permutationToIdentifier(token_lengths)
     return n_shorter_segmentations + n_segmentations_equalength_lowerclass + n_segmentations_equalength_equiclass_lowerperm
+
+
+def getBitKey(token_lengths: TokenLengths) -> int:
+    """
+    Applies a bijective function between each set of lists that sum to the same number n and the set
+    {0, ..., 2^{n-1}-1} by interpreting the numbers as spans of 0s between 1s in a binary number.
+    """
+    return int("1".join(["0"*(l-1) for l in token_lengths]), 2)

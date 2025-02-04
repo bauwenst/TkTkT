@@ -46,17 +46,21 @@ def foldSpans(lst: Iterable[T], only_delete_specific_value: Any=_NONE) -> Iterab
         previous = thing
 
 
-def keepFirst(iterable: Iterable[T]) -> Iterable[T]:
+def keepFirst(iterable: Iterable[T], key: Callable[[T],T2]=None) -> Iterable[T]:
     """
     Only keeps the first instance of each unique value in the list.
     Currently requires the elements to be hashable to keep the function O(N). Can be made O(N²) by just using == instead.
     """
-    values = set()
+    if key is None:
+        key = lambda x: x
+
+    seen_keys = set()
     for e in iterable:
-        if e in values:
+        k = key(e)
+        if k in seen_keys:
             continue
         else:
-            values.add(e)
+            seen_keys.add(k)
             yield e
 
 
@@ -68,6 +72,19 @@ def mapExtend(f: Callable[[T],Iterable[T2]], iterable: Iterable[T]) -> Iterable[
     for element in iterable:
         for piece in f(element):
             yield piece
+
+
+def cat(iterable: Iterable[Iterable[T]]) -> Iterable[T]:
+    return mapExtend(lambda x: x, iterable)
+
+
+IterableOrT = Union[T, Iterable['IterableOrT[T]']]
+def flattenRecursively(nested_iterable: IterableOrT[T]) -> Iterable[T]:
+    try:
+        for thing in nested_iterable:
+            yield from flattenRecursively(thing)
+    except:
+        yield nested_iterable
 
 
 def drop(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
@@ -109,6 +126,18 @@ def count(iterable: Iterable[T]) -> int:
         total += 1
     return total
 
+
+def allEqual(iterable: Iterable[T]) -> bool:
+    value = _NONE
+    for thing in iterable:
+        if value is _NONE:
+            value = thing
+            continue
+
+        if thing != value:
+            return False
+
+    return True
 
 def transpose(matrix: Iterable[Iterable[T]]) -> List[List[T]]:
     new_matrix = []

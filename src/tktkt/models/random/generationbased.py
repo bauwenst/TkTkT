@@ -6,7 +6,7 @@ import itertools
 from tqdm.auto import tqdm
 
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
-from ...evaluation.fertility import possibleSegmentations
+from ...evaluation.fertility import countValidSegmentations
 from ...util.iterables import drop
 from ...util.functions import relu
 from ...util.printing import intsep
@@ -27,7 +27,7 @@ class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabDict):
         """
         Takes at least O(N²) time, and needs an additional O(2^{max(N-k,0)}/2) on average afterward.
         """
-        total_segmentations = possibleSegmentations(self.vocab, pretoken)  # This is O(N²), which is endlessly cheaper than the O(2^{N-k}) worst-case of generateSegmentationIndices
+        total_segmentations = countValidSegmentations(pretoken, self.vocab)  # This is O(N²), which is endlessly cheaper than the O(2^{N-k}) worst-case of generateSegmentationIndices
         segmentation_generator = generateSegmentationIndices_fixedSpace(pretoken, self.vocab, max_prefix_length=22)
         return segmentUsingIndices(pretoken, next(drop(self.rng.integers(total_segmentations), segmentation_generator)))
 
@@ -36,7 +36,7 @@ SegmentationIndices = List[int]
 
 def generateSegmentationIndices_exponentialSpace(text: str, vocab: Vocab) -> List[SegmentationIndices]:
     """
-    We have a function possibleSegmentations() somewhere that gives the AMOUNT of possible segmentations, but not
+    We have a function countValidSegmentations() that gives the AMOUNT of possible segmentations, but not
     what they are. A very similar Viterbi algorithm works here, except the history you store is not an integer but
     a collection of lists (where the amount computed at each step of the above algorithm is the size of that collection).
 

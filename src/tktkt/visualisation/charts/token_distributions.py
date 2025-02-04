@@ -1,19 +1,18 @@
-from tst.preamble import *
-
-from typing import Dict, List
+from typing import Dict, List, Union
 
 from fiject import StreamingMultiHistogram, StreamingVariableGranularityHistogram, BinSpec, VariableGranularityHistogram, FIJECT_DEFAULTS, HistoBars, CacheMode
 
-from tktkt.interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
-from tktkt.util.timing import timeit
-from tktkt.util.iterables import intercalate, streamProgress
-from tktkt.util.combinatorics import getLOCKey
-from tktkt.util.types import NamedIterable
+from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
+from ...interfaces.factories import Deserialiser
+from ...util.timing import timeit
+from ...util.iterables import intercalate, streamProgress, allEqual
+from ...util.combinatorics import getLOCKey
+from ...util.types import NamedIterable
 
 
 @timeit
 def visualiseCharsVersusTokensRelationships(
-    tokeniser: TokeniserWithFiniteTypeDomain,
+    tokenisers: List[TokeniserWithFiniteTypeDomain],
     raw_words: NamedIterable[str], counts: Dict[str, float]=None,
     n_samples_per_word: int=1, do_progressbar: bool=False,
     do_measure_original_word_length: bool=False, exclude_words_over_length: int=100
@@ -42,11 +41,12 @@ def visualiseCharsVersusTokensRelationships(
 
     :return: Summary statistics about the histogram on segmentality and the histogram on token lengths.
     """
+    if not tokenisers:
+        raise ValueError("No tokenisers given.")
     if counts is None:
         counts = dict()
 
-    name = tokeniser.getName()
-    FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = name + "_" + raw_words.name
+    FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = (tokenisers[0].getName() if len(tokenisers) == 1 else "chars-vs-tokens") + "_" + raw_words.name
 
     histo_cpt_ratio           = StreamingMultiHistogram("cpt-ratios",                    binspec=BinSpec.halfopen(minimum=1, width=0.25))
     histo_segmentality        = StreamingVariableGranularityHistogram("tokens-per-char", binspec=BinSpec.closedFromAmount(minimum=0, maximum=1, amount=20))
@@ -54,8 +54,10 @@ def visualiseCharsVersusTokensRelationships(
     histo_chars_across_types  = StreamingMultiHistogram("chars-in-types",                binspec=BinSpec.halfopen(minimum=1, width=1))
 
     if histo_chars_across_types.needs_computation:
-        for t in tokeniser.types():
-            histo_chars_across_types.add(name, len(t))
+        for tokeniser in tokenisers:
+            name = tokeniser.getName()
+            for t in tokeniser.types():
+                histo_chars_across_types.add(name, len(t))
 
     if histo_cpt_ratio.needs_computation or \
        histo_segmentality.needs_computation or \
@@ -65,21 +67,24 @@ def visualiseCharsVersusTokensRelationships(
             if n_raw_chars > exclude_words_over_length:
                 continue
 
-            for _ in range(n_samples_per_word):
-                tokens = tokeniser.prepareAndTokenise(raw_word)
-                n_token_chars = sum(map(len, tokens))
+            for tokeniser in tokenisers:
+                name = tokeniser.getName()
+                for _ in range(n_samples_per_word):
+                    # Compute metrics
+                    tokens = tokeniser.prepareAndTokenise(raw_word)
+                    n_token_chars = sum(map(len, tokens))
 
-                n_chars = n_raw_chars if do_measure_original_word_length else n_token_chars
-                n_tokens = len(tokens)
-                char_to_token_ratio = n_chars/n_tokens
+                    n_chars = n_raw_chars if do_measure_original_word_length else n_token_chars
+                    n_tokens = len(tokens)
+                    char_to_token_ratio = n_chars/n_tokens
 
-                f_w = counts.get(raw_word, 1)  # TODO: Frequency is unsupported by Fiject, currently.
+                    f_w = counts.get(raw_word, 1)  # TODO: Frequency is unsupported by Fiject, currently.
 
-                # Add to histograms
-                histo_cpt_ratio.add(name, char_to_token_ratio, weight=f_w)
-                histo_segmentality.add(n_tokens-1, n_token_chars, weight=f_w, class_name=raw_words.name)  # You can have 1 ... n_chars tokens. The interface requires the first argument to be in 0 ... n-1 (which makes sense, otherwise the first bin would never be added to and the first bin changes size depending on n_chars).
-                for token in tokens:
-                    histo_chars_across_tokens.add(name, len(token), weight=f_w)
+                    # Add to histograms
+                    histo_cpt_ratio.add(name, char_to_token_ratio, weight=f_w)
+                    histo_segmentality.add(n_tokens-1, n_token_chars, weight=f_w, class_name=name)  # You can have 1 ... n_chars tokens. The interface requires the first argument to be in 0 ... n-1 (which makes sense, otherwise the first bin would never be added to and the first bin changes size depending on n_chars).
+                    for token in tokens:
+                        histo_chars_across_tokens.add(name, len(token), weight=f_w)
 
     histo_cpt_ratio.commit(StreamingMultiHistogram.ArgsGlobal(
         x_label="Characters-per-token ratio $R$",
@@ -119,7 +124,8 @@ def visualiseCharsVersusTokensRelationships(
         x_center_ticks=True,
         x_tickspacing=1
     ), bin_reweighting={
-        k: 1/v for k,v in histo_chars_across_types.data[name].items()  # Note: these counts are indexed by bin, and since the bins of both histos match, you don't have to shift k etc.
+        tokeniser.getName(): {k: 1/v for k,v in histo_chars_across_types.data[tokeniser.getName()].items()}  # Note: these counts are indexed by bin, and since the bins of both histos match, you don't have to shift k etc.
+        for tokeniser in tokenisers
     })
 
     FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = ""
@@ -128,7 +134,44 @@ def visualiseCharsVersusTokensRelationships(
     return histo_segmentality.getSummaries(), histo_chars_across_tokens.getSummaries().popitem()[1]
 
 
-def visualiseSingleWordSegmentationDistribution(tokeniser: Tokeniser, word: str, samples: int=1_000_000,
+def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithFiniteTypeDomain, Deserialiser]], names: List[str]=None):
+    if not vocabulary_sources:
+        raise ValueError("No vocabularies given.")
+
+    if not names:
+        names = [(source.getName() if isinstance(source, Tokeniser) else source.__class__.__name__) for source in vocabulary_sources]
+
+    FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = names[0]*(len(vocabulary_sources) == 1)
+
+    histo_chars_across_types = StreamingMultiHistogram("chars-in-types", binspec=BinSpec.halfopen(minimum=1, width=1), overwriting=True)
+    for name,source in zip(names,vocabulary_sources):
+        if isinstance(source, Tokeniser):
+            type_iterator = source.types()
+        elif isinstance(source, Deserialiser):
+            type_iterator = source.buildVocabulary().keys()
+        else:
+            raise TypeError
+
+        for t in type_iterator:
+            histo_chars_across_types.add(name, len(t))
+
+    histo_chars_across_types.commit(StreamingMultiHistogram.ArgsGlobal(
+        x_label="Characters",
+        x_tickspacing=1,
+        x_lims=(0.25,20.75),
+        x_center_ticks=True,
+
+        y_label="Fraction of vocabulary types",
+        y_tickspacing=1,
+        relative_counts=True,
+
+        # aspect_ratio=(4*1.25,3*1.25)
+    ))
+
+    FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = ""
+
+
+def visualiseSingleWordSegmentationDistribution(tokenisers: List[Tokeniser], word: str, samples: int=1_000_000,
                                                 segmentation_histogram_max_bins: int=2**16, do_bitbased_ordering: bool=False):
     """
     Produces the following histograms:
@@ -174,10 +217,13 @@ def visualiseSingleWordSegmentationDistribution(tokeniser: Tokeniser, word: str,
     An alternative order is doing the above with ALL such tuples, left-aligned. The difference is that a segmentation like 1+9
     is on the few-token side in one order, and at the end of the 1-starting bin in the other order.
     """
-    name = tokeniser.getName()
-    FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = name + "_" + word
+    if not tokenisers:
+        raise ValueError("No tokenisers given.")
 
-    n_chars = sum(map(len, tokeniser.preprocessor.do(word)))
+    FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = (tokenisers[0].getName() if len(tokenisers) == 1 else "chars-vs-tokens") + f"_{word}×{samples}"
+
+    assert allEqual(sum(map(len, tokeniser.preprocessor.do(word))) for tokeniser in tokenisers)
+    n_chars = sum(map(len, tokenisers[0].preprocessor.do(word)))
 
     histo_across_segmentations        = StreamingMultiHistogram("segmentations" + ("-bb" if do_bitbased_ordering else "-loc"), BinSpec.closedFromAmount(minimum=0, maximum=2**(n_chars-1), amount=min(2**(n_chars-1),segmentation_histogram_max_bins)), caching=CacheMode.IF_MISSING)
     histo_across_amounts              = StreamingMultiHistogram("amounts", BinSpec.closedFromAmount(minimum=1, maximum=n_chars+1, amount=n_chars), caching=CacheMode.IF_MISSING)
@@ -190,45 +236,58 @@ def visualiseSingleWordSegmentationDistribution(tokeniser: Tokeniser, word: str,
            bars_foreach_splitpoint.needs_computation or \
            histo_across_token_lengths.needs_computation or \
            histo_across_char_per_token_ratio.needs_computation:
-        split_heatmap = [0] * (n_chars - 1)
+        for tokeniser in tokenisers:
+            name = tokeniser.getName()
+            split_heatmap = [0] * (n_chars - 1)
 
-        for _ in streamProgress(range(samples)):
-            tokens = tokeniser.prepareAndTokenise(word)
-            assert sum(map(len, tokens)) == n_chars  # Basically asserts that the tokeniser is non-degenerate.
+            for _ in streamProgress(range(samples)):
+                tokens = tokeniser.prepareAndTokenise(word)
+                assert sum(map(len, tokens)) == n_chars  # Basically asserts that the tokeniser is non-degenerate.
 
-            # Easy histograms
-            amount = len(tokens)
-            lengths = list(map(len, tokens))
+                # Easy histograms
+                amount = len(tokens)
+                lengths = list(map(len, tokens))
 
-            histo_across_amounts.add(name, amount)
-            for l in lengths:
-                histo_across_token_lengths.add(name, l)
+                histo_across_amounts.add(name, amount)
+                for l in lengths:
+                    histo_across_token_lengths.add(name, l)
 
-            histo_across_char_per_token_ratio.add(name, n_chars/amount)
+                histo_across_char_per_token_ratio.add(name, n_chars/amount)
 
-            # Histograms that need a segmentation map
-            bits = getSegmentationBitstring(tokens)
+                # Histograms that need a segmentation map
+                bits = getSegmentationBitstring(tokens)
 
-            if do_bitbased_ordering:
-                histo_across_segmentations.add(name, int(bits,2))
-            else:
-                histo_across_segmentations.add(name, getLOCKey(lengths))
+                if do_bitbased_ordering:
+                    histo_across_segmentations.add(name, int(bits,2))
+                else:
+                    histo_across_segmentations.add(name, getLOCKey(lengths))
 
-            for split_position,bit in enumerate(bits):
-                if bit == "1":
-                    split_heatmap[split_position] += 1
+                for split_position,bit in enumerate(bits):
+                    if bit == "1":
+                        split_heatmap[split_position] += 1
 
-        for split_count in split_heatmap:
-            bars_foreach_splitpoint.append("", split_count/samples)
+            for split_count in split_heatmap:
+                bars_foreach_splitpoint.append(name, split_count/samples)
 
     # Commit all the plots
-    preprocessed_word = "".join(tokeniser.preprocessor.do(word))
+    preprocessed_word = ''.join(tokenisers[0].preprocessor.do(word))
 
     histo_across_segmentations.commit(StreamingMultiHistogram.ArgsGlobal(
         x_label=f"Segmentation key ({'bit-based' if do_bitbased_ordering else 'LOC'})",
 
         y_label="Fraction of samples",
-        relative_counts=True
+        relative_counts=True,
+        log_y=False
+    ))
+    histo_across_segmentations.raw_name = histo_across_segmentations.raw_name + "_log"
+    histo_across_segmentations.commit(StreamingMultiHistogram.ArgsGlobal(
+        x_label=f"Segmentation key ({'bit-based' if do_bitbased_ordering else 'LOC'})",
+
+        y_label="Fraction of samples",
+        relative_counts=True,
+        log_y=True,
+        # y_lims=(1e-2,1e0)
+        # y_lims=(1e-10, 1e2)
     ))
     histo_across_amounts.commit(StreamingMultiHistogram.ArgsGlobal(
         x_label="Amount of tokens",

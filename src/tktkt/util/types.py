@@ -5,6 +5,8 @@ from abc import abstractmethod
 from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union
 from datasets import Dataset, IterableDataset
 
+from .iterables import mapExtend
+
 HuggingfaceDataset = Union[Dataset, IterableDataset]
 
 T = TypeVar("T")
@@ -28,6 +30,9 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
     def map(self, func: Callable[[T],T2]) -> "NamedIterable[T2]":
         return NamedIterable(mapped(func, self), name=self.name)
 
+    def flatmap(self, func: Callable[[T],Iterable[T2]]) -> "NamedIterable[T2]":
+        return NamedIterable(flatmapped(func, self), name=self.name)
+
 
 class mapped(Iterable[T2]):
     """
@@ -39,6 +44,18 @@ class mapped(Iterable[T2]):
 
     def __iter__(self) -> Iterator[T2]:
         return map(self._function, self._iterable)
+
+
+class flatmapped(Iterable[T2]):
+    """
+    Like mapped() except for functions that produce iterables that need to be concatenated.
+    """
+    def __init__(self, func: Callable[[T],Iterable[T2]], iterable: Iterable[T]):
+        self._function = func
+        self._iterable = iterable
+
+    def __iter__(self) -> Iterator[T2]:
+        return mapExtend(self._function, self._iterable)
 
 
 class Comparable(Protocol):

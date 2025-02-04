@@ -1,14 +1,18 @@
-from math import ceil
-from typing import Iterable, Tuple, Dict
+from typing import Iterable, Tuple, Dict, Optional, List, TypeVar, Union
+from dataclasses import dataclass
 from collections import Counter
 
+from math import ceil
 import numpy as np
 from scipy.stats import entropy as _scipy_entropy
 
-from ..interfaces.tokeniser import TokeniserWithFiniteTypeDomain
+from ..interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
 from ..util.iterables import streamProgress
+from ..util.combinatorics import getBitKey
+from ..util.dicts import argmax
 
 DEFAULT_RENYI_ALPHA = 2.5
+T = TypeVar("T")
 
 
 def shannonEntropy(probabilities: Iterable[float]):
@@ -35,10 +39,13 @@ def renyiEntropy(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPH
     return 1/(1-alpha)*np.log2(np.sum(probabilities ** alpha))
 
 
-def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPHA) -> Tuple[float,float,float]:
+def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPHA,
+                    domain_size: int=None, sample_size: int=None) -> Tuple[float,float,float]:
     """
-    Rényi efficiency of a token distribution equals the fraction which its Rényi entropy is of the Shannon entropy of a
-    uniform distribution of the same size. At alpha = 2.5, this fraction correlates highly with downstream performance.
+    Rényi efficiency of a probability distribution equals the fraction which its Rényi entropy is of the Shannon entropy
+    of a uniform distribution of the same size.
+
+    At alpha = 2.5, if the distribution is across types in a vocabulary, this fraction correlates highly with downstream performance.
 
     This function computes three quantities according to https://aclanthology.org/2023.acl-long.284v2.pdf:
         - Simplified lower bound:         H_alpha / ceil(H_0)   (by analogy of theorem 4.5 to theorem 3.9; see below)
@@ -54,12 +61,27 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
           covariance term is not (it is unknown in size and can be negative). Hence, beware that the lower bound
           should not be treated as the true lower bound but rather as a new, arbitrary, related metric.
 
-    The middle fraction doesn't mean anything, but it is between the lower and upper bound.
+    The middle fraction is how efficiency is defined traditionally, and lies between the lower and upper bound.
+
+    :param domain_size: The amount of values that could theoretically be emitted by the stochastic variable whose
+                        distribution is being tested. If not given, the amount of probabilities given will be used.
+                        Note: if the given probabilities are a distribution over segmentations rather than over tokens,
+                        you definitely want to set this argument, lest a deterministic tokeniser get an efficiency of 1.
+    :param sample_size: If the probabilities are sample proportions from a finite amount of samples, the maximal
+                           entropy achievable is not just log(domain size) but rather log(min(domain size, samples)).
+                           If the domain has 10000 values but you only took 10 samples, the maximal entropy you could
+                           get is not the uniform distribution [1/10000]*10000 but rather [1/10, ..., 1/10, 0, 0, ..., 0].
     """
     probabilities = np.array(list(probabilities))  # You need this list() because numpy has weird behaviour for e.g. dict.values().
-    V = probabilities.size
+    domain_size = domain_size or probabilities.size  # Default is as small as possible, i.e. the given distribution and no more.
+    assert domain_size >= probabilities.size, f"Domain size ({domain_size}) can't be manually set to be lower than the amount of probabilities given ({probabilities.size})."
+    sample_size = sample_size or domain_size  # Default is as large as possible, i.e. you assume we've had enough samples to theoretically spread uniformly over the entire domain.
+
+    if domain_size <= 1:  # A variable with a domain of 1 value (or 0, if you must) is always trivially uniform, and thus we say it has the maximal entropy such distributions can have. For segmentational distributions, this is the case for strings that only have one segmentation. It is not for deterministic tokenisers (for which you should set domain_size).
+        return 1.0, 1.0, 1.0
+
     H_a = renyiEntropy(probabilities, alpha=alpha)
-    H_0 = np.log2(V)
+    H_0 = np.log2(min(domain_size,sample_size))  # Maximal entropy possible given both the domain size and samples.
     return H_a/ceil(H_0), H_a/H_0, ceil(H_a)/H_0
 
 
@@ -83,6 +105,68 @@ def tokenDistributionFromSentences(tokeniser: TokeniserWithFiniteTypeDomain, cor
     return normaliseCounter(type_frequencies)
 
 
-def normaliseCounter(counts: Counter) -> dict:
-    total = counts.total()
+def normaliseCounter(counts: Union[Counter[T], Dict[T,Union[int,float]]]) -> Dict[T,float]:
+    total = sum(counts.values())
     return {t: c/total for t,c in counts.items()}
+
+
+def bitKeyFromTokens(tokens: List[str]) -> int:
+    return getBitKey(list(map(len, tokens)))
+
+
+def segmentationDistributionFromWord(tokeniser: Tokeniser, word: str, n_samples: int) -> Dict[int,float]:
+    """Repeatedly segments a word get a distribution across its segmentations."""
+    segmentations = Counter()
+    for _ in streamProgress(range(n_samples), "Tokenising", known_size=n_samples):
+        segmentations[bitKeyFromTokens(tokeniser.prepareAndTokenise(word))] += 1
+    return normaliseCounter(segmentations)
+
+
+def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
+                                    sample_size: int, domain_size: int, renyi_alpha: float=1.0,
+                                    deterministic_segmentation: Optional[List[str]]=None):
+    uniqueness = len(segmentation_probabilities) / sample_size
+    _, entropic_efficiency_all, _ = renyiEfficiency(segmentation_probabilities.values(), alpha=renyi_alpha, domain_size=domain_size, sample_size=sample_size)
+
+    # Compute statistics for the distribution without its mode.
+    argmax_index = argmax(segmentation_probabilities)[0]
+    max_probability = segmentation_probabilities[argmax_index]
+    regularisation_rate_argmax = 1 - max_probability
+
+    segmentation_probabilities.pop(argmax_index)
+    _, entropic_efficiency_no_argmax, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=sample_size-1)  # Note: normalise-pop-normalise is mathematically equivalent to pop-normalise.
+    segmentation_probabilities[argmax_index] = max_probability  # Since we normalised a copy, segmentation_probabilities is already normalised again.
+
+    # Compute statistics for the distribution without the given deterministic segmentation.
+    if deterministic_segmentation is not None:
+        det_index = bitKeyFromTokens(deterministic_segmentation)
+        det_probability = segmentation_probabilities[det_index]
+        regularisation_rate_deterministic = 1 - det_probability
+
+        segmentation_probabilities.pop(det_index)
+        _, entropic_efficiency_no_deterministic, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=sample_size-1)
+        segmentation_probabilities[det_index] = det_probability
+    else:
+        regularisation_rate_deterministic    = None
+        entropic_efficiency_no_deterministic = None
+
+    return SegmentationDiversity(
+        uniqueness=uniqueness,
+        regularisation_rate_argmax=regularisation_rate_argmax,
+        regularisation_rate_deterministic=regularisation_rate_deterministic,
+        efficiency_all=entropic_efficiency_all,
+        efficiency_no_argmax=entropic_efficiency_no_argmax,
+        efficiency_no_deterministic=entropic_efficiency_no_deterministic
+    )
+
+
+@dataclass
+class SegmentationDiversity:
+    uniqueness: float
+
+    regularisation_rate_argmax: float
+    regularisation_rate_deterministic: Optional[float]
+
+    efficiency_all: float
+    efficiency_no_argmax: float
+    efficiency_no_deterministic: Optional[float]

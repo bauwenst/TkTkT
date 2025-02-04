@@ -4,14 +4,15 @@ Goal: Currently, computes the "segmentations per word" metric.
 """
 from typing import Tuple, Iterable, Dict
 from dataclasses import dataclass
-from numpy import log2
+from math import log2
 
-from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab, Tokeniser
+from ..util.iterables import streamProgress
+from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab, Tokeniser, Preprocessor
 
 
-def possibleSegmentations(vocab: Vocab, pretoken: str) -> int:
+def countValidSegmentations(pretoken: str, vocab: Vocab) -> int:
     """
-    Computes how many possible segmentations a vocabulary allows for a given string.
+    Computes how many possible segmentations a vocabulary allows for a given string. Note: no preprocessor is applied here!
     Forward Viterbi algorithm, which is O(n^2) instead of O(2^n) even though there are O(2^n) segmentations.
     """
     options_to_get_before_char = [0 for _ in range(len(pretoken)+1)]
@@ -21,6 +22,23 @@ def possibleSegmentations(vocab: Vocab, pretoken: str) -> int:
             if pretoken[i:j] in vocab:  # not j+1 because we step to BEFORE character j, so it is an exclusive bound
                 options_to_get_before_char[j] += options_to_get_before_char[i]
     return options_to_get_before_char[-1]
+
+
+def prepareAndCountValidSegmentations(word: str, preprocessor: Preprocessor, vocab: Vocab) -> Tuple[int, int, int]:
+    """
+    Note that the vocabulary exists in the output space of a preprocessor. This has two implications for counting segmentations:
+        1. You should make sure that the given preprocessor is the full, effective preprocessor used before segmenting
+           into tokens of the vocabulary. This is NOT always `tokeniser.preprocessor`, because some tokenisers (esp. those
+           from other packages) add characters to the lowest-level pretokens. You need to model that too.
+        2. The valid segmentations have to respect boundaries placed by the pretokeniser.
+    """
+    n_chars = 0
+    n_segs  = 1
+    pretokens = preprocessor.do(word)
+    for pretoken in pretokens:
+        n_chars += len(pretoken)
+        n_segs  *= countValidSegmentations(pretoken, vocab)
+    return n_segs, n_chars, len(pretokens)
 
 
 @dataclass
@@ -60,7 +78,7 @@ class InferenceFertility:
     chars_per_word_token_token_macro: float  # [1/sum_w f(w)] * [sum_w f(w)*len(w)/len(tk(w))]  or "average CPT ratio in a corpus"
 
 
-def getVocabStats(prep_and_vocab: TokeniserWithVocabDict,
+def getVocabStats(effective_preprocessor: Preprocessor, vocab: Vocab,
                   raw_words: Iterable[str], counts: Dict[str, float]=None,
                   do_measure_original_word_length: bool=False, exclude_words_over_length: int=100, do_log_segmentations: bool=False) -> VocabularyFertility:
     """
@@ -87,21 +105,15 @@ def getVocabStats(prep_and_vocab: TokeniserWithVocabDict,
     sum_seg_on_maxseg          = 0
     sum_seg_on_maxseg_weighted = 0
 
-    for raw_word in raw_words:
+    for raw_word in streamProgress(raw_words):
         if len(raw_word) > exclude_words_over_length:
             continue
 
-        # Note that the vocabulary exists in the output space of a preprocessor. That means it not only segments
-        # strings with characters as in that output space, but it also has to respect boundaries placed by the pretokeniser.
-        chars = 0
-        segs  = 1
-        for pretoken in prep_and_vocab.preprocessor.do(raw_word):
-            chars += len(pretoken)
-            segs  *= possibleSegmentations(prep_and_vocab.vocab, pretoken)
+        segs, chars, n_pretokens = prepareAndCountValidSegmentations(pretoken, effective_preprocessor, vocab)
 
         # Maximal segmentations are measured in pretoken space.
         max_segs            = 2**(chars-1)  # every position between characters can be split on or not
-        max_segs_restricted = 2**(chars-len(prep_and_vocab.preprocessor.do(raw_word)))  # for every extra pretoken, 1 split position is fixed
+        max_segs_restricted = 2**(chars-n_pretokens)  # for every extra pretoken, 1 split position is fixed
         if do_log_segmentations:
             if segs == 0:
                 print("Word", raw_word, "has no segmentations, so its log is -infinite. Skipping it.")
@@ -114,7 +126,7 @@ def getVocabStats(prep_and_vocab: TokeniserWithVocabDict,
         if do_measure_original_word_length:
             chars = len(raw_word)
         seg_to_char_ratio   = segs/chars
-        seg_to_maxseg_ratio = segs/max_segs_restricted
+        seg_to_maxseg_ratio = segs/max_segs_restricted if chars-n_pretokens != 0 else 1
 
         # Accumulate
         f_w = counts.get(raw_word, 1)
@@ -136,7 +148,7 @@ def getVocabStats(prep_and_vocab: TokeniserWithVocabDict,
         # print(raw_word, "\t\t", segs, "of", max_segs, "or", max_segs_restricted)
 
     return VocabularyFertility(
-        vocab_size=len(prep_and_vocab.vocab),
+        vocab_size=len(vocab),
 
         segmentations_per_word_type =sum_seg/sum_one,
         segmentations_per_word_token=sum_seg_weighted/sum_one_weighted,
