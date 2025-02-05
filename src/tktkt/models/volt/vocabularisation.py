@@ -1,361 +1,241 @@
 """
-TODO: Adopt from https://github.com/Jingjing-NLP/VOLT
+Heavily refactored version of the code found at https://github.com/Jingjing-NLP/VOLT
+for the Xu e.a. (2021) paper https://aclanthology.org/2021.acl-long.571/.
+
+TODO: In the original code, they don't sort by frequency, but by BPE priority, despite the paper claiming otherwise,
+      UNLESS the authors thought that OrderedDict is actually a max-heap and hence their implementation should want to
+      keep frequency order instead of merge order.
 """
-import os
-import sys
-import math
-import argparse
+from typing import List, Tuple, Optional, Dict
+
 import numpy as np
 from tqdm import tqdm
-from collections import OrderedDict
+from pathlib import Path
+from collections import OrderedDict, Counter
 
 import ot
-import ot.plot
+
+from ...util.iterables import take
 
 
-def read(path, dicts={}, max_line_number=1e7, tokenizer='subword-nmt'):  # "@@ "
-    """
-    Read characters and their frequencies from the give file. We set the max_line_number=1,000,000 to sample charater distributions.
-    Arguments:
-        path (str): the file path
-        dicts (dict): the dict to save characters and their frequencies
-        max_line_number (int): the maximum number of lines
-        special_tokens (str): chars removed from the final character distributions; here we remove the tokens added by tokenization methods
-    Returns:
-        dicts (dict): storing characters and their frequencies
-    """
-    with open(path, 'r') as sr:
-        lines = sr.readlines()
-        total_lines = min(len(lines), max_line_number)
-        total_lines = int(total_lines)
-        for line_number in tqdm(range(total_lines)):
-            line = lines[line_number]
-            if tokenizer == 'subword-nmt':
+def countCharacters(corpus: Path, n_max_lines: int=int(1e7), tokenizer_name: str= 'subword-nmt') -> Counter[str]:
+    counts = Counter()
+    with open(corpus, "r", encoding="utf-8") as handle:
+        for i,line in enumerate(take(n_max_lines,handle)):
+            if tokenizer_name == 'subword-nmt':
                 line = line.replace("@@ ", "")
-            words = line.split(" ")
-            for word in words:
-                length = 1
-                for i in range(0, len(word)):
-                    if " ".join(word[i:i + length]).strip() != "":
-                        if " ".join(word[i:i + length]).strip() not in dicts:
-                            dicts[" ".join(word[i:i + length]).strip()] = 0
-                        dicts[" ".join(word[i:i + length]).strip()] += 1
-    return dicts
+
+            for word in line.split(" "):
+                for c in word:
+                    if not c.isspace():
+                        counts[c] += 1
+    return counts
 
 
-def get_chars(source_file, target_file, tokenizer='subword-nmt'):
+def countCharactersAndFilter(source_corpus: Path, target_corpus: Optional[Path], tokenizer_name='subword-nmt') -> Counter[str]:
+    counts = countCharacters(source_corpus, tokenizer_name=tokenizer_name)
+    if target_corpus is not None:
+        counts += countCharacters(target_corpus, tokenizer_name=tokenizer_name)
+
+    # Filter characters with frequency less than 2.
+    return Counter({key: val for key, val in counts.items() if val > 2})
+
+
+def countTokens(presegmented_corpus: Path, n_max_lines: int=int(1e7), tokenizer_name='subword-nmt'):
     """
-    Get charaters and associated frequencies from source file and target file in machine translation.
+    Count tokens in a corpus where they are already separated by spaces.
+    """
+    counts = Counter()
+    with open(presegmented_corpus, "r", encoding="utf-8") as handle:
+        for i,line in enumerate(take(n_max_lines,handle)):
+            for token in line.split():
+                if tokenizer_name == 'subword-nmt' and not token.endswith("@@"):
+                    token += "</w>"
+                counts[token] += 1
+
+    return counts
+
+
+def countMergeApplicationsGivenTokenCounts(bpe_merge_file: Path, token_counts: Counter[str], min_number: int=1, tokenizer_name='subword-nmt'):
+    """
+    Count the amount of times a BPE merge was applied.
+    """
+    merge_applications: OrderedDict[str,int] = OrderedDict()
+    with open(bpe_merge_file, 'r', encoding="utf-8") as handle:
+         for line in tqdm(handle):
+             if tokenizer_name == 'subword-nmt' and line.startswith("#version"):
+                 continue
+
+             merge_string = line.strip()
+             parts = merge_string.split(" ")
+             merge_result = "".join(parts)
+             merge_applications[merge_string] = min_number
+             for large_token, freq in token_counts.items():
+                 if merge_result in large_token:  # TODO: This is definitely NOT how you measure whether a merge was applied to reach large_token.
+                     merge_applications[merge_string] += freq
+
+    return merge_applications
+
+
+def countMergeApplications(source_corpus: Path, target_corpus: Optional[Path], bpe_merge_file: Path, tokenizer_name='subword-nmt'):
+    """
+    Get all token candidates associated with their frequencies. Here we take BPE-generated code segmentation as token candidates.
     Arguments:
-        source_file (str): source file in machine translation. Each line contains one source sentence.
-        target_file (str): target file in machine translation. Each line contains one target sentence.
-    Returns:
-        return_dicts (dict): sorted characters.
+        source_corpus (str): the source file from machine translation
+        target_corpus (str): the target file from machine translation
+        bpe_merge_file: the token candidate file. Here we take BPE-generated code segmentation as candidates.
     """
-    print("reading char file")
-    dicts = read(source_file, tokenizer=tokenizer)
-    if target_file != None:
-        dicts = read(target_file, dicts=dicts, tokenizer=tokenizer)
-
-    # filter charaters with frequency less than 2
-    dicts = {key: val for key, val in dicts.items() if val > 2}
-    new_dicts = sorted(dicts.items(), key=lambda x: x[1], reverse=True)
-    return_dicts = OrderedDict()
-    for item in new_dicts:
-        return_dicts[item[0]] = item[1]
-    return return_dicts
+    tokens = countTokens(source_corpus, tokenizer_name=tokenizer_name)
+    if target_corpus is not None:
+        tokens += countTokens(target_corpus, tokenizer_name=tokenizer_name)
+    return countMergeApplicationsGivenTokenCounts(bpe_merge_file, tokens, tokenizer_name=tokenizer_name)
 
 
-def read_tokens(path, tokens={}, max_number_line=1e7, tokenizer='subword-nmt'): #@@
-    """
-    Get all tokens and their frequencies.
-    Arguments:
-       path (str): the path of the specific file
-       tokens (dict): the target dict storing tokens and their frequency
-       max_number_line (int): we set the maximum number of lines to 1e7
-       special_tokens (str): the tokens added by tokenization approaches
-    Returns:
-       tokens: return all tokens and their frequencies
-    """
-    with open(path, 'r') as sr:
-         lines = sr.readlines()
-         total_lines = min(len(lines), max_number_line)
-         total_lines = int(total_lines)
-         for i in range(total_lines):
-             line = lines[i]
-             items = line.split()
-             for item in items:
-                 if tokenizer == 'subword-nmt':
-                     special_tokens = "@@"
-                     if not item.endswith(special_tokens):
-                            if item+"</w>" not in tokens:
-                                 tokens[item+"</w>"] = 1
-                            else:
-                                 tokens[item+"</w>"] += 1
-                     else:
-                          if item not in tokens:
-                               tokens[item] = 1
-                          else:
-                               tokens[item] += 1
-                 elif tokenizer == 'sentencepiece':
-                    if item not in tokens:
-                        tokens[item] =1
-                    else:
-                        tokens[item] += 1
-                 else:
-                    print("Errors: we only support subword-nmt and sentencepiece!")
-    return tokens
+##########################################################################################################
 
 
-def read_merge_code_frequency(path, tokens, min_number=1, tokenizer='subword-nmt'):
-    """
-    Get all code segmentations and their frequencies. Here we take BPE-generated code segmentations as token candidates. We usually sample a large BPE size, e.g., 3,0000.
-    Arguments:
-       path (str): the path to the generated code. We take the segment merged by the generated codes as candidates.
-       tokens (str): the dict storing tokens and their frequency. It is used to count the code frequency.
-       min_number (int): the minimum number of code frequency.
-    Returns:
-       merge_dict (dict): the code candidates and their frequency.
-    """
-    print("reading candidate tokens")
-    with open(path, 'r') as sr:
-         lines = sr.readlines()
-         merge_dict = OrderedDict()
-         # for bpe codes, the first line shows code version
-         if tokenizer == 'subword-nmt':
-             lines = lines[1:] # the first line is version number
-         for line in tqdm(lines):
-             merge = line.strip()
-             items = merge.split(" ")
-             token = "".join(items)
-             merge_dict[merge] = min_number
-             for split_token in tokens:
-                 #merge_dict[merge] = min_number
-                 if token in split_token:
-                     merge_dict[merge] += tokens[split_token]
+FixedOrderCounts = List[Tuple[str,int]]
 
-    return merge_dict
-
-
-def get_tokens(source_file, target_file, token_candidate_file, tokenizer='subword-nmt'):
-    """
-    Get all token cadidates associated with their frequencies. Here we take BPE-generated code segmentation as token candidates.
-    Arguments:
-        source_file (str): the source file from machine translation
-        target_file (str): the target file from machine translation
-        token_candidate_file: the token candididate file. Here we take BPE-generated code segmentation as candidates.
-    """
-
-    tokens = read_tokens(source_file, tokenizer=tokenizer)
-    if target_file != None:
-        tokens = read_tokens(target_file, tokens=tokens, tokenizer=tokenizer)
-    merge_code = read_merge_code_frequency(token_candidate_file, tokens, tokenizer=tokenizer)
-    return merge_code
-
-
-def build_d_matrix(chars, tokens):
+def buildDistanceMatrix(chars_with_counts: FixedOrderCounts, merges_with_counts: FixedOrderCounts) -> np.ndarray:
     """
     Initialize distance matrix in optimal transport. if the i-th char in j-th token, their distance is set to be a very small value, otherwize a large value.
-    Arguments:
-        chars (dict): charaters and their frequencies.
-        tokens (dict): tokens and their frequencies.
-    Returns:
-        matrix: a 2-dimension distance matrix.
+    Return a 2-dimension distance matrix.
     """
-    matrix = np.zeros((len(chars), len(tokens)))
-    rows = len(chars)
-    cols = len(tokens)
+    matrix = np.zeros((len(chars_with_counts), len(merges_with_counts)))
+    rows = len(chars_with_counts)
+    cols = len(merges_with_counts)
     for i in range(rows):
         for j in range(cols):
-            if chars[i][0] in tokens[j][0]:
+            if chars_with_counts[i][0] in merges_with_counts[j][0]:
                 matrix[i][j] = 0.001 * j  # /len(tokens[j][0])#0.00001*tokens[j][1]#-math.log(tokens[j][1]*1.0/total_tokens)*1.0/len(tokens[j][0]) + 0.1/
             else:
                 matrix[i][j] = 100  # 0
     return matrix
 
 
-def get_r(items, total_number, chars=True):
+def getCharacterDistribution(strings_with_counts: FixedOrderCounts, denominator: int, count_individual_characters: bool=False):
     """
-    Initialize character distribution and token distribution. For charater distributions, we directly adopt charaters associated with frequencies. For token distributions, we set the number of characters they require as the multiplication between their frequency and their lengths. For example, give a token 'cat' with frequency 500, it requires 500 'c', 500 'a', and 500 't'. Therefore, it requires 1,500 characteres in total.
+    Compute how many characters are represented by each item in the given sequence.
+        - For characters, this is just their frequencies.
+        - For tokens, this is their frequencies multiplied by their length: for example, give a token 'cat' with
+          frequency 500, it requires 500 'c', 500 'a', and 500 't'. Therefore, it requires 1500 characters in total.
 
-    Arguments:
-       tokens (dict): characters associated with their frequencies / tokens with their frequencies.
-       total_words (int): the number of all characters (or tokens).
-       chars: flags to distinguish character distribution and token distribution.
+    The result is not a probability distribution due to this reweighting.
 
-    Returns:
-       a (list): character distribution or token distribution.
+    :param count_individual_characters: whether to take token length into account or treat everything like a character.
     """
+    return [
+        (len(token) if count_individual_characters else 1) * freq/denominator + 1e-4
+        for token,freq in strings_with_counts
+    ]
 
-    a = []
 
-    for token in items:
-        if chars == False:
-            mul = len(token[0])
+def pruneMerges(candidate_merges: Counter[str], chars: Counter[str],
+                p_matrix: np.ndarray, threshold: float=0.0001) -> List[str]:
+    """
+    Conserve merges based on the optimal-transport matrix P.
+
+    :param p_matrix: The P matrix as generated by Sinkhorn optimal transport. Should be indexed on characters and tokens
+                     in such a way that the highest-frequency tokens and characters are the lowest indices.
+    :param threshold: The filter ratio from the optimal transportation matrix to the real vocabulary. Here we set a
+                      small value. Higher threshold means that more tokens are removed from the token candidates.
+    """
+    candidate_merges = candidate_merges.most_common()
+    chars            = chars.most_common()
+    vocab_size = len(candidate_merges)
+    merges_to_chars_to_score = dict()  # Maps a merge string to each character and each character to some kind of number. The number seems purely for logging reasons; what this dictionary actually measures is whether there exists any character that has a high enough score when interacting with a given merge.
+    for j in tqdm(range(len(p_matrix[0]))):
+        merge_string, merge_count = candidate_merges[j]
+        if merge_string.strip() == "":
+            continue
+
+        merges_to_chars_to_score[merge_string] = dict()
+        for i in range(len(p_matrix)):
+            char = chars[i][0]
+            merge_versus_char_score = p_matrix[i][j]*vocab_size
+            if p_matrix[i][j] != 0 and merge_versus_char_score > threshold*merge_count:
+                merges_to_chars_to_score[merge_string][char] = merge_versus_char_score  # * len(tokens[j][0])
+
+    final_merges = []
+    deleted_actions = dict()
+    types_necessary_for_merges = dict()  # Once again, this is a dictionary for logging purposes only. The key set is what you want. The values just explain for which merge the given type is necessary.
+    for merge_string in merges_to_chars_to_score.keys():
+        if len(merges_to_chars_to_score[merge_string]) > 0:
+            left, right = merge_string.split(" ")
+            types_necessary_for_merges[left]  = merge_string
+            types_necessary_for_merges[right] = merge_string
         else:
-            mul = 1
-        a.append(token[1] / total_number * mul + 1e-4)
-    return a
+            pass
+            # print(merge_string, merges_to_chars_to_score[merge_string])
+            # deleted_actions[merge_string.replace(" ", "")] = merge_string
+
+    for merge_string in merges_to_chars_to_score.keys():
+        merge_result = merge_string.replace(" ", "")
+        if merge_result in types_necessary_for_merges or len(merges_to_chars_to_score[merge_string]) > 0:
+            final_merges.append(merge_string)
+        else:
+            pass
+            # print(merge_string, merges_to_chars_to_score[merge_string])
+
+    return final_merges
 
 
-def get_total_tokens(tokens):
-    sum1 = 0
-    for token in tokens:
-        sum1 += token[1]
-    return sum1
-
-
-def write_vocab(tokens, pmatrix, chars, write_file_name, threshold=0.0001):
-    """
-    Generated the vocabulary via optimal matrix.
-
-    Arguments:
-
-       tokens: candidate distribution.
-       pmatrix: the generated optimal transportation matrix.
-       chars: character distribution.
-       write_file_name: the file storing the vocabulary.
-       threshold: the filter ratio from the optimal transportation matrix to the real vocabulary. Here we set a small value. higher threshold menas that more tokens are removed from the token candidates.
-    """
-
-    # itotal_tokens = get_total_tokens_dict(tokens)
-    tokens = list(tokens.items())
-    chars = list(chars.items())
-    total_tokens = len(tokens)
-    new_tokens = {}
-    for j in tqdm(range(len(pmatrix[0]))):
-        new_tokens[tokens[j][0]] = {}
-        for i in range(len(pmatrix)):
-            if pmatrix[i][j] != 0 and pmatrix[i][j] * total_tokens > threshold * tokens[j][1]:
-                new_tokens[tokens[j][0]][chars[i][0]] = pmatrix[i][j] * total_tokens  # * len(tokens[j][0])
-
-    vocab_tokens = []
-    deleted_actions = {}
-    required_actions = {}
-    for token in new_tokens:
-        minm = 0
-        itemlist = []
-        if len(new_tokens[token]) == 0:
-            # print(token, new_tokens[token])
-            # deleted_actions[token.replace(" ", "")] = token
-            continue
-        if token.strip() != "":
-            # vocab_tokens.append(token)
-            left, right = token.split(" ")
-            required_actions[left] = token
-            required_actions[right] = token
-
-    for token in new_tokens:
-        minm = 0
-        itemlist = []
-        if len(new_tokens[token]) == 0 and token.replace(" ", "") not in required_actions:
-            print(token, new_tokens[token])
-            continue
-        if token.strip() != "":
-            vocab_tokens.append(token)
-
-    with open(write_file_name, 'w') as f:
-        for item in vocab_tokens:
-            f.write(item + "\n")
-    print("The vocabulary has been written into the given file. You can use this vocabulary to segment tokens in subword-nmt")
-
-
-def run_ot(oldtokens, chars, max_number=30000, interval=1000, numItermax=300):
+def searchBestSize(candidate_merges: Counter[str], chars: Counter[str],
+                   max_number: int=30000, interval: int=1000, n_max_iters: int=300) -> int:
     scores = {}
-    # max_number = 10000
-
     previous_entropy = 0
-    chars = list(chars.items())
 
-    for iter_number in range(interval, max_number, interval):  # iteration_numbers:
-        tokens = list(oldtokens.items())[:iter_number]
-        # chars = list(chars.items)
+    sorted_chars: FixedOrderCounts = chars.most_common()
+    total_chars = chars.total()
 
-        total_tokens = get_total_tokens(tokens)
-        total_chars = get_total_tokens(chars)
-        # average_len = get_average_len(tokens)
-        l = [len(item[0]) + 1 for item in tokens]
-        d_matrix = build_d_matrix(chars, tokens)
-        a = get_r(chars, total_chars)
-        # print(min(a), min(b))
-        b = get_r(tokens, total_tokens, False)
-        # print(min(a), min(b))
-        # print("finish building")
+    sorted_merges_all: FixedOrderCounts = candidate_merges.most_common()
+    for Vsize in range(interval, max_number, interval):  # iteration_numbers:
+        sorted_merges_current = sorted_merges_all[:Vsize]
+        total_merges = sum(map(lambda merge_with_freq: merge_with_freq[1], sorted_merges_current))
+
+        d_matrix = buildDistanceMatrix(sorted_chars, sorted_merges_current)
+        a = getCharacterDistribution(sorted_chars, total_chars)
+        b = getCharacterDistribution(sorted_merges_current, total_merges, True)
+
         epsilon = 0.1  # entropy parameter
-        alpha = 1.  # Unbalanced KL relaxation parameter
-        current_entropy, _ = ot.sinkhorn(a, b, d_matrix, 1.0, method='sinkhorn', numItermax=numItermax, epsilon0=1e-6)
-        if iter_number <= interval:
+        alpha = 1.0  # Unbalanced KL relaxation parameter
+        current_entropy, _ = ot.sinkhorn(a, b, d_matrix, 1.0, method='sinkhorn', numItermax=n_max_iters, epsilon0=1e-6)
+        if Vsize == interval:
+            # print("finish reading", iter_number, Gs, (Gs-current_entropy)/2)
             previous_entropy = current_entropy
-            continue  # print("finish reading", iter_number, Gs, (Gs-previous_entropy)/2)
-        if iter_number > interval:
+        else:
             # print("finish running", iter_number, current_entropy, current_entropy-previous_entropy)
-            scores[iter_number] = current_entropy - previous_entropy
-        previous_entropy = current_entropy
+            scores[Vsize] = current_entropy - previous_entropy
+            previous_entropy = current_entropy
+
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    print("best size: ", str(sorted_scores[0][0]))
+    print("Best size:", sorted_scores[0][0])
     print("One optional solution is that you can use this size to generated vocabulary in subword-nmt or sentencepiece")
     return sorted_scores[0][0]
 
 
-def run_ot_write(oldtokens, chars, optimal_size, numItermax=300):
-    previous_entropy = 0
-    scores = {}
-    tokens = list(oldtokens.items())[:optimal_size]
-    total_tokens = get_total_tokens(tokens)
-    total_chars = get_total_tokens(chars.items())
-    # average_len = get_average_len(tokens)
-    l = [len(item[0]) + 1 for item in tokens]
-    d_matrix = build_d_matrix(list(chars.items()), tokens)
-    a = get_r(chars.items(), total_chars)
-    b = get_r(tokens, total_tokens, False)
-    # print("finish building")
+def solveTransportMatrix(candidate_merges: Counter[str], chars: Counter[str],
+                         optimal_size: int, n_max_iters: int=300) -> np.ndarray:
+    sorted_chars: FixedOrderCounts = chars.most_common()
+    total_chars = chars.total()
+
+    sorted_tokens: FixedOrderCounts = candidate_merges.most_common(optimal_size)
+    total_tokens = sum(map(lambda token_freq: token_freq[1], sorted_tokens))
+
+    d_matrix = buildDistanceMatrix(sorted_chars, sorted_tokens)
+    a = getCharacterDistribution(sorted_chars, total_chars)
+    b = getCharacterDistribution(sorted_tokens, total_tokens, True)
+
     epsilon = 0.1  # entropy parameter
-    alpha = 1.  # Unbalanced KL relaxation parameter
-    _, Gs = ot.sinkhorn(a, b, d_matrix, 1.0, method='sinkhorn', numItermax=numItermax, epsilon0=1e-6)
-    previous_entropy = Gs
-    return Gs
+    alpha = 1.0  # Unbalanced KL relaxation parameter
+    _, P = ot.sinkhorn(a, b, d_matrix, 1.0, method='sinkhorn', numItermax=n_max_iters, epsilon0=1e-6)
+    return P
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Process some input flags.')
-    parser.add_argument('--source_file', default=None,
-                        help='path to a source file for translation')
-    parser.add_argument('--target_file', default=None,
-                        help='path to a target file for translation')
-    parser.add_argument('--token_candidate_file', default=None,
-                        help='path to token candidates. In this implementation, we take BPE-generated code segmentation as token candidates.')
-    parser.add_argument('--vocab_file', default=None,
-                        help='path to the file storing the generated tokens.')
-    parser.add_argument('--max_number', default=10000, type=int,
-                        help='the maximum size of the generated vocabulary')
-    parser.add_argument('--interval', default=1000, type=int,
-                        help='the inverval size of S where S defines a sequence of size intergers. Please see papers for details. ')
-    parser.add_argument('--loop_in_ot', default=500, type=int,
-                        help='the total loop of optimal transation.')
-    parser.add_argument('--threshold', default=0.00001, type=float,
-                        help='the threshhold for generating the vocabulary based on the optimal matrix')
-    parser.add_argument('--tokenizer', default='subword-nmt', choices=['sentencepiece', 'subword-nmt'])
-    parser.add_argument('--size_file', default="size.txt",
-                        help='the size file stores the best size')
-
-    args = parser.parse_args()
-    source_file = args.source_file
-    target_file = args.target_file
-    token_candidate_file = args.token_candidate_file
-    vocab_file = args.vocab_file
-    max_number = args.max_number
-    interval = args.interval
-    num_iter_max = args.loop_in_ot
-    threshold = args.threshold
-    tokenizer = args.tokenizer
-    size_file = args.size_file
-
-    oldtokens = get_tokens.get_tokens(source_file, target_file, token_candidate_file,
-                                      tokenizer=args.tokenizer)  # get token candidates and their frequencies
-    chars = get_chars.get_chars(source_file, target_file, tokenizer=args.tokenizer)  # get chars and their frequencies
-    optimal_size = run_ot(oldtokens, chars, max_number, interval, num_iter_max)  # generate the best ot size
-    Gs = run_ot_write(oldtokens, chars, optimal_size, num_iter_max)  # generate the optimal matrix based on the ot size
-    write_vocab(oldtokens, Gs, chars, vocab_file, threshold)  # generate the vocabulary based on the optimal matrix
-    with open(size_file, 'w') as sw:
-        sw.write(str(optimal_size) + "\n")
-    # return optimal_size
+def volt(source_file: Path, target_file: Optional[Path], token_candidate_file: Path, tokenizer_name: str,
+         max_number: int=10_000, interval: int=1000, num_iter_max: int=500, threshold: float=0.00001):
+    merge_counts = countMergeApplications(source_file, target_file, token_candidate_file, tokenizer_name=tokenizer_name)  # get token candidates and their frequencies
+    char_counts  = countCharactersAndFilter(source_file, target_file, tokenizer_name=tokenizer_name)  # get chars and their frequencies
+    optimal_size = searchBestSize(merge_counts, char_counts, max_number, interval, num_iter_max)  # generate the best ot size
+    P = solveTransportMatrix(merge_counts, char_counts, optimal_size, num_iter_max)  # generate the optimal matrix based on the ot size
+    return pruneMerges(merge_counts, char_counts, P, threshold)  # generate the vocabulary based on the optimal matrix
