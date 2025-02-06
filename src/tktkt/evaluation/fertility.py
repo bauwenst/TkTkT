@@ -109,7 +109,7 @@ def getVocabStats(effective_preprocessor: Preprocessor, vocab: Vocab,
         if len(raw_word) > exclude_words_over_length:
             continue
 
-        segs, chars, n_pretokens = prepareAndCountValidSegmentations(pretoken, effective_preprocessor, vocab)
+        segs, chars, n_pretokens = prepareAndCountValidSegmentations(raw_word, effective_preprocessor, vocab)
 
         # Maximal segmentations are measured in pretoken space.
         max_segs            = 2**(chars-1)  # every position between characters can be split on or not

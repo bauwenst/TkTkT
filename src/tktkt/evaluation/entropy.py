@@ -73,12 +73,23 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
                            get is not the uniform distribution [1/10000]*10000 but rather [1/10, ..., 1/10, 0, 0, ..., 0].
     """
     probabilities = np.array(list(probabilities))  # You need this list() because numpy has weird behaviour for e.g. dict.values().
-    domain_size = domain_size or probabilities.size  # Default is as small as possible, i.e. the given distribution and no more.
+    if domain_size is None:
+        domain_size = probabilities.size  # Default is as small as possible, i.e. the given distribution and no more.
     assert domain_size >= probabilities.size, f"Domain size ({domain_size}) can't be manually set to be lower than the amount of probabilities given ({probabilities.size})."
-    sample_size = sample_size or domain_size  # Default is as large as possible, i.e. you assume we've had enough samples to theoretically spread uniformly over the entire domain.
+    if sample_size is None:
+        sample_size = domain_size  # Default is as large as possible, i.e. you assume we've had enough samples to theoretically spread uniformly over the entire domain.
+    assert sample_size >= 0  # TODO: Technically should be "the amount of non-zero probabilities", not zero.
 
-    if domain_size <= 1:  # A variable with a domain of 1 value (or 0, if you must) is always trivially uniform, and thus we say it has the maximal entropy such distributions can have. For segmentational distributions, this is the case for strings that only have one segmentation. It is not for deterministic tokenisers (for which you should set domain_size).
+    if domain_size == 0:    # A variable with an empty domain produces values that are trivially as entropic as they can be. (How you sample it is a mystery.)
         return 1.0, 1.0, 1.0
+        # return 0.0, 0.0, 0.0
+    elif sample_size == 0:  # A variable that doesn't generate anything is perfectly predictable and hence has no entropy.
+        return 0.0, 0.0, 0.0
+    elif domain_size == 1:  # A variable with a domain of 1 possible value which we know has been sampled more than zero times, is trivially uniform.
+        return 1.0, 1.0, 1.0
+        # return 0.0, 0.0, 0.0
+    elif sample_size == 1:  # A variable with a domain larger than 1 isn't just trivially uniform when only one sample exists for it. Adding one sample with the same value makes it the least entropic possible. Adding one sample with a different value makes it uniform. So, what is it now? You can't really say that 1 sample lacks uniformity, but you also can't say it lacks determinism. It has both. I argue that the result should stay the same if you multiply the sample size by any number, so this has Shannon entropy 0 in a domain with non-zero maximal entropy H_0.
+        return 0.0, 0.0, 0.0
 
     H_a = renyiEntropy(probabilities, alpha=alpha)
     H_0 = np.log2(min(domain_size,sample_size))  # Maximal entropy possible given both the domain size and samples.
@@ -134,7 +145,7 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
     regularisation_rate_argmax = 1 - max_probability
 
     segmentation_probabilities.pop(argmax_index)
-    _, entropic_efficiency_no_argmax, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=sample_size-1)  # Note: normalise-pop-normalise is mathematically equivalent to pop-normalise.
+    _, entropic_efficiency_no_argmax, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=round(sample_size*regularisation_rate_argmax))  # Note: normalise-pop-normalise is mathematically equivalent to pop-normalise.
     segmentation_probabilities[argmax_index] = max_probability  # Since we normalised a copy, segmentation_probabilities is already normalised again.
 
     # Compute statistics for the distribution without the given deterministic segmentation.
@@ -144,7 +155,7 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
         regularisation_rate_deterministic = 1 - det_probability
 
         segmentation_probabilities.pop(det_index)
-        _, entropic_efficiency_no_deterministic, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=sample_size-1)
+        _, entropic_efficiency_no_deterministic, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=round(sample_size*regularisation_rate_deterministic))
         segmentation_probabilities[det_index] = det_probability
     else:
         regularisation_rate_deterministic    = None
@@ -162,11 +173,11 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
 
 @dataclass
 class SegmentationDiversity:
-    uniqueness: float
+    uniqueness: float  # Fraction of segmentations that remain when you filter out duplicates.
 
-    regularisation_rate_argmax: float
-    regularisation_rate_deterministic: Optional[float]
+    regularisation_rate_argmax: float  # Fraction of segmentations that AREN'T the most common one.
+    regularisation_rate_deterministic: Optional[float]  # Fraction of segmentations that AREN'T the given one.
 
-    efficiency_all: float
-    efficiency_no_argmax: float
-    efficiency_no_deterministic: Optional[float]
+    efficiency_all: float  # Fraction that the actual Shannon entropy of the segmentation distribution is of the highest possible Shannon entropy it could be.
+    efficiency_no_argmax: float  # Same, but for the distribution that doesn't include the most common segmentation.
+    efficiency_no_deterministic: Optional[float]  # Same, but for the given segmentation.

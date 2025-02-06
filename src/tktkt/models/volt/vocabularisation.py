@@ -5,15 +5,17 @@ for the Xu e.a. (2021) paper https://aclanthology.org/2021.acl-long.571/.
 TODO: In the original code, they don't sort by frequency, but by BPE priority, despite the paper claiming otherwise,
       UNLESS the authors thought that OrderedDict is actually a max-heap and hence their implementation should want to
       keep frequency order instead of merge order.
+
+TODO: I've added a FIXME in the code that shows a line that definitely can't be right.
 """
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Optional
 
 import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 from collections import OrderedDict, Counter
 
-import ot
+import ot  # https://github.com/PythonOT/POT/tree/master
 
 from ...util.iterables import take
 
@@ -71,7 +73,7 @@ def countMergeApplicationsGivenTokenCounts(bpe_merge_file: Path, token_counts: C
              merge_result = "".join(parts)
              merge_applications[merge_string] = min_number
              for large_token, freq in token_counts.items():
-                 if merge_result in large_token:  # TODO: This is definitely NOT how you measure whether a merge was applied to reach large_token.
+                 if merge_result in large_token:  # FIXME: This is definitely NOT how you measure whether a merge was applied to reach large_token.
                      merge_applications[merge_string] += freq
 
     return merge_applications
@@ -140,6 +142,7 @@ def pruneMerges(candidate_merges: Counter[str], chars: Counter[str],
     :param threshold: The filter ratio from the optimal transportation matrix to the real vocabulary. Here we set a
                       small value. Higher threshold means that more tokens are removed from the token candidates.
     """
+    # Step 1: Create a data structure that captures (1) all BPE merges but (2) which merges (and by extension, types) make the cut.
     candidate_merges = candidate_merges.most_common()
     chars            = chars.most_common()
     vocab_size = len(candidate_merges)
@@ -156,7 +159,7 @@ def pruneMerges(candidate_merges: Counter[str], chars: Counter[str],
             if p_matrix[i][j] != 0 and merge_versus_char_score > threshold*merge_count:
                 merges_to_chars_to_score[merge_string][char] = merge_versus_char_score  # * len(tokens[j][0])
 
-    final_merges = []
+    # Step 2: For each merge, check if it is conserved, and if so, register the parent types that need to be kept to apply this merge (even if their merge didn't make the cut).
     deleted_actions = dict()
     types_necessary_for_merges = dict()  # Once again, this is a dictionary for logging purposes only. The key set is what you want. The values just explain for which merge the given type is necessary.
     for merge_string in merges_to_chars_to_score.keys():
@@ -169,6 +172,8 @@ def pruneMerges(candidate_merges: Counter[str], chars: Counter[str],
             # print(merge_string, merges_to_chars_to_score[merge_string])
             # deleted_actions[merge_string.replace(" ", "")] = merge_string
 
+    # Step 3: Look up the merges that make the necessary types and add them to the rest of the conserved merges.
+    final_merges = []
     for merge_string in merges_to_chars_to_score.keys():
         merge_result = merge_string.replace(" ", "")
         if merge_result in types_necessary_for_merges or len(merges_to_chars_to_score[merge_string]) > 0:
