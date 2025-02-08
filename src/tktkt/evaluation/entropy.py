@@ -137,6 +137,8 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
                                     sample_size: int, domain_size: int, renyi_alpha: float=1.0,
                                     deterministic_segmentation: Optional[List[str]]=None):
     uniqueness = len(segmentation_probabilities) / sample_size
+    coverage   = len(segmentation_probabilities) / domain_size
+    max_coverage_uniqueness = len(segmentation_probabilities) / min(sample_size,domain_size)  # Equals max(coverage,uniqueness).
     _, entropic_efficiency_all, _ = renyiEfficiency(segmentation_probabilities.values(), alpha=renyi_alpha, domain_size=domain_size, sample_size=sample_size)
 
     # Compute statistics for the distribution without its mode.
@@ -162,9 +164,13 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
         entropic_efficiency_no_deterministic = None
 
     return SegmentationDiversity(
+        coverage=coverage,
         uniqueness=uniqueness,
+        max_coverage_uniqueness=max_coverage_uniqueness,
+
         regularisation_rate_argmax=regularisation_rate_argmax,
         regularisation_rate_deterministic=regularisation_rate_deterministic,
+
         efficiency_all=entropic_efficiency_all,
         efficiency_no_argmax=entropic_efficiency_no_argmax,
         efficiency_no_deterministic=entropic_efficiency_no_deterministic
@@ -173,7 +179,9 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
 
 @dataclass
 class SegmentationDiversity:
-    uniqueness: float  # Fraction of segmentations that remain when you filter out duplicates.
+    uniqueness: float  # Fraction of segmentations that remain when you filter out duplicates. ~precision
+    coverage: float  # Fraction of possible segmentations that have been produced. ~recall
+    max_coverage_uniqueness: float  # Equals uniqueness if you take less than the possible segmentations in samples, otherwise equals coverage. Equivalent to max(U,C).
 
     regularisation_rate_argmax: float  # Fraction of segmentations that AREN'T the most common one.
     regularisation_rate_deterministic: Optional[float]  # Fraction of segmentations that AREN'T the given one.
