@@ -21,10 +21,6 @@ from ..paths import relativeToCwd, TkTkTPaths
 from .preprocessing import *
 
 
-# TODO: Eventually, this should become a HF checkpoint.
-PATH_CANINE_FOR_MBR_EN = relativeToCwd(TkTkTPaths.pathToCheckpoints() / "CANINE-C_MBR-en_2024-02-12_19-35-28")
-
-
 def getEnglishBpeFiles() -> BpeTokeniserPath:
     """
     Accessing BPE this way ensures that when you do knockout or you strip the HuggingFace tokeniser's pretokeniser,
@@ -39,6 +35,9 @@ def getEnglishKudo() -> AlbertTokenizerFast:
 
 
 def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
+    # TODO: Eventually, this should become a HF checkpoint.
+    PATH_CANINE_FOR_MBR_EN = relativeToCwd(TkTkTPaths.pathToCheckpoints() / "CANINE-C_MBR-en_2024-02-12_19-35-28")
+
     return HuggingFaceForBinaryCharacterClassification(
         characterclassifier_checkpoint=PATH_CANINE_FOR_MBR_EN.as_posix(),
         input_kwargs={"padding": "max_length", "max_length": 4}  # This is necessary for CANINE because it needs an input of size at least 4. This isn't a problem in fine-tuning because there we're not sending in single examples but 32 at once and collating.
@@ -107,13 +106,26 @@ class KudoPiece_Deserialiser(Deserialiser):
         pass
 
 
-class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser):
+class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser):
+
+    @abstractmethod
+    def _checkpointName(self) -> str:
+        pass
+
+    @abstractmethod
+    def _modelFileName(self) -> str:
+        pass
+
+    @abstractmethod
+    def _jsonFileName(self) -> str:
+        pass
+
     def _buildVocabulary(self) -> Vocab:
         # self._specials  # TODO: I wonder how to handle custom specials.
-        return AutoTokenizer.from_pretrained("albert/albert-base-v2").get_vocab()
+        return AutoTokenizer.from_pretrained(self._checkpointName()).get_vocab()
 
     def loadLikelihoods(self) -> Dict[str, float]:
-        tokeniser_path = Path(hf_hub_download(repo_id="albert/albert-base-v2", filename="tokenizer.json"))
+        tokeniser_path = Path(hf_hub_download(repo_id=self._checkpointName(), filename=self._jsonFileName()))
 
         out = dict()
         with open(tokeniser_path, "r", encoding="utf-8") as handle:
@@ -123,19 +135,30 @@ class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser):
         return out
 
     def getModelFile(self) -> Path:
-        return Path(hf_hub_download(repo_id="albert/albert-base-v2", filename="spiece.model"))
+        return Path(hf_hub_download(repo_id=self._checkpointName(), filename=self._modelFileName()))
 
     def preprocessorNative(self) -> Preprocessor:
-        return IdentityPreprocessor  # The Albert tokeniser probably has all its preprocessing baked into the spiece.model.
+        return IdentityPreprocessor  # The tokeniser probably has all its preprocessing baked into the spiece.model.
 
     def preprocessorEffective(self) -> Preprocessor:
-        # We assume the ALBERT people didn't use the pretoken separator trick, and probably just used spaces.
+        # We assume they didn't use the pretoken separator trick TkTkT used, and probably just used spaces.
         preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=False)
         preprocessor.splitter = PretokeniserSequence([
             preprocessor.splitter,
             MapperAsPretokeniser(ReplaceBoundary(" ", KudoSpaceMarker))
         ])
         return preprocessor
+
+
+class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace):
+    def _checkpointName(self) -> str:
+        return "albert/albert-base-v2"
+
+    def _modelFileName(self) -> str:
+        return "spiece.model"
+
+    def _jsonFileName(self) -> str:
+        return "tokenizer.json"
 
 
 class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser):

@@ -42,16 +42,25 @@ class TokeniserMultiplexer(Tokeniser):
         self._use_specific_preprocessors = preprocessor.specific_preprocessors
 
     @abstractmethod
-    def select(self) -> int:
+    def select(self, pretoken: str) -> int:
         pass
 
     def tokenise(self, pretoken: str) -> List[str]:
-        subtokeniser = self.subtokenisers[self.select()]
+        subtokeniser = self.subtokenisers[self.select(pretoken)]
         # print(f"\tPretoken <{pretoken}> will be tokenised by {subtokeniser.getName()}")
         if self._use_specific_preprocessors:
             return subtokeniser.prepareAndTokenise(pretoken)
         else:
             return subtokeniser.tokenise(pretoken)
+
+    def getName(self) -> str:
+        return "Multiplex(" + " + ".join(sub.getName() for sub in self.subtokenisers) + ")"
+
+
+class CompressiveTokeniserMultiplexer(TokeniserMultiplexer):
+
+    def select(self, pretoken: str) -> int:
+        return min(range(len(self.subtokenisers)), key=lambda i: len(self.subtokenisers[i].prepareAndTokenise(pretoken)))
 
 
 class StochasticTokeniserMultiplexer(TokeniserMultiplexer):
@@ -78,7 +87,7 @@ class StochasticTokeniserMultiplexer(TokeniserMultiplexer):
         self._distribution = np.array(probabilities)
         self._n = len(self.subtokenisers)
 
-    def select(self) -> int:
+    def select(self, pretoken: str) -> int:
         return self._rng.choice(self._n, p=self._distribution)  # .choice() because sadly, .integers() has no probability mass argument.
 
 
@@ -137,5 +146,5 @@ class StochasticTokeniserSwitch(StochasticTokeniserMultiplexer_SharedDomain):
         super().__init__(preprocessor, [tokeniser1, tokeniser2], probabilities=[(1-p), p])
         self.threshold = p
 
-    def select(self) -> int:
+    def select(self, pretoken: str) -> int:
         return self._rng.random() < self.threshold

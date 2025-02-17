@@ -116,7 +116,7 @@ class ConfusionMatrix:
 #########################
 def tokeniseAndDecode(string: str, tokeniser: Tokeniser) -> List[str]:
     """
-    Tokenisation, but afterwards, you run each produced token back through (inverse of) the pretokeniser and normaliser.
+    Tokenisation, but afterwards, you run each produced token back through (inverse of) the pretokeniser and (invertible) mappings.
     """
     return tokeniser.preprocessor.undo_per_token(tokeniser.prepareAndTokenise(string))
 

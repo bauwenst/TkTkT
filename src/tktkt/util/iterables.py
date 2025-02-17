@@ -4,6 +4,7 @@ Operations that can stream an input and output a stream in return.
 from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional
 from pathlib import Path
 from tqdm.auto import tqdm
+import numpy.random as npr
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
@@ -100,6 +101,23 @@ def take(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
             yield thing
             if i+1 == n:
                 break
+
+
+def takeAfterShuffle(n: int, known_size: int, iterable: Iterable[T], rng=npr.default_rng(seed=0)) -> Generator[T, None, None]:
+    if n > known_size:
+        raise ValueError(f"Cannot take {n} items from an iterable whose size is reported as being only {known_size}.")
+
+    indices = set(rng.integers(low=0, high=known_size, size=n))
+    for i,thing in enumerate(iterable):
+        if i in indices:
+            indices.pop(i)
+            yield thing
+
+
+def takeRandomly(p: float, iterable: Iterable[T], rng=npr.default_rng(seed=0)) -> Generator[T, None, None]:
+    for thing in iterable:
+        if rng.random() < p:
+            yield thing
 
 
 def filterOptionals(iterable: Iterable[Optional[T]]) -> Iterable[T]:
