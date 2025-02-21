@@ -1,7 +1,14 @@
 """
 Operations that can stream an input and output a stream in return.
+
+Note that all iterators are iterable (have __iter__), but not all iterables are iterators (have __next__). That is:
+iterators are a special kind of iterable. More specific than just any iterable.
+Also -- but this is not part of Python's typing -- iterators are consumable only once.
+
+The outputs of all the functions below are explicitly iterables with __next__ method that are consumable only once,
+hence why the output is marked as an Iterator.
 """
-from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional
+from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional, Iterator
 from pathlib import Path
 from tqdm.auto import tqdm
 import numpy.random as npr
@@ -10,7 +17,7 @@ T = TypeVar("T")
 T2 = TypeVar("T2")
 
 
-def streamLines(path: Path, include_empty_lines=True) -> Iterable[str]:
+def streamLines(path: Path, include_empty_lines=True) -> Iterator[str]:
     with open(path, "r", encoding="utf-8") as handle:
         return filter(lambda line: include_empty_lines or len(line),
                       map(lambda line: line.strip(),
@@ -22,7 +29,7 @@ class _NonePlaceholder:  # Replacement for None when None is actually a legitima
 _NONE = _NonePlaceholder()
 
 
-def intercalate(lst: Iterable[T], new_element: T2) -> Iterable[Union[T,T2]]:
+def intercalate(lst: Iterable[T], new_element: T2) -> Iterator[Union[T,T2]]:
     """
     Insert a new element in between every existing element of an iterable.
     """
@@ -35,7 +42,7 @@ def intercalate(lst: Iterable[T], new_element: T2) -> Iterable[Union[T,T2]]:
     yield buffer
 
 
-def foldSpans(lst: Iterable[T], only_delete_specific_value: Any=_NONE) -> Iterable[T]:
+def foldSpans(lst: Iterable[T], only_delete_specific_value: Any=_NONE) -> Iterator[T]:
     """
     Collapses contiguous spans of equal elements into just one element.
     Similar to the beta function in CTC loss.
@@ -47,7 +54,7 @@ def foldSpans(lst: Iterable[T], only_delete_specific_value: Any=_NONE) -> Iterab
         previous = thing
 
 
-def keepFirst(iterable: Iterable[T], key: Callable[[T],T2]=None) -> Iterable[T]:
+def keepFirst(iterable: Iterable[T], key: Callable[[T],T2]=None) -> Iterator[T]:
     """
     Only keeps the first instance of each unique value in the list.
     Currently requires the elements to be hashable to keep the function O(N). Can be made O(N²) by just using == instead.
@@ -65,7 +72,7 @@ def keepFirst(iterable: Iterable[T], key: Callable[[T],T2]=None) -> Iterable[T]:
             yield e
 
 
-def mapExtend(f: Callable[[T],Iterable[T2]], iterable: Iterable[T]) -> Iterable[T2]:
+def mapExtend(f: Callable[[T],Iterable[T2]], iterable: Iterable[T]) -> Iterator[T2]:
     """
     Same as map() except the per-element function produces iterables, which are yielded in turn as if they all belong
     to one long sequence.
@@ -75,12 +82,12 @@ def mapExtend(f: Callable[[T],Iterable[T2]], iterable: Iterable[T]) -> Iterable[
             yield piece
 
 
-def cat(iterable: Iterable[Iterable[T]]) -> Iterable[T]:
+def cat(iterable: Iterable[Iterable[T]]) -> Iterator[T]:
     return mapExtend(lambda x: x, iterable)
 
 
 IterableOrT = Union[T, Iterable['IterableOrT[T]']]
-def flattenRecursively(nested_iterable: IterableOrT[T]) -> Iterable[T]:
+def flattenRecursively(nested_iterable: IterableOrT[T]) -> Iterator[T]:
     try:
         for thing in nested_iterable:
             yield from flattenRecursively(thing)
@@ -120,13 +127,13 @@ def takeRandomly(p: float, iterable: Iterable[T], rng=npr.default_rng(seed=0)) -
             yield thing
 
 
-def filterOptionals(iterable: Iterable[Optional[T]]) -> Iterable[T]:
+def filterOptionals(iterable: Iterable[Optional[T]]) -> Iterator[T]:
     for thing in iterable:
         if thing is not None:
             yield thing
 
 
-def streamPrint(iterable: Iterable[T]) -> Iterable[T]:
+def streamPrint(iterable: Iterable[T]) -> Iterator[T]:
     for thing in iterable:
         print(thing)
         yield thing

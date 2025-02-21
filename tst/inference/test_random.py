@@ -68,6 +68,25 @@ def test_markov_forwardbackward_equivalence():
         print("\t Forwards:", forwards.getJointProbability(tokens))
 
 
+def test_rejection_graph():
+    """
+    Tests the graph-based uniform segmentation sampler by Cognetta (2024).
+    """
+    from tktkt.models.random.rejectionsampling import RandomVocabSegmentation_RejectionSampling_UniformGraph
+    from tktkt.factories.deserialisation import KudoPiece32ki_SlimPajama3M
+
+    vocab = KudoPiece32ki_SlimPajama3M()
+    t = RandomVocabSegmentation_RejectionSampling_UniformGraph(
+        preprocessor=vocab.preprocessorEffective(),
+        vocab=vocab.buildVocabulary()
+    )
+
+    from datasets import load_dataset
+    corpus = load_dataset("allenai/c4", "en", streaming=True)["train"]
+    for example in corpus:
+        print(t.prepareAndTokenise(example["text"]))
+
+
 if __name__ == "__main__":
     # test_segmentationAmount()
     test_markov_forwardbackward_equivalence()

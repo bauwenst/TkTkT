@@ -5,7 +5,7 @@ from abc import abstractmethod
 from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union
 from datasets import Dataset, IterableDataset
 
-from .iterables import mapExtend
+from .iterables import mapExtend, streamProgress
 
 HuggingfaceDataset = Union[Dataset, IterableDataset]
 
@@ -18,14 +18,19 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
     results based on the name of the corpus.
     """
     def __init__(self, iterable: Iterable[T], name: str):  # This T is so that the above T is be inferred from the constructor if there is no type signature.
-        self._iterable = iterable
         self.name = name
+        self._iterable = iterable
+        self._tqdm = False
 
         if hasattr(iterable, "__next__"):
             raise TypeError("The given iteraBLE is an iteraTOR, and hence may not be re-iterable.")
 
     def __iter__(self):
-        return self._iterable.__iter__()
+        return self._iterable.__iter__() if not self._tqdm else streamProgress(self._iterable).__iter__()
+
+    def tqdm(self) -> "NamedIterable[T]":
+        self._tqdm = True
+        return self
 
     def map(self, func: Callable[[T],T2]) -> "NamedIterable[T2]":
         return NamedIterable(mapped(func, self), name=self.name)

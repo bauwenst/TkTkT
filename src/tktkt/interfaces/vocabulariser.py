@@ -108,8 +108,9 @@ class Vocabulariser(ABC):
 
     def _preprocessWordsToPretokens_approx(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
         """
-        Apply the preprocessor onto the given words, concatenate the resulting pretokens, and return the result with
-        the given counts. Approximates _preprocessWordsToPretokens_counter without loading all pretokens into memory at once.
+        Apply the preprocessor onto the given words, CONCATENATE the resulting pretokens, and return the result with
+        the given counts. Loses the pretoken boundaries, but unlike _preprocessWordsToPretokens_counter, you don't have
+        to keep more than the current word in memory.
         """
         return word_iterable.map(lambda tup: ("".join(self.preprocessor.do(tup[0])), tup[1]))
 
@@ -128,7 +129,7 @@ class Vocabulariser(ABC):
         """
         Get a new folder in which to store any files you want to store during vocabularisation.
         """
-        return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, f"{self._name}_{extra_suffix}_{datetimeDashed()}"])
+        return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix) + f"_{datetimeDashed()}"])
 
     @classmethod
     def _assignIdentifiers(cls, vocab: UnidentifiedVocab, sorting_key: Optional[TokenSortingKey], starting_id: int=0) -> Vocab:

@@ -4,16 +4,15 @@ from abc import abstractmethod
 
 from functools import lru_cache
 
-from bpe_knockout.auxiliary.tokenizer_interface import HuggingFaceTokeniserPath
 from bpe_knockout import *
+from bpe_knockout.auxiliary.tokenizer_interface import HuggingFaceTokeniserPath
+from bpe_knockout.knockout.core import MergeList
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
 from ...interfaces.tokeniser import Vocab
 from ...preparation.boundaries import BoundaryMarker
 from ...preparation.huggingface import detectBoundaryMarkerFromTokeniser, HuggingFacePreprocessor, HuggingFacePreprocessorForWords
-
-MergeList = List[str]
 
 
 class SimplifiedBTEInterface(BTE):
