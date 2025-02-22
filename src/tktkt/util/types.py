@@ -38,10 +38,14 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
     def flatmap(self, func: Callable[[T],Iterable[T2]]) -> "NamedIterable[T2]":
         return NamedIterable(flatmapped(func, self), name=self.name)
 
+    def wrap(self, func: Callable[[Iterable[T]], Iterable[T2]]) -> "NamedIterable[T2]":
+        return NamedIterable(wrappediterable(func, self), name=self.name)
+
 
 class mapped(Iterable[T2]):
     """
     Reusable version of map(). The latter is consumed after iterating over it once, even if the mapped iterable isn't.
+    Applies the given function to every element in the iterable.
     """
     def __init__(self, func: Callable[[T],T2], iterable: Iterable[T]):
         self._function = func
@@ -61,6 +65,23 @@ class flatmapped(Iterable[T2]):
 
     def __iter__(self) -> Iterator[T2]:
         return mapExtend(self._function, self._iterable)
+
+
+class wrappediterable(Iterable[T2]):
+    """
+    Applies the given function once, to the iterable's iterator itself, NOT to its elements nor to the iterable.
+    This is really a generalisation of map(), which applies the following function to the iterable:
+
+    def func(item_function, iterator):
+        for thing in iterator:
+            yield item_function(thing)
+    """
+    def __init__(self, func: Callable[[Iterable[T]], Iterable[T2]], iterable: Iterable[T]):
+        self._function = func
+        self._iterable = iterable
+
+    def __iter__(self):
+        return self._function(self._iterable.__iter__())
 
 
 class Comparable(Protocol):

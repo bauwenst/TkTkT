@@ -33,6 +33,11 @@ def renyiEntropy(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPH
     https://aclanthology.org/2023.acl-long.284v2.pdf
     """
     probabilities = np.array(list(probabilities))
+
+    normalisation_constant = probabilities.sum()
+    if normalisation_constant != 0:
+        probabilities = probabilities / normalisation_constant
+
     if alpha == 1.0:
         return shannonEntropy(probabilities)
 
@@ -146,8 +151,8 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
     max_probability = segmentation_probabilities[argmax_index]
     regularisation_rate_argmax = 1 - max_probability
 
-    segmentation_probabilities.pop(argmax_index)
-    _, entropic_efficiency_no_argmax, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=round(sample_size*regularisation_rate_argmax))  # Note: normalise-pop-normalise is mathematically equivalent to pop-normalise.
+    segmentation_probabilities.pop(argmax_index)  # The renyiEfficiency() call will re-normalise automatically. It is not an issue that the count distribution was already normalised before, because normalise-pop-renormalise is mathematically equivalent to pop-normalise.
+    _, entropic_efficiency_no_argmax, _ = renyiEfficiency(segmentation_probabilities.values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=round(sample_size*regularisation_rate_argmax))
     segmentation_probabilities[argmax_index] = max_probability  # Since we normalised a copy, segmentation_probabilities is already normalised again.
 
     # Compute statistics for the distribution without the given deterministic segmentation.
@@ -157,7 +162,7 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
         regularisation_rate_deterministic = 1 - det_probability
 
         segmentation_probabilities.pop(det_index)
-        _, entropic_efficiency_no_deterministic, _ = renyiEfficiency(normaliseCounter(segmentation_probabilities).values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=round(sample_size*regularisation_rate_deterministic))
+        _, entropic_efficiency_no_deterministic, _ = renyiEfficiency(segmentation_probabilities.values(), alpha=renyi_alpha, domain_size=domain_size-1, sample_size=round(sample_size*regularisation_rate_deterministic))
         segmentation_probabilities[det_index] = det_probability
     else:
         regularisation_rate_deterministic    = None
