@@ -1,8 +1,11 @@
-from typing import TypeVar, Dict, List, Generic, Callable
+from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator
 from collections import OrderedDict, Counter
+import numpy as np
+import numpy.random as npr
 
 K = TypeVar("K")
 V = TypeVar("V")
+Number = TypeVar("Number", bound=Union[int,float])
 
 
 def invertdict(d: Dict[K,V], noninjective_ok=True) -> Dict[V,K]:
@@ -88,16 +91,36 @@ class ChainedCounter(Counter[K], Generic[K]):
     referring to that global data structure of super().
     """
 
-    def __init__(self, max_subcounter_size: int):
+    def __init__(self, max_subcounter_size: int, seed_for_addition: int=0):
         super().__init__()  # Because this is a subclass of Counter, the super class has a "master data structure".
         self._counters = [Counter()]
         self._current_size = 0
         self._max_size     = max_subcounter_size
+        self._rng_for_addition = npr.default_rng(seed_for_addition)
 
-    def averageOverCounters(self, counter_function: Callable[[Counter],float]) -> float:
-        return 1/len(self._counters) * sum(counter_function(counter) for counter in self._counters)
+    def totalSubcounters(self) -> int:
+        return len(self._counters)
 
-    def __setitem__(self, key, value):
+    def mapCounters(self, counter_function: Callable[[Counter],V]) -> Iterator[V]:
+        return map(counter_function, self._counters)  # If the function expects two arguments, this will crash.
+
+    def subcounterSizes(self) -> List[int]:
+        return list(self.mapCounters(lambda c: c.total()))
+
+    def averageOverCounters(self, counter_function: Callable[[Counter],Number]) -> Number:
+        weights = self.subcounterSizes()
+        values  = list(self.mapCounters(counter_function))
+        return sum(w*v for w,v in zip(weights,values))/sum(weights) if weights else 0
+
+    def averageOverCountersAndIndices(self, counter_function: Callable[[int,Counter],Number]) -> Number:
+        """Use this if you need a list in your counter function indexed based on the counter."""
+        weights = self.subcounterSizes()
+        values = list(map(counter_function, range(len(self._counters)), self._counters))
+        return sum(w*v for w,v in zip(weights,values))/sum(weights) if weights else 0
+
+    ####################################################################################################################
+
+    def __setitem__(self, key: K, value):
         """
         Assume that this is never coming from an expression "object[key] = value" and always from some kind of increment
         that already includes the current value. (Note: this means that if you try object[key] = value, what will happen
@@ -121,10 +144,51 @@ class ChainedCounter(Counter[K], Generic[K]):
                 self._current_size = 0
                 self._counters.append(Counter())
 
-    def get(self, key, default=None):
+    def get(self, key: K, default=None):
         # For some unknown reason, Counter's implementation of .get() does not use .__getitem__(). As it turns out, the
         # .update() method uses .get() rather than counter[key], and hence to support .update(), it doesn't suffice to override .__getitem__() only.
         if key in self:
             return self[key]
         else:
             return default
+
+    def pop(self, key: K) -> int:
+        for counter in self._counters:
+            counter.pop(key)
+        return super().pop(key)
+
+    def __add__(self, other: "ChainedCounter[K]") -> "ChainedCounter[K]":
+        """
+        Since it's impossible to know in what order the samples of the given counter came in within its subcounters,
+        we assume they came in randomly according to the distribution they appear to have.
+        """
+        if not isinstance(other, ChainedCounter):
+            raise NotImplementedError
+
+        sum_counter = ChainedCounter(self._max_size, seed_for_addition=self._rng_for_addition.integers(0,1_000_000))
+        for counter in self._counters:
+            for k,v in counter.items():
+                sum_counter[k] += v
+
+        for counter in other._counters:
+            # Get distribution
+            keys          = list(counter.keys())
+            counts        = [counter[k] for k in keys]
+            total_count   = sum(counts)
+            probabilities = np.array([c/total_count for c in counts])
+
+            # Sample from the distribution until you run out of samples.
+            n_remaining_keys = len(keys)
+            for _ in range(total_count):
+                if n_remaining_keys == 1:
+                    sum_counter[keys[0]] += counts[0]
+                    break
+
+                key_idx = self._rng_for_addition.choice(len(keys), p=probabilities)
+                sum_counter[keys[key_idx]] += 1
+                counts[key_idx] -= 1
+                if counts[key_idx] == 0:  # This key index must never be selected again. Renormalise the remaining probabilities.
+                    probabilities[key_idx] = 0
+                    probabilities = probabilities / np.sum(probabilities)
+                    n_remaining_keys -= 1
+        return sum_counter
