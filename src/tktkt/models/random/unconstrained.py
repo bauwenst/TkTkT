@@ -15,7 +15,7 @@ from typing import List
 import numpy.random as npr
 
 from ...interfaces.tokeniser import Tokeniser, Preprocessor
-from ...util.strings import segmentUsingBitmap
+from ...util.strings import bitstringToTokens
 
 
 class RandomSegmentation(Tokeniser):
@@ -37,4 +37,4 @@ class RandomSegmentation(Tokeniser):
 
         segmentation_index = self.rng.integers(n_segmentations)
         bitmap = bin(segmentation_index)[2:].zfill(n_positions)
-        return segmentUsingBitmap(pretoken, bitmap)
+        return bitstringToTokens(pretoken, bitmap)

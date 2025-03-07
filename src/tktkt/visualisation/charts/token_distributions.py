@@ -5,9 +5,10 @@ from fiject import StreamingMultiHistogram, StreamingVariableGranularityHistogra
 from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
 from ...interfaces.factories import Deserialiser
 from ...util.timing import timeit
-from ...util.iterables import intercalate, streamProgress, allEqual
+from ...util.iterables import streamProgress, allEqual
 from ...util.combinatorics import getLOCKey
 from ...util.types import NamedIterable
+from ...util.strings import tokensToBitstring
 
 
 @timeit
@@ -255,7 +256,7 @@ def visualiseSingleWordSegmentationDistribution(tokenisers: List[Tokeniser], wor
                 histo_across_char_per_token_ratio.add(name, n_chars/amount)
 
                 # Histograms that need a segmentation map
-                bits = getSegmentationBitstring(tokens)
+                bits = tokensToBitstring(tokens)
 
                 if do_bitbased_ordering:
                     histo_across_segmentations.add(name, int(bits,2))
@@ -321,11 +322,3 @@ def visualiseSingleWordSegmentationDistribution(tokenisers: List[Tokeniser], wor
     ))
 
     FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = ""
-
-
-def getSegmentationMask(tokens: List[str]) -> List[int]:
-    return sum(intercalate(map(lambda i: (i-1)*[0], map(len, tokens)), [1]), start=[])
-
-
-def getSegmentationBitstring(tokens: List[str]) -> str:
-    return "".join(intercalate(map(lambda i: (i-1)*"0", map(len, tokens)), "1"))

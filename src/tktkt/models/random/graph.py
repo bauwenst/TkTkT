@@ -11,7 +11,7 @@ import numpy.random as npr
 
 from ...interfaces import Preprocessor, Vocab
 from ...interfaces.tokeniser import TokeniserWithVocabDict
-from ...util.strings import segmentUsingIndices
+from ...util.strings import indicesToTokens
 from ...util.arrays import *
 
 
@@ -166,4 +166,4 @@ class GraphTokeniser(TokeniserWithVocabDict):
     def tokenise(self, pretoken: str) -> List[str]:
         graph = self.generateGraph(pretoken)
         indices = self.sampler.samplePath(graph)
-        return segmentUsingIndices(pretoken, starts_of_tokens=indices)
+        return indicesToTokens(pretoken, starts_of_tokens=indices)

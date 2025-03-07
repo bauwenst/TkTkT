@@ -10,7 +10,7 @@ from ...evaluation.fertility import countValidSegmentations
 from ...util.iterables import drop
 from ...util.functions import relu
 from ...util.printing import intsep
-from ...util.strings import segmentUsingIndices
+from ...util.strings import indicesToTokens
 
 
 class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabDict):
@@ -29,7 +29,7 @@ class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabDict):
         """
         total_segmentations = countValidSegmentations(pretoken, self.vocab)  # This is O(N²), which is endlessly cheaper than the O(2^{N-k}) worst-case of generateSegmentationIndices
         segmentation_generator = generateSegmentationIndices_fixedSpace(pretoken, self.vocab, max_prefix_length=22)
-        return segmentUsingIndices(pretoken, next(drop(self.rng.integers(total_segmentations), segmentation_generator)))
+        return indicesToTokens(pretoken, next(drop(self.rng.integers(total_segmentations), segmentation_generator)))
 
 
 SegmentationIndices = List[int]
@@ -71,7 +71,7 @@ def generateSegmentationIndices_exponentialTime(text: str, vocab: Vocab) -> Iter
     for n_splits in range(len(text)):
         for c in itertools.combinations(range(1,len(text)), r=n_splits):
             indices = [0] + list(c)
-            tokens = segmentUsingIndices(text, indices)
+            tokens = indicesToTokens(text, indices)
             if all(t in vocab for t in tokens):
                 yield indices
 
@@ -111,6 +111,6 @@ def generateSegmentationIndices_fixedSpace(text: str, vocab: Vocab, max_prefix_l
                 for n_splits in range(remaining):
                     for c in itertools.combinations(range(max_prefix_length+1, len(text)), r=n_splits):  # A step to be in front of the character at max_prefix_length has already been attempted by the trellis, so we don't have to check for it anymore.
                         indices = segmentation + list(c)
-                        tokens = segmentUsingIndices(text, indices)
+                        tokens = indicesToTokens(text, indices)
                         if all(t in vocab for t in tokens):  # Some double work happens here (all the partial segmentations are already correct)
                             yield indices

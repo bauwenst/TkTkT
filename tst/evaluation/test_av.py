@@ -24,10 +24,10 @@ def smallCorpus():
     for word in word_corpus:
         print(word_tokeniser.prepareAndTokenise(word))
 
-    accessors = getAccessors(word_tokeniser, word_corpus)
+    accessors = getAccessors(word_tokeniser, word_corpus, 10000000000)
     for i in accessors.vocab.values():
-        print(accessors.left_of[i])
-        print(accessors.right_of[i])
+        print(accessors.left_of.accessors[i])
+        print(accessors.right_of.accessors[i])
         # print(k, "\t\t\t", av)
 
 
@@ -45,9 +45,9 @@ def assertLeftRightEquivalence():
     d = getCorpus(2000)
     tk = HuggingFaceTokeniser(AutoTokenizer.from_pretrained("roberta-base"), for_single_words=True)
 
-    accessors = getAccessors(tk, d)
+    accessors = getAccessors(tk, d, 10000000000)
     for i in accessors.vocab.values():
-        assert accessors.left_of[i].total() == accessors.right_of[i].total()
+        assert accessors.left_of.accessors[i].total() == accessors.right_of.accessors[i].total()
 
 
 def summaries():
@@ -56,13 +56,14 @@ def summaries():
     """
     d = getCorpus(1000)
     tk = HuggingFaceTokeniser(AutoTokenizer.from_pretrained("roberta-base"), for_single_words=True)
-    accessors = getAccessors(tk, d)
-    results = analyseAccessors(accessors, do_count_ends=False)
+    accessors = getAccessors(tk, d, 20)
+    results = analyseAccessors(accessors, do_count_ends_as_variety=False)
     for t,r in sorted(results.right.per_type.items(), key=lambda t: (t[1].av, t[0])):
         print(t)
         print("\t", r)
     print("Averages:", results.right.averages)
     print("Weighted averages:", results.right.weighted_averages)
+
 
 
 if __name__ == "__main__":

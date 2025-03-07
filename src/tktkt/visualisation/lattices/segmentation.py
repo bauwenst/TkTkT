@@ -22,10 +22,13 @@ class LinearDAGToTikz:
 
     def tikzPreamble(self) -> str:
         return r"""
+\usepackage{tikz}
+\usetikzlibrary{arrows,automata,positioning}
+
 \tikzset{
     automatastyle/.style={
         shorten >=1pt, on grid, auto,
-        ->, >=Stealth, 
+        ->, >=stealth, 
         every state/.style={thick, minimum size=1em},
         initial text =,  % There is an extra invisible node that enters into the state marked "initial", and normal that node carries the text "start".
     },

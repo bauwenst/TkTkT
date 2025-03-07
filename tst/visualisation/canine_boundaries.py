@@ -1,5 +1,5 @@
 from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
-from tktkt.util.strings import segmentUsingIndices
+from tktkt.util.strings import indicesToTokens
 from tst.evaluation.english_morphology import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from tktkt.factories.tokenisers import Factory_BoMMaSum_BPE
@@ -54,9 +54,9 @@ def test_visualiseCelexMismatches():
                         map(canine_viterbi.preprocessor.undo_per_token,
                             sorted(
                                 filter(lambda segmentation: not any(len(t) == 1 for t in segmentation[1:]),
-                                    map(lambda idcs: segmentUsingIndices(word, idcs),
+                                    map(lambda idcs: indicesToTokens(word, idcs),
                                         generateSegmentationIndices_fixedSpace(word, vocab)
-                                    )
+                                        )
                                 ),
                                 reverse=True
                             )

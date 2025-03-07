@@ -4,7 +4,7 @@ import numpy.random as npr
 
 from .generationbased import TokeniserWithVocabDict, Preprocessor, Vocab
 from ...util.arrays import *
-from ...util.strings import segmentUsingIndices
+from ...util.strings import indicesToTokens
 from ...util.printing import sgnprint
 
 
@@ -54,7 +54,7 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
                 indices.append(current_index)
                 current_index = self.rng.choice(edges[current_index], p=self.renormalisation.normalise(np.array(weights[current_index])))
 
-        return segmentUsingIndices(pretoken, starts_of_tokens=indices)
+        return indicesToTokens(pretoken, starts_of_tokens=indices)
 
     def constructMarkovGraphForwards(self, pretoken: str) -> Tuple[List[List[int]],List[List[float]]]:  # Separate method so that it can be cached.
         """

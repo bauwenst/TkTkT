@@ -25,7 +25,7 @@ def getPredictionProbabilities(classifier: CharacterClassifier, word: str):
     return np.exp(classifier.getPointLogProbabilities(word))
 
 
-def visualisePredictedBoundaries(classifier: CharacterClassifier, word: str):
+def visualisePredictedBoundaries(classifier: CharacterClassifier, word: str) -> str:
     probs = getPredictionProbabilities(classifier, word)
 
     result = ""

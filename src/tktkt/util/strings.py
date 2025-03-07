@@ -1,4 +1,7 @@
 from typing import List
+import numpy as np
+
+from .iterables import intercalate, cumsum
 
 
 def indent(level: int, multiline_string: str, tab: str=" "*4) -> str:
@@ -34,9 +37,26 @@ def alignCharacter(multiline_string: str, character_to_align: str) -> str:
     return "\n".join(lines)
 
 
-def segmentUsingIndices(text: str, starts_of_tokens: List[int]) -> List[str]:
+########################################################################################################################
+
+
+def indicesToTokens(text: str, starts_of_tokens: List[int]) -> List[str]:
     return [text[start_idx:end_idx] for start_idx, end_idx in zip(starts_of_tokens, starts_of_tokens[1:] + [len(text)])]
 
+def maskToTokens(text: str, mask: List[int]) -> List[str]:
+    return indicesToTokens(text, [0] + (np.nonzero(mask)[0] + 1).tolist())
 
-def segmentUsingBitmap(text: str, bitmap: str) -> List[str]:
-    return segmentUsingIndices(text, starts_of_tokens=[0] + [i+1 for i,c in enumerate(bitmap) if c == "1"])
+def bitstringToTokens(text: str, bitmap: str) -> List[str]:
+    return indicesToTokens(text, starts_of_tokens=[0] + [i+1 for i,c in enumerate(bitmap) if c == "1"])
+
+
+def tokensToIndices(tokens: List[str]) -> List[int]:
+    return [0] + list(cumsum(map(len, tokens)))[:-1]
+
+def tokensToMask(tokens: List[str]) -> List[int]:
+    return sum(intercalate(map(lambda i: (i-1)*[0], map(len, tokens)), [1]), start=[])
+    # return list(map(int, tokensToBitstring(tokens)))
+
+def tokensToBitstring(tokens: List[str]) -> str:
+    return "".join(intercalate(map(lambda i: (i-1)*"0", map(len, tokens)), "1"))
+    # return "".join(map(str, tokensToMask(tokens)))

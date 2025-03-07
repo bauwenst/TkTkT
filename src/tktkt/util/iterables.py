@@ -15,7 +15,7 @@ import numpy.random as npr
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
-
+Number = TypeVar("Number", bound=Union[int,float])
 
 def streamLines(path: Path, include_empty_lines=True) -> Iterator[str]:
     with open(path, "r", encoding="utf-8") as handle:
@@ -131,6 +131,13 @@ def filterOptionals(iterable: Iterable[Optional[T]]) -> Iterator[T]:
     for thing in iterable:
         if thing is not None:
             yield thing
+
+
+def cumsum(iterable: Iterable[Number]) -> Iterator[Number]:
+    total = 0
+    for n in iterable:
+        total += n
+        yield total
 
 
 def streamPrint(iterable: Iterable[T]) -> Iterator[T]:

@@ -3,7 +3,7 @@ from math import prod
 import numpy.random as npr
 
 from .generationbased import TokeniserWithVocabDict, Vocab, Preprocessor
-from ...util.strings import segmentUsingBitmap, segmentUsingIndices
+from ...util.strings import bitstringToTokens, indicesToTokens
 
 
 class RandomVocabSegmentation_RejectionSampling_BiasedBernoulli(TokeniserWithVocabDict):
@@ -33,7 +33,7 @@ def rejectionSampling(text: str, vocab: Vocab, rng: npr.Generator):
     while True:
         segmentation_index = rng.integers(n_segmentations)
         bitmap = bin(segmentation_index)[2:].zfill(n_positions)
-        segmentation = segmentUsingBitmap(text, bitmap)
+        segmentation = bitstringToTokens(text, bitmap)
         if all(token in vocab for token in segmentation):
             return segmentation
 
@@ -54,7 +54,7 @@ def rejectionSamplingBiased(text: str, vocab: Vocab, rng: npr.Generator,
         tries += 1  # Technically adds too much, but you have to add 1 to get the while loop to be re-entered.
         while tries % max_tries != 0:
             indices = rng.binomial(n=1, p=p, size=n_positions).nonzero()[0].tolist()
-            segmentation = segmentUsingIndices(text, [0] + indices)
+            segmentation = indicesToTokens(text, [0] + indices)
             if all(token in vocab for token in segmentation):
                 # print(tries)
                 return segmentation
@@ -106,4 +106,4 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
         while True:
             indices, p = self.sampler.samplePathAndProb(graph)
             if self.rng.random() < eps/p:  # Probability of being emitted is P(generate)*P(accept) = p*eps/p = eps. To verify the direction of "<", note that when P(accept) = eps/p = 1, you must always accept the path, and indeed, rand() is always lower than 1.
-                return segmentUsingIndices(pretoken, starts_of_tokens=indices)
+                return indicesToTokens(pretoken, starts_of_tokens=indices)

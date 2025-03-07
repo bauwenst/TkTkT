@@ -1,7 +1,7 @@
 from tktkt.factories.deserialisation import getEnglishBpeFiles
 from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
 from tktkt.preparation.huggingface import HuggingFacePreprocessorForWords
-from tktkt.util.strings import segmentUsingIndices
+from tktkt.util.strings import indicesToTokens
 
 s = "accumulatively"
 
@@ -16,5 +16,5 @@ print(
     list(
         sorted(
             filter(lambda segmentation: not any(len(t) == 1 for t in segmentation[1:]),
-                   map(lambda idcs: segmentUsingIndices(s, idcs),
+                   map(lambda idcs: indicesToTokens(s, idcs),
                        all_segmentations)), reverse=True)))

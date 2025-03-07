@@ -33,8 +33,6 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, boundary_marker: BoundaryMarker,
                  dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None, unk_type: str=None):
         """
-        TODO: To improve deterministic performance, you might want to use a custom threshold. For example, if CANINE thinks
-              a boundary should be there with 30% probability, perhaps that's actually enough.
         TODO: To improve non-deterministic performance, you might want to apply companding
               (e.g. p^{1/a} or (1-e^{-bx})/(1-e^{-b}) or log(1+cx)/log(1+c) or a sigmoid, see https://www.desmos.com/calculator/drttocdsqx)
               to the dropout probabilities (essentially, you make the model more certain about any sort of signal it thinks is there for a boundary).
