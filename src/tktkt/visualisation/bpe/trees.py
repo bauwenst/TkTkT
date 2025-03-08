@@ -86,56 +86,85 @@ class ExponentialDepthWeighting(VisualWeightingFunction):
 
 
 class BpeTree:
-    """
-    Tracker for historically applied merges. Also renders the actual visualisation.
-    """
+    """Tracker for historically applied merges."""
 
     def __init__(self, token: str, children: List["BpeTree"]=None):
         self.token: str = token
         self.children: List[BpeTree] = children or []
+        self.weight = 1
 
-    def toForest(self, weighting_function: VisualWeightingFunction=None):
-        raw_weights = None if weighting_function is None else self._getRawWeights(weighting_function, depth=0)
-        return self._toForest(depth=0, weighting_function=weighting_function, all_tree_weights=raw_weights)
 
-    def _getRawWeights(self, weighting_function: VisualWeightingFunction, depth: int) -> List[float]:
-        """
-        For this tree, compute the list of results gained from applying the weighting function recursively (before any normalisation).
-        """
-        results = [weighting_function.getTokenWeight(token=self.token, depth=depth, is_leaf=not self.children)]
-        for child in self.children:
-            results.extend(child._getRawWeights(weighting_function, depth+1))
-        return results
+class BpeTreeWeightAssigner(ABC):
 
-    def _toForest(self, depth: int, weighting_function: VisualWeightingFunction=None, all_tree_weights: List[float]=None):
-        if weighting_function is None:
-            content = self.token
-        else:
-            content = r"$\underset{\color{black!35}" + \
-                      f"{weighting_function.getTokenWeightGivenAll(all_tree_weights, self.token, depth=depth, is_leaf=not self.children):.3f}" + \
-                      r"\vphantom{{}^0}}{\smash{\text{" + self.token + r"}}}$"  # The vphantom is to create enough space between the token and the subscript. The smash is to prevent more space in case the token has a descender (e.g. the letter p).
+    @abstractmethod
+    def assignWeights(self, tree: BpeTree):
+        pass
 
-        s = "[" + content
-        if self.children:
-            s += "\n"
-            for child in self.children:
-                s += "".join(["\t" + line + "\n" for line in child._toForest(depth+1, weighting_function, all_tree_weights).split("\n")])
-        s += "]"
-        return s
+
+class AssignWeightsFromFlattenedTree(BpeTreeWeightAssigner):
+    """
+    Generates weights for the BFS-ordered flat tree.
+    """
+
+    def assignWeights(self, tree: BpeTree):
+        weights = self.getFlattenedWeights(tree)
+
+        frontier = [tree]
+        while frontier:
+            new_frontier = []
+            for tree in frontier:
+                tree.weight = weights.pop(0)
+                new_frontier.extend(tree.children)
+            frontier = new_frontier
+
+    @abstractmethod
+    def getFlattenedWeights(self, tree: BpeTree) -> List[float]:
+        pass
+
+
+class AssignWeightsUsingTokenFunction(BpeTreeWeightAssigner):
+
+    def __init__(self, token_weighting_function: VisualWeightingFunction):
+        self.weighter = token_weighting_function
+
+    def getFlattenedWeights(self, tree: BpeTree) -> List[float]:
+        weights = []
+
+        # Step 1: Collect unnormalised weights.
+        frontier = [tree]
+        depth = 0
+        while frontier:
+            new_frontier = []
+            for tree in frontier:
+                weights.append(self.weighter.getTokenWeight(token=self.token, depth=depth, is_leaf=not tree.children))
+                new_frontier.extend(tree.children)
+            frontier = new_frontier
+            depth += 1
+
+        # Step 2: Exact same process, but now knowing the full list of weights beforehand.
+        normalised_weights = []
+
+        frontier = [tree]
+        depth = 0
+        while frontier:
+            new_frontier = []
+            for tree in frontier:
+                normalised_weights.append(self.weighter.getTokenWeightGivenAll(weights, token=tree.token, depth=depth, is_leaf=not tree.children))
+                new_frontier.extend(tree.children)
+            frontier = new_frontier
+            depth += 1
+
+        return normalised_weights
 
 
 MergeTrace = List[BpeTree]
 
 class BpeVisualiser:
 
-    def __init__(self, tokeniser: BTE, weighting_function: VisualWeightingFunction=None):
+    def __init__(self, tokeniser: BTE):
         self.tokeniser = tokeniser
-        self.weighter = weighting_function
 
-    def tokenise_visualised(self, pretoken: str, intermediates: bool=False) -> Tuple[List[str], Union[MergeTrace, List[MergeTrace]]]:
-        return self.applyMerges_visualised(self.tokeniser._boundary_marker.intoCharacters(pretoken), intermediates=intermediates)
-
-    def applyMerges_visualised(self, characters: Iterable[str], intermediates: bool=False) -> Tuple[List[str], Union[MergeTrace, List[MergeTrace]]]:
+    def _applyMerges_visualised(self, characters: Iterable[str]) -> Tuple[List[str], List[MergeTrace]]:
         """
         Quick-and-dirty implementation of BPE merging, where we keep track of each merge as we go.
 
@@ -168,10 +197,11 @@ class BpeVisualiser:
             hypothetical_merges = set(zip(buffer[:-1], buffer[1:]))
             actual_merges = hypothetical_merges & merges
 
-        if intermediates:
-            return buffer, all_mergetree_sequences
-        else:
-            return buffer, current_mergetree_sequence
+        return buffer, all_mergetree_sequences
+
+    def tokenise_visualised(self, pretoken: str) -> Tuple[List[str], MergeTrace]:
+        tokens, traces = self._applyMerges_visualised(self.tokeniser._boundary_marker.intoCharacters(pretoken))
+        return tokens, traces[-1]
 
     def prepareAndTokenise_visualised(self, s: str) -> Tuple[List[str], str]:
         # Run the visualiser on every pretoken in the string
@@ -185,6 +215,9 @@ class BpeVisualiser:
         # Convert to LaTeX
         return tokens, r"\resizebox{\linewidth}{!}{" + "\n" + self._treesToLatex(trees) + "}"
 
+    def tokenise_visualised_animated(self, pretoken: str) -> Tuple[List[str], List[MergeTrace]]:
+        return self._applyMerges_visualised(self.tokeniser._boundary_marker.intoCharacters(pretoken))
+
     def prepareAndTokenise_visualised_animated(self, s: str) -> Tuple[str, str]:
         """
         Same as above but for Beamer.
@@ -192,7 +225,7 @@ class BpeVisualiser:
         different pretokens. Let's hope this doesn't create unnatural merges.
         """
         # Run the visualiser on every pretoken in the string
-        tokens, many_trees = self.tokenise_visualised("".join(self.tokeniser.preprocessor.do(s)), intermediates=True)
+        tokens, many_trees = self.tokenise_visualised_animated("".join(self.tokeniser.preprocessor.do(s)))
 
         # Wrap with LaTeX commands and adjust the height
         last_render = self._treesToLatex(many_trees[-1])
@@ -203,14 +236,30 @@ class BpeVisualiser:
 
         return " ".join(tokens), r"\resizebox{\linewidth}{!}{" + "\n" + latex + "}"
 
-    def _treesToLatex(self, trees: MergeTrace):
+    def _treesToLatex(self, trees: MergeTrace) -> str:
         latex = ""
         latex += ("\n" + r"\hskip\forestskip" + "\n").join([
-            r"\begin{forest} bpetree" + ("-weighted" if self.weighter is not None else "") + "\n" +
-            tree.toForest(weighting_function=self.weighter) + "\n" +
+            r"\begin{forest} " + self._forestStyle() + "\n" +
+            self._treeToLatex(tree) + "\n" +
             r"\end{forest}"
             for tree in trees])
         return latex
+
+    def _treeToLatex(self, tree: BpeTree) -> str:
+        s = "[" + self._formatTreeNode(tree)
+        if tree.children:
+            s += "\n"
+            for child in tree.children:
+                child_string = self._treeToLatex(child)
+                s += "".join(["\t" + line + "\n" for line in child_string.split("\n")])
+        s += "]"
+        return s
+
+    def _formatTreeNode(self, tree: BpeTree) -> str:
+        return tree.token
+
+    def _forestStyle(self) -> str:
+        return "bpetree"
 
     @staticmethod
     def getLatexPreamble(forked_edges: bool=False):
@@ -243,7 +292,34 @@ class BpeVisualiser:
         },
         forked edges
     }
-}
+}"""
+        return p if forked_edges else p.replace("forked edges", "")
+
+
+class BpeVisualiserWeighted(BpeVisualiser):
+
+    def __init__(self, tokeniser: BTE, weight_assigner: BpeTreeWeightAssigner):
+        super().__init__(tokeniser)
+        self.weight_assigner = weight_assigner
+
+    def _formatTreeNode(self, tree: BpeTree) -> str:
+        return r"$\underset{\color{black!35}" + \
+               f"{tree.weight:.3f}" + \
+               r"\vphantom{{}^0}}{\smash{\text{" + tree.token + r"}}}$"  # The vphantom is to create enough space between the token and the subscript. The smash is to prevent more space in case the token has a descender (e.g. the letter p).
+
+    def _treesToLatex(self, trees: MergeTrace) -> str:
+        for tree in trees:
+            self.weight_assigner.assignWeights(tree)
+        return super()._treesToLatex(trees)
+
+    def _forestStyle(self) -> str:
+        return "bpetree-weighted"
+
+    @staticmethod
+    def getLatexPreamble(forked_edges: bool = False):
+        p = r"""
+\newlength{\forestskip}
+\setlength{\forestskip}{1 mm}
 
 \forestset{
     bpetree-weighted/.style = {
@@ -271,4 +347,3 @@ class BpeVisualiser:
         forked edges
     }
 }"""
-        return p if forked_edges else p.replace("forked edges", "")
