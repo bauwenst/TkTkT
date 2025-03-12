@@ -8,7 +8,7 @@ Also -- but this is not part of Python's typing -- iterators are consumable only
 The outputs of all the functions below are explicitly iterables with __next__ method that are consumable only once,
 hence why the output is marked as an Iterator.
 """
-from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional, Iterator
+from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional, Iterator, Tuple
 from pathlib import Path
 from tqdm.auto import tqdm
 import numpy.random as npr
@@ -151,6 +151,22 @@ def streamProgress(iterable: Iterable[T], show_as: Optional[str]=None, known_siz
 
 
 # Endpoints below
+
+def get(iterable: Iterable[T], index: int) -> T:
+    for i, thing in iterable:
+        if i == index:
+            return thing
+    else:
+        raise IndexError(f"Index {index} out of range of iterable.")
+
+
+def fst(t: Tuple[T,T2]) -> T:
+    return t[0]
+
+
+def snd(t: Tuple[T,T2]) -> T2:
+    return t[1]
+
 
 def count(iterable: Iterable[T]) -> int:
     total = 0
