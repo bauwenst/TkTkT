@@ -1,4 +1,4 @@
-from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator
+from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator, Tuple
 from collections import OrderedDict, Counter
 import numpy as np
 import numpy.random as npr
@@ -117,6 +117,17 @@ class ChainedCounter(Counter[K], Generic[K]):
         weights = self.subcounterSizes()
         values = list(map(counter_function, range(len(self._counters)), self._counters))
         return sum(w*v for w,v in zip(weights,values))/sum(weights) if weights else 0
+
+    def serialise(self) -> Tuple[List[Dict[K,int]], int]:
+        return [dict(c.items()) for c in self._counters], self._max_size
+
+    @classmethod
+    def deserialise(cls, serialised: List[Dict[K,int]], max_size: int, seed: int) -> "ChainedCounter[K]":
+        supercounter = ChainedCounter(max_size, seed)
+        for subcounter in serialised:
+            for k,v in subcounter.items():
+                supercounter[k] += v
+        return supercounter
 
     ####################################################################################################################
 

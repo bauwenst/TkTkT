@@ -2,13 +2,19 @@
 Evaluation of the context around tokens.
 """
 from typing import Iterable, Dict, Set, Union, Tuple, Optional
+from pathlib import Path
 from dataclasses import dataclass
 from collections import defaultdict, Counter
-import numpy as np
 
+import numpy as np
+import json
+import re
+
+from ..paths import TkTkTPaths
 from ..factories.preprocessing import IdentityPreprocessor
 from ..interfaces.tokeniser import Tokeniser, Preprocessor
 from ..util.iterables import streamProgress
+from ..util.timing import datetimeDashed
 from ..util.dicts import ChainedCounter
 from .entropy import renyiEfficiency
 
@@ -36,6 +42,71 @@ class AccessorDistributions:
     vocab: Dict[str,VocabRef]
     left_of:  AccessorDistribution
     right_of: AccessorDistribution
+
+    # Serialisation logic below.
+
+    def save(self) -> Path:
+        def serialiseDistribution(distribution: AccessorDistribution):
+            accessors = []
+            for t1, counter in distribution.accessors.items():
+                subcounters, max_size = counter.serialise()
+                subcounters = [[(t2,count) for t2, count in subcounter.items()] for subcounter in subcounters]
+                accessors.append([t1, max_size, subcounters])
+
+            return {
+                "boundaries": [(t,c) for t,c in distribution.boundaries.items()],
+                "accessors": accessors
+            }
+
+        folder = TkTkTPaths.pathToEvaluations() / "av"
+        folder.mkdir(exist_ok=True)
+        file = folder / f"{datetimeDashed()}.json"
+        data = {
+            "vocab": self.vocab,
+            "left": serialiseDistribution(self.left_of),
+            "right": serialiseDistribution(self.right_of)
+        }
+        serialised = json.dumps(data, indent=2, ensure_ascii=False)
+        serialised = re.compile(r"\[\s+([0-9]+),\s+([0-9]+)\s+\]").sub(r"[\1,\2]", serialised)
+        with open(file, "w", encoding="utf-8") as handle:
+            handle.write(serialised)
+        return file
+
+    @classmethod
+    def load(cls, file: Path) -> "AccessorDistributions":
+        with open(file, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+
+        distributions = AccessorDistributions(
+            vocab=data["vocab"],
+            left_of=AccessorDistribution(
+                accessors=dict(),
+                boundaries=dict()
+            ),
+            right_of=AccessorDistribution(
+                accessors=dict(),
+                boundaries=dict()
+            )
+        )
+        for t1, max_size, subcounters in data["left"]["accessors"]:
+            distributions.left_of.accessors[t1] = ChainedCounter(max_size, seed_for_addition=0)
+            for subcounter in subcounters:
+                for t2, count in subcounter:
+                    distributions.left_of.accessors[t1][t2] += count
+
+        for t1, max_size, subcounters in data["right"]["accessors"]:
+            distributions.right_of.accessors[t1] = ChainedCounter(max_size, seed_for_addition=0)
+            for subcounter in subcounters:
+                for t2, count in subcounter:
+                    distributions.right_of.accessors[t1][t2] += count
+
+        for t, count in data["left"]["boundaries"]:
+            distributions.left_of.boundaries[t] = count
+
+        for t, count in data["right"]["boundaries"]:
+            distributions.right_of.boundaries[t] = count
+
+        return distributions
 
 
 @dataclass
@@ -162,9 +233,9 @@ def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety:
         nonend_count = accessor_counts.total()
         subcounter_totals = accessor_counts.subcounterSizes()
         summary.total_accessors     = nonend_count + end_count
-        summary.av                  = accessor_counts.averageOverCountersAndIndices(lambda i,c: len(c) + do_count_ends_as_variety*int(end_count*subcounter_totals[i]/nonend_count)) if nonend_count else 0
+        summary.av                  = accessor_counts.averageOverCountersAndIndices(lambda i,c: len(c) + do_count_ends_as_variety*int(end_count*subcounter_totals[i]/nonend_count)) if nonend_count else do_count_ends_as_variety*end_count
         summary.coverage            = accessor_counts.averageOverCounters(lambda c: len(c) / possible_accessors) if nonend_count else 0.0
-        summary.uniqueness          = accessor_counts.averageOverCounters(lambda c: len(c) / nonend_count)       if nonend_count else 1.0
+        summary.uniqueness          = accessor_counts.averageOverCounters(lambda c: len(c) / c.total())          if nonend_count else 1.0
         summary.mcu                 = max(summary.coverage, summary.uniqueness)
         summary.entropic_efficiency = accessor_counts.averageOverCounters(lambda c: renyiEfficiency(c.values(), domain_size=possible_accessors, sample_size=c.total(), alpha=1.0)[1]) if nonend_count else 0.0  # idk what to do with this default
 
