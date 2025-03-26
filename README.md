@@ -29,13 +29,14 @@ Currently, the package implements:
   - Native implementation in TkTkT
 - **Greedy** tokenisers ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289)):
   - Left-to-right and right-to-left
-  - Random-access, dubbed "FLOTA" by [Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/).
+  - Random-access, dubbed **"FLOTA"** by [Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/).
 - **Derivative leverager (DeL)** ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)).
   - Segmentation
   - Trainer
 - Character/byte **N-grams**.
 - **SaGe** ([Yehezkel & Pinter, 2023](https://aclanthology.org/2023.eacl-main.45/)) vocabularisation.
-- **Randomised** segmentation from a given subword vocabulary.
+- **Randomised** segmentation from a given subword vocabulary (paper coming soon).
+- **Lempel-Ziv-Welch (LZW)** as a tokeniser ([Zouhar et al., 2023](https://aclanthology.org/2023.acl-long.284/)).
 
 Currently work in progress:
 - A family of Viterbi-driven tokenisers.
