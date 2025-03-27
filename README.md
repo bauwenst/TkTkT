@@ -27,9 +27,9 @@ Currently, the package implements:
 - **Unigram language model (ULM)**, dubbed *KudoPiece* in TkTkT ([Kudo, 2018](https://aclanthology.org/P18-1007/)):
   - Wrapper around the [SentencePiece](https://github.com/google/sentencepiece) package
   - Native implementation in TkTkT
-- **Greedy** tokenisers ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289)):
-  - Left-to-right and right-to-left
-  - Random-access, dubbed **"FLOTA"** by [Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/).
+- Greedy tokenisers:
+  - **MaxMatch**, a.k.a. left-to-right greedy tokenisation, and also right-to-left ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289))
+  - **FLOTA** ([Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/)), i.e. random-access greedy tokenisation. 
 - **Derivative leverager (DeL)** ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)).
   - Segmentation
   - Trainer
@@ -39,7 +39,6 @@ Currently, the package implements:
 - **Lempel-Ziv-Welch (LZW)** as a tokeniser ([Zouhar et al., 2023](https://aclanthology.org/2023.acl-long.284/)).
 
 Currently work in progress:
-- A family of Viterbi-driven tokenisers.
 - Morfessor family
 
 TkTkT also has classes to alternate between tokenisers across pretokens.
