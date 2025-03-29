@@ -335,7 +335,10 @@ class ByteMapping(InvertibleTextMapper, FiniteCharacterSet):
         return "".join(map(self.BYTE_TO_PSEUDO.get, text.encode("utf-8")))
 
     def invert(self, text: str) -> str:
-        return bytes(map(self.PSEUDO_TO_BYTE.get, text)).decode("utf-8", errors="replace")
+        try:
+            return bytes(map(self.PSEUDO_TO_BYTE.get, text)).decode("utf-8", errors="replace")
+        except:
+            raise ValueError(f"Text contains one or more non-pseudobytes: {text}")
 
 
 class PseudoByteMapping(ByteMapping):

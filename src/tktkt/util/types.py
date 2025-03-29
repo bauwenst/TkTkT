@@ -33,12 +33,15 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
         return self
 
     def map(self, func: Callable[[T],T2]) -> "NamedIterable[T2]":
+        """Refer to the documentation of the `mapped` class."""
         return NamedIterable(mapped(func, self), name=self.name)
 
     def flatmap(self, func: Callable[[T],Iterable[T2]]) -> "NamedIterable[T2]":
+        """Refer to the documentation of `flatmapped` class."""
         return NamedIterable(flatmapped(func, self), name=self.name)
 
     def wrap(self, func: Callable[[Iterable[T]], Iterable[T2]]) -> "NamedIterable[T2]":
+        """Refer to the documentation of `wrappediterable` class."""
         return NamedIterable(wrappediterable(func, self), name=self.name)
 
 

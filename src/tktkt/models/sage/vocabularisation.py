@@ -5,6 +5,7 @@ Builds a vocabulary using the SaGe algorithm described in
 During vocabulary building, words are kept in the context of their sentences rather than coming from a word frequency
 list. The resulting vocabulary is just a set of subwords without context, however.
 """
+import warnings
 from pathlib import Path
 from typing import Tuple, List
 
@@ -26,14 +27,29 @@ class SageVocabulariser(Vocabulariser):
 
         Hence, you will not see hyperparameters V, n, k, l, m and M in this constructor. That means the default values
         of n = 1.25, l = 4, k = 100, M = 1500, m = 10 have also become obsolete.
+
+        The schedule parameters replace SaGe v2.0's hardcoded schedules, which are respectively
+            vocab: 262144 229376 196608 163840 131072 98304 65536 57344 49152 40960 32768 16384
+            embed: 262144                      131072       65536       49152 40960 32768
+
+        :param vocabulary_schedule: Shape of the sequence of vocabulary sizes you transition to at each pruning step.
+                                    The shape is on a normalised time axis, meaning SaGe starts at t=0.0 and ends at t=1.0.
+        :param n_vocab_samples: How many equidistant samples to take from the schedule on that axis.
+
+        :param embedding_schedule: At some vocabulary sizes, you recompute the embeddings. To select which of the
+                                   n_vocab_samples (0, 1, 2, ..., n_vocab_samples-1) that will happen, we sample indices
+                                   again from a normalised index axis, meaning t=0.0 is the first vocabulary size and t=1.0 the last.
+                                   This schedule applies time dilation to that axis. In parts of the schedule that increase
+                                   more slowly, the selected indices will be denser.
+        :param n_embedding_samples: How many equidistant samples to take on the index scale.
         """
         super().__init__(name="sage", preprocessor=preprocessor)
 
         self.vocabulary_points: List[int] = [
-            round(vocabulary_schedule.get(i/(n_vocab_samples-1))) for i in range(n_vocab_samples)
+            round(vocabulary_schedule.get(i/(n_vocab_samples-1))) for i in range(n_vocab_samples)  # This round() produces vocabulary sizes in the thousands. The -1 is because we want to normalise the N samples 0, 1, ..., N-1 such that the extrema are 0.0 and 1.0.
         ]
         self.recompute_embeddings_at: List[int] = [self.vocabulary_points[j] for j in sorted({
-            round(embedding_schedule.get(i/(n_embedding_samples-1)) * (n_vocab_samples - 2)) for i in range(n_embedding_samples)
+            round(embedding_schedule.get(i/(n_embedding_samples-1)) * (n_vocab_samples - 2)) for i in range(n_embedding_samples)  # This round produces integers between 0 and len(self.vocabulary_points)-2, i.e. all possible indices into self.vocabulary_points except the last one (since SaGe STOPS at the last vocab size, so it's pointless to recompute embeddings at that point).
         })]
 
         self.initial_hex_vocab = None
@@ -43,12 +59,12 @@ class SageVocabulariser(Vocabulariser):
         """
         Set the initial tokens that the tokeniser can use to segment the output of the preprocessor.
 
-        Under the hood, we will map them bytes (stored and later read out in hex format). Note that this is not
+        Under the hood, we will map them to bytes (stored and later read out in hex format). Note that this is not
         an issue even if the given vocabulary already uses pseudo-bytes: types in the vocabulary will become longer, yes,
         but since the preprocessor also maps input text to pseudo-bytes and those are converted to bytes by SaGe already,
         the input will contain the same bytes-of-pseudobytes units we get in the vocabulary.
         """
-        self.initial_hex_vocab = set(map(SageVocabulariser._toHexString, vocab))
+        self.initial_hex_vocab = set(map(SageVocabulariser._toHexString, vocab)) | {bytes([i]).hex() for i in range(256)}
 
     @classmethod
     def _toHexString(cls, typ: str) -> str:

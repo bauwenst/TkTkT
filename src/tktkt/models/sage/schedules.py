@@ -39,7 +39,7 @@ class DoubleLinearSchedule(Schedule):
 class Dilation(Schedule):
     """
     Functions defined between 0 and 1 that return 0 at 0 and return 1 at 1.
-    Technically called a "companding curve".
+    Technically called a "companding curve". Time dilation is a known physical phenomenon, however.
     """
     pass
 

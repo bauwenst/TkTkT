@@ -16,12 +16,13 @@ from ..interfaces.tokeniser import Tokeniser, Preprocessor
 from ..util.iterables import streamProgress
 from ..util.timing import datetimeDashed
 from ..util.dicts import ChainedCounter
+from ..util.types import NamedIterable
 from .entropy import renyiEfficiency
 
 
 VocabRef = int  # To avoid storing token strings over and over, we construct a vocab on-the-fly (even with tokenisers that have no vocab).
-WordOrSentenceIterable = Union[Iterable[str], Iterable[Tuple[str,int]]]
-def getIterableWithCounts(iterable: WordOrSentenceIterable) -> Iterable[Tuple[str,int]]:
+
+def getIterableWithCounts(iterable: Union[Iterable[str], Iterable[Tuple[str,int]]]) -> Iterable[Tuple[str,int]]:
     for thing in iterable:
         if isinstance(thing, tuple):
             word, frequency = thing
@@ -44,6 +45,7 @@ class AccessorDistributions:
     right_of: AccessorDistribution
 
     # Serialisation logic below.
+    corpus_name: str
 
     def save(self) -> Path:
         def serialiseDistribution(distribution: AccessorDistribution):
@@ -60,8 +62,9 @@ class AccessorDistributions:
 
         folder = TkTkTPaths.pathToEvaluations() / "av"
         folder.mkdir(exist_ok=True)
-        file = folder / f"{datetimeDashed()}.json"
+        file = folder / f"{self.corpus_name}_{datetimeDashed()}.json"
         data = {
+            "source": self.corpus_name,
             "vocab": self.vocab,
             "left": serialiseDistribution(self.left_of),
             "right": serialiseDistribution(self.right_of)
@@ -78,6 +81,7 @@ class AccessorDistributions:
             data = json.load(handle)
 
         distributions = AccessorDistributions(
+            corpus_name=data["source"],
             vocab=data["vocab"],
             left_of=AccessorDistribution(
                 accessors=dict(),
@@ -136,7 +140,7 @@ class AllAccessorSummaries:
     min:   DistributionAccessorSummaries  # For each type separately, picks the accessor distribution with the fewest types (i.e. the most predictable side) and copies its metrics.
 
 
-def getAccessors(tokeniser: Tokeniser, texts: WordOrSentenceIterable, bucket_samples_every: int, split_into_disjunct_examples: Preprocessor=None) \
+def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIterable[Tuple[str,int]]], bucket_samples_every: int, split_into_disjunct_examples: Preprocessor=None) \
         -> AccessorDistributions:
     """
     :param bucket_samples_every: Every type in the vocabulary has a left and right counter associated with it that counts
@@ -195,7 +199,8 @@ def getAccessors(tokeniser: Tokeniser, texts: WordOrSentenceIterable, bucket_sam
     return AccessorDistributions(
         vocab,
         AccessorDistribution(left_of, left_bounds),
-        AccessorDistribution(right_of, right_bounds)
+        AccessorDistribution(right_of, right_bounds),
+        corpus_name=texts.name
     )
 
 
