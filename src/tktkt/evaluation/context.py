@@ -1,7 +1,7 @@
 """
 Evaluation of the context around tokens.
 """
-from typing import Iterable, Dict, Set, Union, Tuple, Optional
+from typing import Iterable, Dict, Set, Union, Tuple, Optional, Callable
 from pathlib import Path
 from dataclasses import dataclass
 from collections import defaultdict, Counter
@@ -202,6 +202,28 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
         AccessorDistribution(right_of, right_bounds),
         corpus_name=texts.name
     )
+
+
+def filterAccessors(accessors: AccessorDistributions, remove_if: Callable[[str,AccessorDistributions],bool]):
+    for t in [t for t in accessors.vocab if remove_if(t,accessors)]:
+        removeAccessorFromDistributions(accessors, t)
+
+
+def removeAccessorFromDistributions(accessors: AccessorDistributions, accessor: str):
+    vocab_ref = accessors.vocab.pop(accessor)  # Raises error if accessor doesn't exist.
+    removeAccessorFromDistribution(accessors.left_of, vocab_ref)
+    removeAccessorFromDistribution(accessors.right_of, vocab_ref)
+
+
+def removeAccessorFromDistribution(distribution: AccessorDistribution, accessor_id: VocabRef):
+    # Remove as thing with neighbours
+    distribution.accessors.pop(accessor_id)
+    distribution.boundaries.pop(accessor_id)
+
+    # Remove as thing that is a neighbour
+    for _, neighbours in distribution.accessors.items():
+        if accessor_id in neighbours:
+            neighbours.pop(accessor_id)
 
 
 def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety: bool=True, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:
