@@ -225,6 +225,10 @@ def removeAccessorFromDistribution(distribution: AccessorDistribution, accessor_
         if accessor_id in neighbours:
             neighbours.pop(accessor_id)
 
+    # Make all the counters nice again
+    for _, neighbours in distribution.accessors.items():
+        neighbours.repack()
+
 
 def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety: bool=True, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:
     """

@@ -145,15 +145,16 @@ class ChainedCounter(Counter[K], Generic[K]):
 
         # Update the sub-counters
         while increment > 0:
+            if self._current_size == self._max_size:  # Putting this at the end of the loop would cause an empty last counter to exist sometimes.
+                self._current_size = 0
+                self._counters.append(Counter())
+
             new_cur = min(self._max_size, self._current_size + increment)
             delta_in_current_counter = new_cur - self._current_size
             self._counters[-1][key] += delta_in_current_counter
 
             increment -= delta_in_current_counter
             self._current_size = new_cur
-            if self._current_size == self._max_size:
-                self._current_size = 0
-                self._counters.append(Counter())
 
     def get(self, key: K, default=None):
         # For some unknown reason, Counter's implementation of .get() does not use .__getitem__(). As it turns out, the
@@ -164,8 +165,9 @@ class ChainedCounter(Counter[K], Generic[K]):
             return default
 
     def pop(self, key: K) -> int:
-        for counter in self._counters:
-            counter.pop(key)
+        for subcounter in self._counters:
+            if key in subcounter:
+                subcounter.pop(key)
         return super().pop(key)
 
     def __add__(self, other: "ChainedCounter[K]") -> "ChainedCounter[K]":
@@ -177,11 +179,33 @@ class ChainedCounter(Counter[K], Generic[K]):
             raise NotImplementedError
 
         sum_counter = ChainedCounter(self._max_size, seed_for_addition=self._rng_for_addition.integers(0,1_000_000))
+
+        # Add this counter's elements first
         for counter in self._counters:
             for k,v in counter.items():
                 sum_counter[k] += v
 
-        for counter in other._counters:
+        # Add the other counter's elements, as if they all came after. This is an important assumption.
+        for element in other._regenerate():
+            sum_counter[element] += 1
+
+        return sum_counter
+
+    def repack(self):
+        """
+        Re-pack values inside this counter so that any gaps left by popping from the subcounters are filled up again.
+        """
+        counter = ChainedCounter(self._max_size, 0)
+        for element in self._regenerate():
+            counter[element] += 1
+        self._counters = counter._counters
+
+    def _regenerate(self) -> Iterator[K]:
+        """
+        Output exactly the elements that are inside this counter, subcounter by subcounter, sampling the current
+        subcounter according to the distribution over unique values as exhibited by the elements in the starting state.
+        """
+        for counter in self._counters:
             # Get distribution
             keys          = list(counter.keys())
             counts        = [counter[k] for k in keys]
@@ -192,14 +216,15 @@ class ChainedCounter(Counter[K], Generic[K]):
             n_remaining_keys = len(keys)
             for _ in range(total_count):
                 if n_remaining_keys == 1:
-                    sum_counter[keys[0]] += counts[0]
+                    for _ in range(counts[0]):
+                        yield keys[0]
                     break
 
                 key_idx = self._rng_for_addition.choice(len(keys), p=probabilities)
-                sum_counter[keys[key_idx]] += 1
+                yield keys[key_idx]
+
                 counts[key_idx] -= 1
                 if counts[key_idx] == 0:  # This key index must never be selected again. Renormalise the remaining probabilities.
                     probabilities[key_idx] = 0
                     probabilities = probabilities / np.sum(probabilities)
                     n_remaining_keys -= 1
-        return sum_counter
