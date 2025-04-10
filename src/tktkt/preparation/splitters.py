@@ -3,6 +3,7 @@ Pretokenisation, i.e. splitting text into the units that will be tokenised separ
 """
 from typing import List, Optional
 from enum import Enum
+import numpy as np
 
 from tokenizers import Regex
 from tokenizers import pre_tokenizers as tp
@@ -13,6 +14,7 @@ import regex  # Has \p{} classes
 from .boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ..interfaces.preparation import Pretokeniser, InvertibleTextMapper, _PreprocessorComponentSequence
 from ..util.iterables import intercalate
+from ..util.strings import maskToTokens
 
 
 class PretokeniserSequence(Pretokeniser, _PreprocessorComponentSequence):
@@ -354,6 +356,22 @@ class AddWordBoundary(Pretokeniser):
 
     def getName(self):
         return super().getName() + "(" + "+"*(self.marker.location == BoundaryMarkerLocation.END) + self.marker.substitute + "+"*(self.marker.location == BoundaryMarkerLocation.START) + ")"
+
+
+from ..models.viterbi.objectives_guided import CharacterClassifier
+class SplitWithBoundaryClassifier(Pretokeniser):
+
+    def __init__(self, classifier: CharacterClassifier, threshold: float=0.5):
+        """
+        :param classifier: Assigns a probability to each character for whether that is where the end of the pretoken is.
+        :param threshold: Probabilities that are at least this will become pretoken boundaries.
+        """
+        self._classifier = classifier
+        self._threshold = threshold
+
+    def split(self, text: str) -> List[str]:
+        mask = np.exp(self._classifier.getPointLogProbabilities(text)) >= self._threshold
+        return maskToTokens(text, mask[:-1])
 
 
 class MapperAsPretokeniser(Pretokeniser, _PreprocessorComponentSequence):

@@ -17,11 +17,7 @@ import torch
 from math import exp, sin, pi, asin
 from math import log as ln
 
-from bpe_knockout.project.config import morphologyGenerator, Pℛ𝒪𝒥ℰ𝒞𝒯
-
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
-from ...preparation.boundaries import BoundaryMarkerLocation
-from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
 from ...util.printing import sgnprint
 
 
@@ -160,18 +156,28 @@ class PiecewisePT(ProbabilityTransform):
 
 class MultiplicativelyBalancedProbabilityTransform(ProbabilityTransform):
     """
-    A subset of the probability transforms f(p) that satisfy
-        1. f(p) * f(1-p) = 1
-        2. lim_{p->0.5+} f(p) = lim_{p->0.5-} f(p) = 1, that is, there is no discontinuity at p = 0.5.
+    Defines a subset of the probability transforms f(p) that satisfy
+        1. f(p) is monotonously increasing.
+        2. f(p) * f(1-p) = 1
+        3. lim_{p->0.5+} f(p) = lim_{p->0.5-} f(p) = 1, that is, there is no discontinuity at p = 0.5.
 
-    Both of these can be achieved by taking any function g(x) for which
+    ---
+
+    An example of a function that trivially satisfies the first two conditions yet doesn't satisfy the last is
+        f(p) = 1/(1-p) for p > 0.5 and f(p) = p otherwise.
+    (1) The separate pieces are monotonous, and for any p1 < 0.5 < p2, note that p2 < 0.5 => 0.5 < 1-p2 => 1/0.5 < 1/(1-p2) and thus f(p1) = p1 < 0.5 < 2 < 1/(1-p2) = f(p2).
+    (2a) For any p' that is < 0.5, this gives f(p') * f(1-p') = p' * 1/(1 - (1-p')) = p' * 1/p' = 1.
+    (2b) For any p' that is > 0.5, this gives f(p') * f(1-p') = 1/(1-p') * (1-p') = 1.
+    (3) Yet lim_{p->0.5+} f(p) = 1/(1-0.5) = 1/0.5 = 2 whereas lim_{p->0.5-} f(p) = 0.5.
+
+    ---
+
+    This class achieves all three conditions by taking any auxiliary function g(x) for which
         1. g(0) = 1
         2. g(p) is monotonously increasing for p in [0,0.5]
     and then taking the piecewise function
         x > 0.5: f(x) = g(x - 0.5)
         x < 0.5: f(x) = 1/g(0.5 - p)
-    
-    An example of a function that has a discontinuity would be f(p) = 1/(1-p) for p > 0.5 and f(p) = p otherwise.
     """
 
     def probabilityToScore(self, p: float) -> float:
@@ -215,7 +221,7 @@ class PowerMBPT(MultiplicativelyBalancedProbabilityTransform):
 class DoublingMBPT(PowerMBPT):
     """
     Models g(x) = 1 + 2*x, which is one specific case of PowerMBPT that is easy to compute.
-    It turns P = 100% into a factor 2x and turns P = 0% into a factor 1/2x.
+    It turns P = 100% into a score factor ×2 and turns P = 0% into a score factor ×1/2.
     """
 
     def __init__(self):
@@ -654,6 +660,8 @@ class BoundaryPrefixAndSuffixLengthExtended(ScoreGeneratorUsingCharacterClassifi
 
 ########################################################################################################################
 
+from ...preparation.boundaries import BoundaryMarkerLocation
+from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
 
 class GoldSplits(CharacterClassifier):
     """
@@ -667,6 +675,8 @@ class GoldSplits(CharacterClassifier):
     def __init__(self, pretokeniser: WhitespaceAndMarkerPretokeniser):
         self.pretokeniser = pretokeniser
         self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == BoundaryMarkerLocation.START)
+
+        from bpe_knockout.project.config import morphologyGenerator
         self.gold_segmentations = {obj.word: obj.segment() for obj in morphologyGenerator()}
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
