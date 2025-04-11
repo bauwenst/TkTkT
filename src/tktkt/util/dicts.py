@@ -91,21 +91,22 @@ class ChainedCounter(Counter[K], Generic[K]):
     referring to that global data structure of super().
     """
 
-    def __init__(self, max_subcounter_size: int, seed_for_addition: int=0):
+    def __init__(self, max_subcounter_size: int, seed: int=0):
         super().__init__()  # Because this is a subclass of Counter, the super class has a "master data structure".
-        self._counters = [Counter()]
-        self._current_size = 0
-        self._max_size     = max_subcounter_size
-        self._rng_for_addition = npr.default_rng(seed_for_addition)
+        self._counters = []
+        self._size_of_last_counter = max_subcounter_size
 
-    def totalSubcounters(self) -> int:
+        self._max_size = max_subcounter_size
+        self._rng = npr.default_rng(seed)
+
+    def subcounterAmount(self) -> int:
         return len(self._counters)
-
-    def mapCounters(self, counter_function: Callable[[Counter],V]) -> Iterator[V]:
-        return map(counter_function, self._counters)  # If the function expects two arguments, this will crash.
 
     def subcounterSizes(self) -> List[int]:
         return list(self.mapCounters(lambda c: c.total()))
+
+    def mapCounters(self, counter_function: Callable[[Counter],V]) -> Iterator[V]:
+        return map(counter_function, self._counters)  # If the function expects two arguments, this will crash.
 
     def averageOverCounters(self, counter_function: Callable[[Counter],Number]) -> Number:
         weights = self.subcounterSizes()
@@ -145,40 +146,39 @@ class ChainedCounter(Counter[K], Generic[K]):
 
         # Update the sub-counters
         while increment > 0:
-            if self._current_size == self._max_size:  # Putting this at the end of the loop would cause an empty last counter to exist sometimes.
-                self._current_size = 0
+            if self._size_of_last_counter == self._max_size:  # Putting this at the end of the loop would cause an empty last counter to exist sometimes.
+                self._size_of_last_counter = 0
                 self._counters.append(Counter())
 
-            new_cur = min(self._max_size, self._current_size + increment)
-            delta_in_current_counter = new_cur - self._current_size
+            new_cur = min(self._max_size, self._size_of_last_counter + increment)
+            delta_in_current_counter = new_cur - self._size_of_last_counter
             self._counters[-1][key] += delta_in_current_counter
 
             increment -= delta_in_current_counter
-            self._current_size = new_cur
-
-    def get(self, key: K, default=None):
-        # For some unknown reason, Counter's implementation of .get() does not use .__getitem__(). As it turns out, the
-        # .update() method uses .get() rather than counter[key], and hence to support .update(), it doesn't suffice to override .__getitem__() only.
-        if key in self:
-            return self[key]
-        else:
-            return default
+            self._size_of_last_counter = new_cur
 
     def pop(self, key: K) -> int:
+        """
+        Reverse of all __setitem__ calls to the same key.
+        Unlike subtraction, this is actually feasible, since you know which counters to remove the key from (all of them).
+        """
         for subcounter in self._counters:
             if key in subcounter:
                 subcounter.pop(key)
+        self._garbageCollect()
         return super().pop(key)
 
     def __add__(self, other: "ChainedCounter[K]") -> "ChainedCounter[K]":
         """
+        Adding two counters together.
+
         Since it's impossible to know in what order the samples of the given counter came in within its subcounters,
         we assume they came in randomly according to the distribution they appear to have.
         """
         if not isinstance(other, ChainedCounter):
             raise NotImplementedError
 
-        sum_counter = ChainedCounter(self._max_size, seed_for_addition=self._rng_for_addition.integers(0,1_000_000))
+        sum_counter = ChainedCounter(self._max_size, seed=self._rng.integers(0, 1_000_000))
 
         # Add this counter's elements first
         for counter in self._counters:
@@ -191,25 +191,77 @@ class ChainedCounter(Counter[K], Generic[K]):
 
         return sum_counter
 
-    def repack(self):
+    def repack(self, sort_subcounters_first: bool=False):
         """
         Re-pack values inside this counter so that any gaps left by popping from the subcounters are filled up again.
         """
-        counter = ChainedCounter(self._max_size, 0)
-        for element in self._regenerate():
-            counter[element] += 1
-        self._counters = counter._counters
+        if not self._counters:
+            return
+
+        if sort_subcounters_first:
+            self._counters.sort(key=lambda c: -c.total())  # Biggest subcounter first.
+
+        i = 0
+        while i < self.subcounterAmount():
+            deficit = self._max_size - self._counters[i].total()
+            j = i + 1  # Steal items from the next counter.
+            while deficit and j < self.subcounterAmount():
+                next_counter = self._counters[j]
+                available = next_counter.total()
+                if deficit > available:  # The next counter can't fill the gap. Copy in its entirety. No need to sample.
+                    self._counters[i] += next_counter
+                    deficit -= available
+                    j += 1
+                else:  # Sample according to the distribution in the next counter, making sure to not sample more of an element than exists (which can only happen once).
+                    keys   = list(next_counter)
+                    counts_available = [next_counter[key] for key in keys]
+                    counts_to_commit = [0 for _ in counts_available]
+                    p = np.array(counts_available) / sum(counts_available)
+                    while deficit:
+                        new_samples = self._rng.multinomial(n=deficit, pvals=p)  # We don't need to sample individual elements; we can sample counts immediately.
+                        for idx in range(len(keys)):
+                            # Find where these counts violate what we have available. Those elements are depleted.
+                            sampled_count = new_samples[idx]
+                            if sampled_count >= counts_available[idx]:
+                                sampled_count = counts_available[idx]
+                                p[idx] = 0
+
+                            # Reduce available elements and increase the elements to commit.
+                            counts_available[idx] -= sampled_count  # We don't change the probabilities of sampling idx, but we do reduce how much can still be sampled before the probability is set to 0.
+                            counts_to_commit[idx] += sampled_count
+                            deficit -= sampled_count
+
+                        denom = p.sum()
+                        if denom == 0.0:
+                            break
+                        p /= denom
+
+                    counts_to_commit = Counter({keys[i]: counts_to_commit[i] for i in range(len(keys))})
+                    self._counters[i] += counts_to_commit
+                    self._counters[j] -= counts_to_commit
+                    if self._counters[j].total() == 0:
+                        j += 1
+
+            # We are done handling counter i. It has left a trail of any amount of empty counters. If index j is valid, it is non-empty.
+            i = j
+
+        # Finally, clean up the internal state.
+        self._garbageCollect()
 
     def _regenerate(self) -> Iterator[K]:
         """
         Output exactly the elements that are inside this counter, subcounter by subcounter, sampling the current
         subcounter according to the distribution over unique values as exhibited by the elements in the starting state.
+
+        FIXME: This is VERY slow. You should basically avoid this in all implementations. It happens once in
+               TkTkT (analyseAccessors) and therefore it works way slower than it could. Often you don't actually
+               need to generate individual elements, but rather just need to sample counts multinomially.
         """
         for counter in self._counters:
             # Get distribution
             keys          = list(counter.keys())
             counts        = [counter[k] for k in keys]
-            total_count   = sum(counts)
+            total_count   = sum(counts)  # == counter.total()
             probabilities = np.array([c/total_count for c in counts])
 
             # Sample from the distribution until you run out of samples.
@@ -220,7 +272,7 @@ class ChainedCounter(Counter[K], Generic[K]):
                         yield keys[0]
                     break
 
-                key_idx = self._rng_for_addition.choice(len(keys), p=probabilities)
+                key_idx = self._rng.choice(len(keys), p=probabilities)
                 yield keys[key_idx]
 
                 counts[key_idx] -= 1
@@ -228,3 +280,18 @@ class ChainedCounter(Counter[K], Generic[K]):
                     probabilities[key_idx] = 0
                     probabilities = probabilities / np.sum(probabilities)
                     n_remaining_keys -= 1
+
+    def _garbageCollect(self):
+        """Remove subcounters that contain no elements."""
+        self._counters = [c for c in self._counters if c.total() > 0]
+        self._size_of_last_counter = self._counters[-1].total() if self._counters else self._max_size
+
+    def get(self, key: K, default=None):
+        # For some unknown reason, Counter's implementation of .get() does not use .__getitem__(), which this class
+        # originally re-implemented. To support .get(), and by extension .update() -- which uses .get() rather than
+        # using .__getitem__() -- we had to override it.
+        # I'm pretty sure this is now obsolete since we no longer override .__getitem__().
+        if key in self:
+            return self[key]
+        else:
+            return default

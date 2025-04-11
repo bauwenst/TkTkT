@@ -276,7 +276,7 @@ def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety:
         right_ends = right_of.boundaries[i]
         both_ends  = left_ends + right_ends
 
-        # TODO: For types in the vocab that have 0 accessors, what should you do? Their values clearly skew the unweighted averages.
+        # TODO: For types in the vocab that have 0 accessors, what should you do? They will have default values for the metrics, and those will meaninglessly skew the summary.
         fillTypeSummary(summaries.left.per_type[t],  left_of.accessors[i],                         left_ends,  predefined_vocab_size or len(right_of.accessors))  # About the last argument: we want to know how many possible types could appear LEFT OF type i, which is equivalent to asking how many possible types have anything RIGHT OF themselves.
         fillTypeSummary(summaries.right.per_type[t], right_of.accessors[i],                        right_ends, predefined_vocab_size or len(left_of.accessors))
         fillTypeSummary(summaries.both.per_type[t],  left_of.accessors[i] + right_of.accessors[i], both_ends,  predefined_vocab_size or len(set(left_of.accessors) | set(right_of.accessors)))

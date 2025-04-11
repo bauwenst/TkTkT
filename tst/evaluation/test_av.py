@@ -65,7 +65,8 @@ def summaries():
     print("Weighted averages:", results.right.weighted_averages)
 
 
-def test_filtering():
+def filtering():
+    from tktkt.util.printing import percent, dprint
     from tktkt.factories.preprocessing import KudoSpaceMarker, RobertaSpaceMarker
     def is_fullword(accessor: str, accessors: AccessorDistributions) -> bool:
         """You are a full word when you are known, but never seen with neighbours."""
@@ -87,31 +88,39 @@ def test_filtering():
             .replace(" ", "")
         return bool(pattern.search(accessor_without_desirable_characters))
 
+    print("Loading corpus...")
     d = getCorpus(2000)
     tk = HuggingFaceTokeniser(AutoTokenizer.from_pretrained("roberta-base"), for_single_words=True)
     accessors = getAccessors(tokeniser=tk, texts=d, bucket_samples_every=1000)
 
     # Analysis before filtering
+    print("Pre-analysis...")
     summaries = analyseAccessors(accessors, do_count_ends_as_variety=True)
-    print(summaries.right.averages)
-    print(summaries.right.weighted_averages)
+    print("> Accessors on the right, unweighted:")
+    dprint(summaries.right.averages.__dict__, indent=1)
+    print("> Accessors on the right, weighted:")
+    dprint(summaries.right.weighted_averages.__dict__, indent=1)
 
     # Filters: first all weird tokens to get a distribution over just language.
+    nonlanguage = [t for t in accessors.vocab if is_notlanguage(t, accessors)]
+    n_nonlanguage = len(nonlanguage)
+    print(f"Filtering {n_nonlanguage} types ({percent(n_nonlanguage, len(accessors.vocab))} of vocab) since they're not language (e.g. {','.join(nonlanguage[:5])})...")
     filterAccessors(accessors, is_notlanguage)
 
     # Compute the amount of full words that will be filtered in the next step, so we can display it as extra stat.
-    from tktkt.util.printing import percent
-    n_fullwords = len([t for t in accessors.vocab if is_fullword(t, accessors)])
-    print("Fraction of vocabulary that counts as full words:", percent(n_fullwords, len(accessors.vocab)))
-    ###
-
+    fullwords = [t for t in accessors.vocab if is_fullword(t, accessors)]
+    n_fullwords = len(fullwords)
+    print(f"Filtering {n_fullwords} types ({percent(n_fullwords, len(accessors.vocab))} of remaining vocab) since they're full words (e.g. {','.join(fullwords[:5])})...")
     filterAccessors(accessors, is_fullword)
 
     # Analyse after filtering
+    print("Analysis without full words and weird types...")
     summaries = analyseAccessors(accessors, do_count_ends_as_variety=True)
-    print(summaries.right.averages)
-    print(summaries.right.weighted_averages)
+    print("> Accessors on the right, unweighted:")
+    dprint(summaries.right.averages.__dict__, indent=1)
+    print("> Accessors on the right, weighted:")
+    dprint(summaries.right.weighted_averages.__dict__, indent=1)
 
 
 if __name__ == "__main__":
-    test_filtering()
+    filtering()
