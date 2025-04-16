@@ -98,5 +98,6 @@ class SageVocabulariser(Vocabulariser):
             corpus=sentence_iterable,  # TODO: Possible replace this by self._preprocessSentencesToListsAsStrings(sentence_iterable).
 
             k_corpus_examples=None,
-            corpus_cache=""  # Don't use corpus caching. Slower, but it is what you would expect by coming from an iterable.
+            corpus_cache="",  # Don't use corpus caching. Slower, but it is what you would expect by coming from an iterable.
+            do_log_stdout=True
         )

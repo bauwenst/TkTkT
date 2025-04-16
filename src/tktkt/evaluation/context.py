@@ -1,13 +1,14 @@
 """
 Evaluation of the context around tokens.
 """
-from typing import Iterable, Dict, Set, Union, Tuple, Optional, Callable
+from typing import Iterable, Dict, Set, Union, Tuple, Optional, Callable, List
 from pathlib import Path
 from dataclasses import dataclass
 from collections import defaultdict, Counter
 
 import numpy as np
 import json
+import csv
 import re
 
 from ..paths import TkTkTPaths
@@ -60,8 +61,7 @@ class AccessorDistributions:
                 "accessors": accessors
             }
 
-        folder = TkTkTPaths.pathToEvaluations() / "av"
-        folder.mkdir(exist_ok=True)
+        folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
         file = folder / f"{self.corpus_name}_{datetimeDashed()}.json"
         data = {
             "source": self.corpus_name,
@@ -93,13 +93,13 @@ class AccessorDistributions:
             )
         )
         for t1, max_size, subcounters in data["left"]["accessors"]:
-            distributions.left_of.accessors[t1] = ChainedCounter(max_size, seed_for_addition=0)
+            distributions.left_of.accessors[t1] = ChainedCounter(max_size, seed=0)
             for subcounter in subcounters:
                 for t2, count in subcounter:
                     distributions.left_of.accessors[t1][t2] += count
 
         for t1, max_size, subcounters in data["right"]["accessors"]:
-            distributions.right_of.accessors[t1] = ChainedCounter(max_size, seed_for_addition=0)
+            distributions.right_of.accessors[t1] = ChainedCounter(max_size, seed=0)
             for subcounter in subcounters:
                 for t2, count in subcounter:
                     distributions.right_of.accessors[t1][t2] += count
@@ -131,6 +131,21 @@ class DistributionAccessorSummaries:
     averages: TypeAccessorSummary
     weighted_averages: TypeAccessorSummary
 
+    def save(self, csv_stem: str) -> Path:
+        """
+        Saves as a CSV.
+        """
+        folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
+        file = folder / f"{csv_stem}.csv"
+        with open(file, "w", encoding="utf-8", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=["type"] + list(TypeAccessorSummary().__dict__.keys()))
+            writer.writeheader()
+            writer.writerow({"type": "(unweighted average)"} | self.averages.__dict__)
+            writer.writerow({"type": "(weighted average)"} | self.weighted_averages.__dict__)
+            for t, summary in self.per_type.items():
+                writer.writerow({"type": t} | summary.__dict__)
+        return file
+
 
 @dataclass
 class AllAccessorSummaries:
@@ -138,6 +153,15 @@ class AllAccessorSummaries:
     right: DistributionAccessorSummaries
     both:  DistributionAccessorSummaries
     min:   DistributionAccessorSummaries  # For each type separately, picks the accessor distribution with the fewest types (i.e. the most predictable side) and copies its metrics.
+
+    corpus_name: str
+
+    def save(self):
+        timestamp = datetimeDashed()
+        self.left .save(self.corpus_name + "_" + timestamp + "_" + "left")
+        self.right.save(self.corpus_name + "_" + timestamp + "_" + "right")
+        self.both .save(self.corpus_name + "_" + timestamp + "_" + "both")
+        self.min  .save(self.corpus_name + "_" + timestamp + "_" + "min")
 
 
 def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIterable[Tuple[str,int]]], bucket_samples_every: int, split_into_disjunct_examples: Preprocessor=None) \
@@ -204,9 +228,11 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
     )
 
 
-def filterAccessors(accessors: AccessorDistributions, remove_if: Callable[[str,AccessorDistributions],bool]):
-    for t in [t for t in accessors.vocab if remove_if(t,accessors)]:
+def filterAccessors(accessors: AccessorDistributions, remove_if: Callable[[str,AccessorDistributions],bool]) -> List[str]:
+    removed = [t for t in accessors.vocab if remove_if(t,accessors)]
+    for t in removed:
         removeAccessorFromDistributions(accessors, t)
+    return removed
 
 
 def removeAccessorFromDistributions(accessors: AccessorDistributions, accessor: str):
@@ -257,7 +283,8 @@ def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety:
             per_type=defaultdict(TypeAccessorSummary),
             averages         =TypeAccessorSummary(),
             weighted_averages=TypeAccessorSummary()
-        )
+        ),
+        corpus_name=accessors.corpus_name
     )
 
     def fillTypeSummary(summary: TypeAccessorSummary, accessor_counts: ChainedCounter, end_count: int, possible_accessors: int):

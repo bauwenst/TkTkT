@@ -58,7 +58,7 @@ def evaluateTokenisers(tokenisers: Iterable[Tokeniser]):
                 }
             }
 
-        with open(TkTkTPaths.pathToEvaluations() / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "_morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
+        with open(TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "morphology") / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "-morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
             json.dump(d, handle)
 
 

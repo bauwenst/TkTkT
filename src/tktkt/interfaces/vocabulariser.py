@@ -9,7 +9,7 @@ from modest.formats.tsv import iterateTsv
 from .preparation import Preprocessor
 from ..paths import TkTkTPaths
 from ..util.timing import datetimeDashed
-from ..util.types import Comparable, NamedIterable, HuggingfaceDataset
+from ..util.types import Comparable, NamedIterable, HuggingfaceDataset, anypartial
 from ..util.iterables import streamProgress
 
 UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers, but in some order.
@@ -75,7 +75,7 @@ class Vocabulariser(ABC):
         Some packages expect such a "list as string" explicitly (one example is GenSim). Others like SentencePiece,
         BPEasy and even HuggingFace tokenizers allow specifying a whitespace tokeniser, implicitly accepting pretoken lists this way.
         """
-        return sentence_iterable.map(self.preprocessor.do).map(lambda pretokens: sep.join(pretokens))
+        return sentence_iterable.map(self.preprocessor.do).map(sep.join)
 
     def _preprocessWordsToSentences(self, word_iterable: NamedIterable[Tuple[str, int]]) -> NamedIterable[str]:
         """
@@ -154,7 +154,7 @@ class Vocabulariser(ABC):
     def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str) -> Path:
         return self._vocabulariseFromSentences(
             NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else "")
-                .map(lambda example: example[text_field])
+                .map(anypartial(dict.get, ..., text_field))  # Equivalent to `lambda example: example[text_field]` but this one can be pickled.
         )
 
     @classmethod

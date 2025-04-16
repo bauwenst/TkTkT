@@ -4,6 +4,7 @@ General new types.
 from abc import abstractmethod
 from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union
 from datasets import Dataset, IterableDataset
+from functools import partial
 
 from .iterables import mapExtend, streamProgress
 
@@ -85,6 +86,25 @@ class wrappediterable(Iterable[T2]):
 
     def __iter__(self):
         return self._function(self._iterable.__iter__())
+
+
+class anypartial(partial):
+    """
+    An improved version of functools.partial which accepts ellipsis (...) as a placeholder, so that not just the
+    leftmost positional arguments can be captured, but any positional argument. For example:
+        def f(x,y,z,w):
+            return x + y*z/w
+
+        g = anypartial(f, 10, ..., ..., 2)
+        assert g(6,7) == 10 + 6*7/2 == 31  # Rather than 10 + 2*6/7.
+
+    Taken from https://stackoverflow.com/a/66274908/9352077.
+    """
+    def __call__(self, *args, **keywords):  # We store self.func, self.args, self.keywords.
+        keywords = {**self.keywords, **keywords}  # Keywords args have no order.
+        iargs = iter(args)
+        args = (next(iargs) if arg is ... else arg for arg in self.args)  # We run through the stored args. If an ellipsis is found, we advance the given args by one and replace the ellipsis by what was skipped.
+        return self.func(*args, *iargs, **keywords)  # We now replay the stored args (with filled-in ellipses), then the advanced given args, and then keywords.
 
 
 class Comparable(Protocol):
