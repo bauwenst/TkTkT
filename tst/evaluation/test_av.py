@@ -6,7 +6,10 @@ from datasets import load_dataset
 from tktkt.evaluation.context import *
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 from tktkt.util.iterables import take
+from tktkt.util.dicts import invertdict
 from tktkt.util.types import NamedIterable
+from tktkt.util.printing import percent, dprint
+from tktkt.factories.preprocessing import KudoSpaceMarker, RobertaSpaceMarker
 
 
 def smallCorpus():
@@ -84,8 +87,6 @@ def summaries():
 
 
 def filtering():
-    from tktkt.util.printing import percent, dprint
-    from tktkt.factories.preprocessing import KudoSpaceMarker, RobertaSpaceMarker
     def is_fullword(accessor: str, accessors: AccessorDistributions) -> bool:
         """You are a full word when you are known, but never seen with neighbours."""
         id = accessors.vocab[accessor]
@@ -95,10 +96,10 @@ def filtering():
     def is_maybe_fullword(accessor: str, accessors: AccessorDistributions) -> bool:
         id = accessors.vocab[accessor]
         if id in accessors.left_of.accessors and len(accessors.left_of.accessors[id]) != 0 and accessors.left_of.boundaries[id] != 0 and \
-                (accessors.left_of.accessors[id].total() + accessors.left_of.boundaries[id]) / accessors.left_of.boundaries[id] > 0.95:
+                accessors.left_of.boundaries[id] / (accessors.left_of.accessors[id].total() + accessors.left_of.boundaries[id]) > 0.95:
             return True
         if id in accessors.right_of.accessors and len(accessors.right_of.accessors[id]) != 0 and accessors.right_of.boundaries[id] != 0 and \
-                (accessors.right_of.accessors[id].total() + accessors.right_of.boundaries[id]) / accessors.right_of.boundaries[id] > 0.95:
+                accessors.right_of.boundaries[id] / (accessors.right_of.accessors[id].total() + accessors.right_of.boundaries[id]) > 0.95:
             return True
         return False
 
@@ -116,10 +117,13 @@ def filtering():
             .replace(" ", "")
         return bool(pattern.search(accessor_without_desirable_characters))
 
+    from tktkt.factories.preprocessing import TraditionalPreprocessor
     print("Loading corpus...")
     d = getCorpus(5000)
     tk = HuggingFaceTokeniser(AutoTokenizer.from_pretrained("roberta-base"), for_single_words=True)
-    accessors = getAccessors(tokeniser=tk, texts=d, bucket_samples_every=1000)
+    highlights = {"Ġvelocity", "Ġretail", "Ġraw"}
+    accessors = getAccessors(tokeniser=tk, texts=d, bucket_samples_every=1000, split_into_disjunct_examples=TraditionalPreprocessor(),
+                             print_contexts_for_tokens=highlights)
 
     # Analysis before filtering
     print("Pre-analysis...")
@@ -131,24 +135,45 @@ def filtering():
 
     # Filters: first all weird tokens to get a distribution over just language.
     print("Filtering non-language...")
-    nonlanguage = filterAccessors(accessors, is_notlanguage)
+    nonlanguage = accessors.filter(is_notlanguage)
     n_nonlanguage = len(nonlanguage)
     print(f"Filtered {n_nonlanguage} types ({percent(n_nonlanguage, len(accessors.vocab))} of vocab).")
-    print(f"\tE.g.: {','.join(nonlanguage)}")
+    print(f"\tE.g.: {', '.join(nonlanguage)}")
 
     ###
-    print([t for t in accessors.vocab if is_fullword(t,accessors)])
-    print([t for t in accessors.vocab if is_maybe_fullword(t,accessors)])
-    quit()
+
+    # The goal: find types which almost exclusively neighbour word boundaries.
+    scores = dict()
+    for t,i in accessors.vocab.items():
+        a1 = accessors.left_of.accessors  .get(i, Counter()).total()
+        b1 = accessors.left_of.boundaries .get(i, 0)
+        a2 = accessors.right_of.accessors .get(i, Counter()).total()
+        b2 = accessors.right_of.boundaries.get(i, 0)
+
+        # Note: after filtering, there is no more guarantee that a1+b1 == a2+b2.
+        scores[t] = min( b1 / (a1 + b1) if a1+b1 else float("inf"), b2 / (a2 + b2) if a2+b2 else float("inf") )
+
+    for t in sorted(scores, key=scores.get):
+        print(f"{t} ({accessors.vocab[t]}) | {scores[t]}")
+
+    ivocab = invertdict(accessors.vocab)
+    for t in highlights:
+        print(t)
+        print("\t", {ivocab[k]: v for k,v in  accessors.left_of.accessors[accessors.vocab[t]].items()})
+        print("\t", {ivocab[k]: v for k,v in accessors.right_of.accessors[accessors.vocab[t]].items()})
+
+    # print([t for t in accessors.vocab if is_fullword(t,accessors)])
+    # print([t for t in accessors.vocab if is_maybe_fullword(t,accessors)])
+    # quit()
     ###
 
     # Now all the full words.
     #   - Note: it is impossible that a type qualifies as a full word after this step, because that means it had at
     #     least one filtered type next to it, which means that filtered type shouldn't have been filtered.
-    fullwords = filterAccessors(accessors, is_fullword)
+    fullwords = accessors.filter(is_fullword)
     n_fullwords = len(fullwords)
     print(f"Filtering {n_fullwords} types ({percent(n_fullwords, len(accessors.vocab))} of remaining vocab).")
-    print(f"\tE.g.: {','.join(fullwords)}")
+    print(f"\tE.g.: {', '.join(fullwords)}")
 
     # Analyse after filtering
     print("Analysis without full words and weird types...")

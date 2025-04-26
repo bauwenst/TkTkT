@@ -11,6 +11,7 @@ from ..util.iterables import streamProgress
 from ..util.combinatorics import getBitKey
 from ..util.dicts import argmax
 
+SHANNON_RENYI_ALPHA = 1.0
 DEFAULT_RENYI_ALPHA = 2.5
 T = TypeVar("T")
 
@@ -50,9 +51,11 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
     Rényi efficiency of a probability distribution equals the fraction which its Rényi entropy is of the Shannon entropy
     of a uniform distribution of the same size.
 
-    At alpha = 2.5, if the distribution is across types in a vocabulary, this fraction correlates highly with downstream performance.
+    At alpha = 1.0, you have Shannon efficiency.
+    At alpha = 2.5, if the domain of the distribution is a vocabulary of token types, then Rényi efficiency correlates
+    highly with downstream performance according to https://aclanthology.org/2023.acl-long.284v2.pdf.
 
-    This function computes three quantities according to https://aclanthology.org/2023.acl-long.284v2.pdf:
+    This function computes three quantities from that paper:
         - Simplified lower bound:         H_alpha / ceil(H_0)   (by analogy of theorem 4.5 to theorem 3.9; see below)
         - Simplified fraction in between: H_alpha / H_0
         - Simplified upper bound:   ceil(H_alpha) / H_0   (simplified equation 21)

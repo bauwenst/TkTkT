@@ -136,6 +136,9 @@ def visualiseCharsVersusTokensRelationships(
 
 
 def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithFiniteTypeDomain, Deserialiser]], names: List[str]=None):
+    """
+    Visualises the amount of characters in types of one or more subword vocabularies.
+    """
     if not vocabulary_sources:
         raise ValueError("No vocabularies given.")
 

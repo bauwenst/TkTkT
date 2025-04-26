@@ -99,6 +99,16 @@ def percent(num: int, denom: int, decimals: int=2) -> str:
     return (f"{round(100*num/denom, decimals)}" if denom != 0 else "???") + "%"
 
 
+def inequality(a: float, b: float):
+    if a == b:
+        op = "="
+    elif a > b:
+        op = ">"
+    else:
+        op = "<"
+    return f"{a} {op} {b}"
+
+
 def sgnprint(number: float) -> str:
     return f"+"*(number >= 0) + number.__repr__()
 

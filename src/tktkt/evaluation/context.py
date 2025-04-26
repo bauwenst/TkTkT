@@ -38,6 +38,23 @@ class AccessorDistribution:
     accessors:  Dict[VocabRef, ChainedCounter[VocabRef]]
     boundaries: Dict[VocabRef, int]
 
+    def remove(self, accessor_id: VocabRef):
+        # Remove as thing that (possibly) has neighbours and (possibly) has boundaries
+        if accessor_id in self.accessors:
+            self.accessors.pop(accessor_id)
+        if accessor_id in self.boundaries:
+            self.boundaries.pop(accessor_id)
+
+        # Remove as thing that is (possibly) a neighbour
+        for _, neighbours in self.accessors.items():
+            if accessor_id in neighbours:
+                neighbours.pop(accessor_id)
+
+    def defragment(self):
+        # Make all the counters nice again.
+        for _, neighbours in streamProgress(self.accessors.items(), show_as="Defragmenting types", known_size=len(self.accessors)):
+            neighbours.defragment()
+
 
 @dataclass
 class AccessorDistributions:
@@ -113,6 +130,26 @@ class AccessorDistributions:
         return distributions
 
 
+    def filter(self, remove_if: Callable[[str, "AccessorDistributions"], bool]) -> List[str]:
+        # Remove
+        removed = [t for t in self.vocab if remove_if(t, self)]
+        for t in streamProgress(removed, show_as="Removing types"):
+            self.remove(t)
+
+        # Restore
+        self.defragment()
+        return removed
+
+    def remove(self, accessor: str):
+        vocab_ref = self.vocab.pop(accessor)  # Raises error if accessor doesn't exist.
+        self.left_of.remove(vocab_ref)
+        self.right_of.remove(vocab_ref)
+
+    def defragment(self):
+        self.left_of.defragment()
+        self.right_of.defragment()
+
+
 @dataclass
 class TypeAccessorSummary:  # Looks a lot like the SegmentationDiversity dataclass in TkTkT's entropy module.
     total_accessors: int=0  # Amount of non-unique accessors.
@@ -164,7 +201,8 @@ class AllAccessorSummaries:
         self.min  .save(self.corpus_name + "_" + timestamp + "_" + "min")
 
 
-def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIterable[Tuple[str,int]]], bucket_samples_every: int, split_into_disjunct_examples: Preprocessor=None) \
+def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIterable[Tuple[str,int]]], bucket_samples_every: int,
+                 split_into_disjunct_examples: Preprocessor=None, print_contexts_for_tokens: Set[str]=None) \
         -> AccessorDistributions:
     """
     :param bucket_samples_every: Every type in the vocabulary has a left and right counter associated with it that counts
@@ -173,6 +211,8 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
     """
     if split_into_disjunct_examples is None:
         split_into_disjunct_examples = IdentityPreprocessor()
+    if print_contexts_for_tokens is None:
+        print_contexts_for_tokens = set()
 
     max_id: VocabRef = 0
     vocab: Dict[str,VocabRef] = dict()
@@ -188,6 +228,8 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
             tokens = tokeniser.prepareAndTokenise(bounded_text)
             ids = []
             for token in tokens:
+                if token in print_contexts_for_tokens:
+                    print(f"Found token '{token}' in pretoken '{bounded_text}'")
                 try:
                     ids.append(vocab[token])
                 except:
@@ -226,34 +268,6 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
         AccessorDistribution(right_of, right_bounds),
         corpus_name=texts.name
     )
-
-
-def filterAccessors(accessors: AccessorDistributions, remove_if: Callable[[str,AccessorDistributions],bool]) -> List[str]:
-    removed = [t for t in accessors.vocab if remove_if(t,accessors)]
-    for t in removed:
-        removeAccessorFromDistributions(accessors, t)
-    return removed
-
-
-def removeAccessorFromDistributions(accessors: AccessorDistributions, accessor: str):
-    vocab_ref = accessors.vocab.pop(accessor)  # Raises error if accessor doesn't exist.
-    removeAccessorFromDistribution(accessors.left_of, vocab_ref)
-    removeAccessorFromDistribution(accessors.right_of, vocab_ref)
-
-
-def removeAccessorFromDistribution(distribution: AccessorDistribution, accessor_id: VocabRef):
-    # Remove as thing with neighbours
-    distribution.accessors.pop(accessor_id)
-    distribution.boundaries.pop(accessor_id)
-
-    # Remove as thing that is a neighbour
-    for _, neighbours in distribution.accessors.items():
-        if accessor_id in neighbours:
-            neighbours.pop(accessor_id)
-
-    # Make all the counters nice again
-    for _, neighbours in distribution.accessors.items():
-        neighbours.repack()
 
 
 def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety: bool=True, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:

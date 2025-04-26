@@ -1,7 +1,11 @@
 from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator, Tuple
+from typing_extensions import Self
 from collections import OrderedDict, Counter
+
 import numpy as np
 import numpy.random as npr
+
+from .printing import inequality
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -89,14 +93,17 @@ class ChainedCounter(Counter[K], Generic[K]):
     Subclass of Counter, which means it also inherits the data structure used by Counter to store and retrieve items
     globally. The sub-counters are hence purely for illustrative purposes; most methods are still done in O(1) time by
     referring to that global data structure of super().
+
+    Note: for some reason, deepcopy() produces a nonsensical state for this class. Use the built-in copy method.
     """
 
     def __init__(self, max_subcounter_size: int, seed: int=0):
         super().__init__()  # Because this is a subclass of Counter, the super class has a "master data structure".
-        self._counters = []
+        self._counters: List[Counter[K]] = []
         self._size_of_last_counter = max_subcounter_size
 
         self._max_size = max_subcounter_size
+        self._seed = seed
         self._rng = npr.default_rng(seed)
 
     def subcounterAmount(self) -> int:
@@ -136,7 +143,7 @@ class ChainedCounter(Counter[K], Generic[K]):
         """
         Assume that this is never coming from an expression "object[key] = value" and always from some kind of increment
         that already includes the current value. (Note: this means that if you try object[key] = value, what will happen
-        is that it will add  value - object[key]  to the subcounters, not value.)
+        is that it will add  `value - object[key]`  to the subcounters, not `value`.)
         """
         # Update the master counter
         increment = value - self[key]  # Before the master counter is updated, get the difference with the old value.
@@ -177,21 +184,65 @@ class ChainedCounter(Counter[K], Generic[K]):
         """
         if not isinstance(other, ChainedCounter):
             raise NotImplementedError
+        if self._max_size != other._max_size:
+            raise NotImplementedError("See the FIXME note below.")
 
-        sum_counter = ChainedCounter(self._max_size, seed=self._rng.integers(0, 1_000_000))
+        # # Short implementation (but with linear complexity a.f.o. corpus size, so very slow):
+        # sum_counter = ChainedCounter(self._max_size, seed=self._rng.integers(0, 1_000_000))
+        # for counter in self._counters:
+        #     for k,v in counter.items():
+        #         sum_counter[k] += v
+        # for element in other._regenerate():
+        #     sum_counter[element] += 1
+        # assert sum_counter.total() == self.total() + other.total(), f"Expected {self.total()} + {other.total()} = {inequality(self.total() + other.total(), sum_counter.total())} found."
+        # return sum_counter
 
-        # Add this counter's elements first
-        for counter in self._counters:
-            for k,v in counter.items():
-                sum_counter[k] += v
+        def update(counter_a: Counter, counter_b: Counter):
+            for element,count in counter_b.items():
+                counter_a[element] += count
 
-        # Add the other counter's elements, as if they all came after. This is an important assumption.
-        for element in other._regenerate():
-            sum_counter[element] += 1
+        # Early exits
+        sum_counter = self.copy()
+        if not self._counters and self._max_size == other._max_size:
+            return other.copy()
+        elif not other._counters:
+            return sum_counter
 
+        # Fill the last subcounter of counter A with subcounters from counter B, starting at the end so counter B has minimal defragmentation to do.
+        sum_counter.defragment()
+        deficit = sum_counter._max_size - sum_counter._size_of_last_counter
+
+        # - First test for an early exit, where the subcounters in B all get pooled into one subcounter of A.
+        if deficit >= other.total():
+            update(sum_counter, other)
+            assert sum_counter.total() == self.total() + other.total(), f"Expected {self.total()} + {other.total()} = {inequality(self.total() + other.total(), sum_counter.total())} found."
+            return sum_counter
+
+        # - Now we know that the deficit of A's last subcounter can be filled without taking everything out of B.
+        final_counter_idx     = other.subcounterAmount() - 1
+        final_counter_samples = Counter()
+        while deficit > 0:
+            counter   = other._counters[final_counter_idx]
+            available = counter.total()
+            if deficit >= available:  # Easy, just add the entire subcounter.
+                update(sum_counter, counter)
+                final_counter_idx -= 1
+                assert final_counter_idx >= 0
+            else:  # Sample this final subcounter.
+                final_counter_samples = other.sampleSubcounter(final_counter_idx, deficit)
+                update(sum_counter, final_counter_samples)
+                assert final_counter_samples.total() == deficit
+            deficit -= available
+
+        # Take the rest out of counter B, now from left to right. FIXME: When A has smaller max_size than B, this approach is incorrect. You'll take e.g. only half of the unique elements in one subcounter of B and fill one of A's subcounters with it. You should actually use sampleSubcounter() for this.
+        for i in range(final_counter_idx):
+            update(sum_counter, other._counters[i])
+        update(sum_counter, other._counters[final_counter_idx] - final_counter_samples)  # For the last non-empty counter, don't include the samples you already included.
+
+        assert sum_counter.total() == self.total() + other.total(), f"Expected {self.total()} + {other.total()} = {inequality(self.total() + other.total(), sum_counter.total())} found."
         return sum_counter
 
-    def repack(self, sort_subcounters_first: bool=False):
+    def defragment(self, sort_subcounters_first: bool=False):
         """
         Re-pack values inside this counter so that any gaps left by popping from the subcounters are filled up again.
         """
@@ -201,42 +252,20 @@ class ChainedCounter(Counter[K], Generic[K]):
         if sort_subcounters_first:
             self._counters.sort(key=lambda c: -c.total())  # Biggest subcounter first.
 
+        total_before_defragmenting = self.total()
         i = 0
         while i < self.subcounterAmount():
             deficit = self._max_size - self._counters[i].total()
-            j = i + 1  # Steal items from the next counter.
+            j = i + 1  # Steal items from this counter.
             while deficit and j < self.subcounterAmount():
                 next_counter = self._counters[j]
                 available = next_counter.total()
-                if deficit > available:  # The next counter can't fill the gap. Copy in its entirety. No need to sample.
+                if deficit >= available:  # The next counter can't fill the gap, or just barely can. Copy in its entirety. No need to sample.
                     self._counters[i] += next_counter
                     deficit -= available
                     j += 1
-                else:  # Sample according to the distribution in the next counter, making sure to not sample more of an element than exists (which can only happen once).
-                    keys   = list(next_counter)
-                    counts_available = [next_counter[key] for key in keys]
-                    counts_to_commit = [0 for _ in counts_available]
-                    p = np.array(counts_available) / sum(counts_available)
-                    while deficit:
-                        new_samples = self._rng.multinomial(n=deficit, pvals=p)  # We don't need to sample individual elements; we can sample counts immediately.
-                        for idx in range(len(keys)):
-                            # Find where these counts violate what we have available. Those elements are depleted.
-                            sampled_count = new_samples[idx]
-                            if sampled_count >= counts_available[idx]:
-                                sampled_count = counts_available[idx]
-                                p[idx] = 0
-
-                            # Reduce available elements and increase the elements to commit.
-                            counts_available[idx] -= sampled_count  # We don't change the probabilities of sampling idx, but we do reduce how much can still be sampled before the probability is set to 0.
-                            counts_to_commit[idx] += sampled_count
-                            deficit -= sampled_count
-
-                        denom = p.sum()
-                        if denom == 0.0:
-                            break
-                        p /= denom
-
-                    counts_to_commit = Counter({keys[i]: counts_to_commit[i] for i in range(len(keys))})
+                else:
+                    counts_to_commit = self.sampleSubcounter(j, deficit)
                     self._counters[i] += counts_to_commit
                     self._counters[j] -= counts_to_commit
                     if self._counters[j].total() == 0:
@@ -247,15 +276,57 @@ class ChainedCounter(Counter[K], Generic[K]):
 
         # Finally, clean up the internal state.
         self._garbageCollect()
+        assert self.total() == total_before_defragmenting
+
+    def sampleSubcounter(self, subcounter_idx: int, n: int) -> Counter[K]:
+        """
+        Sample according to the distribution in the next counter, making sure to not sample more of an element than exists (which can only happen once).
+        """
+        counter = self._counters[subcounter_idx]
+        keys = list(counter)
+        counts_available = [counter[key] for key in keys]
+        counts_to_return = [0 for _ in counts_available]
+        p = np.array(counts_available) / sum(counts_available)
+        while n:
+            new_samples = self._rng.multinomial(n=n, pvals=p)  # We don't need to sample individual elements; we can sample counts immediately.
+            for idx in range(len(keys)):
+                # Find where these counts violate what we have available. Those elements are depleted.
+                sampled_count = new_samples[idx]
+                if sampled_count >= counts_available[idx]:
+                    sampled_count = counts_available[idx]
+                    p[idx] = 0
+
+                # Reduce available elements and increase the elements to commit.
+                counts_available[idx] -= sampled_count  # We don't change the probabilities of sampling idx, but we do reduce how much can still be sampled before the probability is set to 0.
+                counts_to_return[idx] += sampled_count
+                n -= sampled_count
+
+            denom = p.sum()
+            if denom == 0.0:
+                break
+            p /= denom
+
+        return Counter({keys[i]: counts_to_return[i] for i in range(len(keys))})
+
+    def copy(self) -> Self:
+        out = ChainedCounter(self._max_size, self._seed)
+
+        # Fill the internal dictionary of `out` using the internal dictionary of `self`.
+        for k,v in self.items():
+            out[k] += v
+
+        # Copy over the exact state of the subcounters, which are equivalent to the internal dictionary but not the same.
+        out._counters = [counter.copy() for counter in self._counters]
+        out._garbageCollect()
+        return out
 
     def _regenerate(self) -> Iterator[K]:
         """
         Output exactly the elements that are inside this counter, subcounter by subcounter, sampling the current
         subcounter according to the distribution over unique values as exhibited by the elements in the starting state.
 
-        FIXME: This is VERY slow. You should basically avoid this in all implementations. It happens once in
-               TkTkT (analyseAccessors) and therefore it works way slower than it could. Often you don't actually
-               need to generate individual elements, but rather just need to sample counts multinomially.
+        Note: This is VERY slow. You should basically avoid this in all implementations. Often you don't actually
+              need to generate individual elements, but rather just need to sample counts multinomially.
         """
         for counter in self._counters:
             # Get distribution
@@ -267,12 +338,12 @@ class ChainedCounter(Counter[K], Generic[K]):
             # Sample from the distribution until you run out of samples.
             n_remaining_keys = len(keys)
             for _ in range(total_count):
+                key_idx = self._rng.choice(len(keys), p=probabilities)
                 if n_remaining_keys == 1:
-                    for _ in range(counts[0]):
-                        yield keys[0]
+                    for _ in range(counts[key_idx]):
+                        yield keys[key_idx]
                     break
 
-                key_idx = self._rng.choice(len(keys), p=probabilities)
                 yield keys[key_idx]
 
                 counts[key_idx] -= 1
