@@ -1,10 +1,14 @@
 import time
 from typing import Iterable, List
 
+
 def dprint(d: dict, indent: int=0):
     """
     Print (top-level) dictionary keys and values.
     """
+    if not hasattr(d, "items"):
+        d = d.__dict__
+    
     for k,v in d.items():
         if indent:
             print("\t"*indent, end="")

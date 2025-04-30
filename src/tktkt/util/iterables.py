@@ -152,8 +152,8 @@ def streamProgress(iterable: Iterable[T], show_as: Optional[str]=None, known_siz
 
 # Endpoints below
 
-def get(iterable: Iterable[T], index: int) -> T:
-    for i, thing in iterable:
+def at(index: int, iterable: Iterable[T]) -> T:
+    for i, thing in enumerate(iterable):
         if i == index:
             return thing
     else:

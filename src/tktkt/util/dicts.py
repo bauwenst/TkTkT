@@ -251,37 +251,44 @@ class ChainedCounter(Counter[K], Generic[K]):
 
         if sort_subcounters_first:
             self._counters.sort(key=lambda c: -c.total())  # Biggest subcounter first.
+            self._garbageCollect()
 
         total_before_defragmenting = self.total()
         i = 0
         while i < self.subcounterAmount():
             deficit = self._max_size - self._counters[i].total()
+            assert deficit >= 0  # Something is very wrong if this is false.
+
             j = i + 1  # Steal items from this counter.
             while deficit and j < self.subcounterAmount():
                 next_counter = self._counters[j]
                 available = next_counter.total()
                 if deficit >= available:  # The next counter can't fill the gap, or just barely can. Copy in its entirety. No need to sample.
                     self._counters[i] += next_counter
+                    self._counters[j] -= next_counter
                     deficit -= available
                     j += 1
                 else:
                     counts_to_commit = self.sampleSubcounter(j, deficit)
                     self._counters[i] += counts_to_commit
                     self._counters[j] -= counts_to_commit
-                    if self._counters[j].total() == 0:
+                    deficit = 0
+                    if self._counters[j].total() == 0:  # => Don't bother filling this subcounter. It will be cleaned up later on.
                         j += 1
 
-            # We are done handling counter i. It has left a trail of any amount of empty counters. If index j is valid, it is non-empty.
+            # We are done handling counter i. It has left a trail of any amount of empty counters. If index j is not out-of-range, its counter is non-empty, and we handle it as i next.
             i = j
 
         # Finally, clean up the internal state.
         self._garbageCollect()
-        assert self.total() == total_before_defragmenting
+        assert total_before_defragmenting == sum(self.subcounterSizes())  # This checks for two bugs: (1) if the total_before_defragmenting was equal to sum(subcounters), this checks whether the subcounters lost any elements, and (2) if the subcounters did not lose any elements, it checks whether the total inside the main counter was equal to the total in the subcounters.
 
     def sampleSubcounter(self, subcounter_idx: int, n: int) -> Counter[K]:
         """
         Sample according to the distribution in the next counter, making sure to not sample more of an element than exists (which can only happen once).
         """
+        assert n >= 0
+
         counter = self._counters[subcounter_idx]
         keys = list(counter)
         counts_available = [counter[key] for key in keys]

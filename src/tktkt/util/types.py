@@ -1,8 +1,8 @@
 """
 General new types.
 """
+from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Dict
 from abc import abstractmethod
-from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union
 from datasets import Dataset, IterableDataset
 from functools import partial
 
@@ -12,6 +12,7 @@ HuggingfaceDataset = Union[Dataset, IterableDataset]
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
+T3 = TypeVar("T3")
 
 class NamedIterable(Iterable[T]):  # This T is so that type signatures like NamedIterable[str] actually cause type inference for return values once iterating.
     """
@@ -105,6 +106,28 @@ class anypartial(partial):
         iargs = iter(args)
         args = (next(iargs) if arg is ... else arg for arg in self.args)  # We run through the stored args. If an ellipsis is found, we advance the given args by one and replace the ellipsis by what was skipped.
         return self.func(*args, *iargs, **keywords)  # We now replay the stored args (with filled-in ellipses), then the advanced given args, and then keywords.
+
+
+class dictget:
+    # For some strange reason, just subclassing anypartial is not allowed.
+    # def __init__(self, key: T):
+    #     super().__init__(dict.get, ..., key)
+
+    def __init__(self, key: T):
+        self._partial = anypartial(dict.get, ..., key)
+
+    def __call__(self, d: Dict[T,T2]) -> T2:
+        return self._partial(d)
+
+
+class pipe(Callable[[T],T3]):
+
+    def __init__(self, f1: Callable[[T], T2], f2: Callable[[T2], T3]):
+        self.f1 = f1
+        self.f2 = f2
+
+    def __call__(self, *args, **kwargs):
+        return self.f2(self.f1(*args, **kwargs))
 
 
 class Comparable(Protocol):

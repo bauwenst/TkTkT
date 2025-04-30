@@ -80,12 +80,13 @@ class InferenceFertility:
 
 def getVocabStats(effective_preprocessor: Preprocessor, vocab: Vocab,
                   raw_words: Iterable[str], counts: Dict[str, float]=None,
-                  do_measure_original_word_length: bool=False, exclude_words_over_length: int=100, do_log_segmentations: bool=False) -> VocabularyFertility:
+                  logarithmic_segmentations: bool=False, do_measure_original_word_length: bool=False,
+                  exclude_words_over_length: int=100) -> VocabularyFertility:
     """
     Note: if the preprocessor of the tokeniser adds characters that are supposed to be token-building units yet consist
     of multiple characters (like </w>), this function's results are wrong.
 
-    :param do_log_segmentations: Because segmentations of a string s scale as O(2^|s|), taking the log means scaling as O(|s|).
+    :param logarithmic_segmentations: Because segmentations of a string s scale as O(2^|s|), taking the log means scaling as O(|s|).
     """
     if counts is None:
         counts = dict()
@@ -114,7 +115,7 @@ def getVocabStats(effective_preprocessor: Preprocessor, vocab: Vocab,
         # Maximal segmentations are measured in pretoken space.
         max_segs            = 2**(chars-1)  # every position between characters can be split on or not
         max_segs_restricted = 2**(chars-n_pretokens)  # for every extra pretoken, 1 split position is fixed
-        if do_log_segmentations:
+        if logarithmic_segmentations:
             if segs == 0:
                 print("Word", raw_word, "has no segmentations, so its log is -infinite. Skipping it.")
                 continue

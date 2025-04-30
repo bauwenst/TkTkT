@@ -14,7 +14,7 @@ import re
 from ..paths import TkTkTPaths
 from ..factories.preprocessing import IdentityPreprocessor
 from ..interfaces.tokeniser import Tokeniser, Preprocessor
-from ..util.iterables import streamProgress
+from ..util.iterables import streamProgress, at
 from ..util.timing import datetimeDashed
 from ..util.dicts import ChainedCounter
 from ..util.types import NamedIterable
@@ -37,6 +37,9 @@ def getIterableWithCounts(iterable: Union[Iterable[str], Iterable[Tuple[str,int]
 class AccessorDistribution:
     accessors:  Dict[VocabRef, ChainedCounter[VocabRef]]
     boundaries: Dict[VocabRef, int]
+
+    def countOccurrences(self, accessor_id: VocabRef) -> int:
+        return self.accessors.get(accessor_id, Counter()).total() + self.boundaries.get(accessor_id, 0)
 
     def remove(self, accessor_id: VocabRef):
         # Remove as thing that (possibly) has neighbours and (possibly) has boundaries
@@ -153,7 +156,9 @@ class AccessorDistributions:
 @dataclass
 class TypeAccessorSummary:  # Looks a lot like the SegmentationDiversity dataclass in TkTkT's entropy module.
     total_accessors: int=0  # Amount of non-unique accessors.
-    av: int=0               # Amount of unique accessors.
+    boundary_ratio: int=0   # Fraction of accessors that are pretoken boundaries.
+
+    av: int=0               # Amount of unique accessors. Note: this is slightly different from how it is defined in the AV paper. If you want to reproduce that AV, you'll need an infinite bucket size and then add total_accessors*boundary_ratio to this number here.
 
     coverage: float=0       # Fraction which AV makes up of all possible unique accessors.
     uniqueness: float=0     # Fraction of accessors that are unique. Basically, TTR for the set of accessors of this type.
@@ -226,6 +231,9 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
     for text,frequency in getIterableWithCounts(texts):
         for bounded_text in split_into_disjunct_examples.do(text):
             tokens = tokeniser.prepareAndTokenise(bounded_text)
+            if not tokens:
+                continue
+
             ids = []
             for token in tokens:
                 if token in print_contexts_for_tokens:
@@ -257,11 +265,6 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
                 left_of[center][ids[i-1]]  += frequency
                 right_of[center][ids[i+1]] += frequency
 
-    # Make sure all IDs have an amount of bounds.
-    for i in vocab.values():
-        left_bounds[i]  += 0
-        right_bounds[i] += 0
-
     return AccessorDistributions(
         vocab,
         AccessorDistribution(left_of, left_bounds),
@@ -275,8 +278,11 @@ def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety:
     :param do_count_ends_as_variety: Whether to pretend that every start/end of an example should've been counted as a unique type
                                      when computing AV. The longer your examples were, the less this matters.
     """
+    # Extract some information from distributions
     vocab, left_of, right_of = accessors.vocab, accessors.left_of, accessors.right_of
+    default_subcounter_size = at(0, left_of.accessors.values())._max_size
 
+    # Initialise empty summaries
     summaries = AllAccessorSummaries(
         left=DistributionAccessorSummaries(
             per_type=defaultdict(TypeAccessorSummary),
@@ -302,25 +308,35 @@ def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety:
     )
 
     def fillTypeSummary(summary: TypeAccessorSummary, accessor_counts: ChainedCounter, end_count: int, possible_accessors: int):
-        nonend_count = accessor_counts.total()
         subcounter_totals = accessor_counts.subcounterSizes()
+        nonend_count      = sum(subcounter_totals)
+
+        # Quantities that are either explicitly dependent on corpus size, or which stabilise with corpus size.
         summary.total_accessors     = nonend_count + end_count
-        summary.av                  = accessor_counts.averageOverCountersAndIndices(lambda i,c: len(c) + do_count_ends_as_variety*int(end_count*subcounter_totals[i]/nonend_count)) if nonend_count else do_count_ends_as_variety*end_count
+        summary.boundary_ratio      = end_count/summary.total_accessors if summary.total_accessors else 0.0  # This 0.0 is not technically correct. Let's hope this never happens.
+
+        # Quantities that are monotonous in corpus size, and hence need to be averaged over a fixed window.
+        summary.av                  = accessor_counts.averageOverCounters(lambda c: len(c))
         summary.coverage            = accessor_counts.averageOverCounters(lambda c: len(c) / possible_accessors) if nonend_count else 0.0
         summary.uniqueness          = accessor_counts.averageOverCounters(lambda c: len(c) / c.total())          if nonend_count else 1.0
         summary.mcu                 = max(summary.coverage, summary.uniqueness)
         summary.entropic_efficiency = accessor_counts.averageOverCounters(lambda c: renyiEfficiency(c.values(), domain_size=possible_accessors, sample_size=c.total(), alpha=1.0)[1]) if nonend_count else 0.0  # idk what to do with this default
 
+    vocabulary_size_leftward  = len(right_of.accessors)  # "How many possible types could appear LEFT OF a type?" is equivalent to asking "How many possible types have anything RIGHT OF themselves?"
+    vocabulary_size_rightward = len(left_of.accessors)
+    vocabulary_size_both      = len(set(left_of.accessors) | set(right_of.accessors))
     for t,i in streamProgress(vocab.items(), known_size=len(vocab), show_as="Computing type statistics"):
         # For each summary we have (left/right/both/minimum), generate the per-type statistics.
-        left_ends  = left_of.boundaries[i]
-        right_ends = right_of.boundaries[i]
-        both_ends  = left_ends + right_ends
+        left_ends  = left_of.boundaries .get(i, 0)
+        right_ends = right_of.boundaries.get(i, 0)
+
+        left_accessors  = left_of.accessors .get(i, ChainedCounter(default_subcounter_size))
+        right_accessors = right_of.accessors.get(i, ChainedCounter(default_subcounter_size))
 
         # TODO: For types in the vocab that have 0 accessors, what should you do? They will have default values for the metrics, and those will meaninglessly skew the summary.
-        fillTypeSummary(summaries.left.per_type[t],  left_of.accessors[i],                         left_ends,  predefined_vocab_size or len(right_of.accessors))  # About the last argument: we want to know how many possible types could appear LEFT OF type i, which is equivalent to asking how many possible types have anything RIGHT OF themselves.
-        fillTypeSummary(summaries.right.per_type[t], right_of.accessors[i],                        right_ends, predefined_vocab_size or len(left_of.accessors))
-        fillTypeSummary(summaries.both.per_type[t],  left_of.accessors[i] + right_of.accessors[i], both_ends,  predefined_vocab_size or len(set(left_of.accessors) | set(right_of.accessors)))
+        fillTypeSummary(summaries.left .per_type[t], left_accessors,                   left_ends,              predefined_vocab_size or vocabulary_size_leftward)
+        fillTypeSummary(summaries.right.per_type[t], right_accessors,                  right_ends,             predefined_vocab_size or vocabulary_size_rightward)
+        fillTypeSummary(summaries.both .per_type[t], left_accessors + right_accessors, left_ends + right_ends, predefined_vocab_size or vocabulary_size_both)
         if summaries.left.per_type[t].av < summaries.right.per_type[t].av:
             summaries.min.per_type[t] = summaries.left.per_type[t]
         else:
@@ -332,7 +348,9 @@ def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety:
         weights = [s.total_accessors for s in summaries_to_average]
 
         distribution_summaries.averages.total_accessors, distribution_summaries.weighted_averages.total_accessors = \
-            _getMeanAndWeightedMean([s.total_accessors     for s in summaries_to_average],weights)
+            _getMeanAndWeightedMean([s.total_accessors     for s in summaries_to_average], weights)
+        distribution_summaries.averages.boundary_ratio, distribution_summaries.weighted_averages.boundary_ratio = \
+            _getMeanAndWeightedMean([s.boundary_ratio      for s in summaries_to_average], weights)
         distribution_summaries.averages.av, distribution_summaries.weighted_averages.av = \
             _getMeanAndWeightedMean([s.av                  for s in summaries_to_average],weights)
         distribution_summaries.averages.coverage, distribution_summaries.weighted_averages.coverage = \
