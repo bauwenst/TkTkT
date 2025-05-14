@@ -1,6 +1,6 @@
 """
-Goal: Currently, computes the "segmentations per word" metric.
-      In the future, this file can be used for other metrics too, like tokens per word and so on.
+Metrics that have to do with (1) how many segmentations a tokeniser could generate in theory,
+and (2) the amount of tokens it generates in practice.
 """
 from typing import Tuple, Iterable, Dict
 from dataclasses import dataclass
@@ -69,6 +69,9 @@ class InferenceFertility:
     """
     Statistics about the segmentations that are actually made in practice by a tokeniser, not how many it hypothetically supports.
     """
+    ccc: int
+    ctc: int
+
     tokens_per_word_type: float        # [1/sum_w 1] * [sum_w len(tk(w))]
     tokens_per_word_token: float       # [1/sum_w f(w)] * [sum_w f(w)*len(tk(w))]
 
@@ -175,10 +178,10 @@ def getInferenceStats(tokeniser: Tokeniser,
     sum_one          = 0
     sum_one_weighted = 0
     sum_tk          = 0
-    sum_tk_weighted = 0
+    sum_tk_weighted = 0  # Equivalent to corpus token count (CTC).
 
     sum_len          = 0
-    sum_len_weighted = 0
+    sum_len_weighted = 0  # Equivalent to corpus character count (CCC).
     sum_len_on_tk          = 0
     sum_len_on_tk_weighted = 0
 
@@ -205,6 +208,9 @@ def getInferenceStats(tokeniser: Tokeniser,
         sum_len_on_tk_weighted += char_to_token_ratio*f_w
 
     return InferenceFertility(
+        ccc=sum_len_weighted,
+        ctc=sum_tk_weighted,
+
         tokens_per_word_type=sum_tk/sum_one,
         tokens_per_word_token=sum_tk_weighted/sum_one_weighted,
 

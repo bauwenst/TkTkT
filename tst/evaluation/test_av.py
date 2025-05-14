@@ -162,9 +162,6 @@ def filtering():
         print("\t", {ivocab[k]: v for k,v in  accessors.left_of.accessors[accessors.vocab[t]].items()})
         print("\t", {ivocab[k]: v for k,v in accessors.right_of.accessors[accessors.vocab[t]].items()})
 
-    # print([t for t in accessors.vocab if is_fullword(t,accessors)])
-    # print([t for t in accessors.vocab if is_maybe_fullword(t,accessors)])
-    # quit()
     ###
 
     # Now all the full words.

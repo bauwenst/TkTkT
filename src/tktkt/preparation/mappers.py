@@ -414,12 +414,17 @@ class PseudoByteMapping(ByteMapping):
 class LatinPseudoByteMapping(ByteMapping):
     """
     Like PseudoByteMapping, except for every pseudo-byte character that is NOT a Latin letter, you check:
-    "Should what this represents (which can be either an ASCII character or a UTF-8 control byte) be groupable with any other byte?"
-        - If it's a UTF-8 control byte, the answer is always yes and you should remap it. This is true for
+
+        "Should the thing represented by this pseudo-byte (that thing being either an ASCII character or a UTF-8
+         control byte) be groupable with any other byte?"
+
+    When the answer is yes, then this character that is not a Latin letter should be remapped to a Latin letter.
+        - If it's a UTF-8 control byte, the answer is always yes. This is true for
           bytes 161-172, bytes 174-191, byte 215, and byte 247.
-        - If it's an ASCII character, the answer is no for two classes:
+        - If it's an ASCII character, the answer is no for two classes of characters:
             - Punctuation, EXCEPT for apostrophes, hyphens and underscores, which have some use for being grouped with letters if the user preprocesses their text such to make that available.
-            - Bytes 0-32 and byte 127, which are control symbols (but these are never checked anyway because their pseudo-byte character IS a Latin letter).
+            - Bytes 0-32 and byte 127, which are control symbols. Caveat: these have pseudo-byte characters that already
+              are Latin letters, and we don't change this. We only make groupalbe characters that became ungroupable, groupable again. Not the reverse.
     """
 
     @staticmethod

@@ -225,13 +225,14 @@ class ModernEnglishPretokeniser_SentencePieceCompatible(PretokeniserSequence):
     This pretokeniser actually has a more generalisable ordering than the normal ModernEnglishPretokeniser:
         1. Split into coarse pretokens that should receive a boundary.
         2. To each pretoken, add a character (front, back or in between) that (1) will not interfere with the rest of the
-           subpretokenisers that follow and (2) has an invertible result when sent through the alphabet mapping of choice. In this case, it's a space character.
+           subpretokenisers that follow and (2) has an invertible result when sent through the alphabet mapping of choice.
+           In this case, it's a space character.
         3. Split into fine pretokens to inhibit the tokeniser.
         4. Apply the alphabet mapping. You now have no guarantee that any of your usual splitters still works, and in fact,
            in this pretokeniser, hyphen and apostrophe splitting won't work anymore, for example. The ModernEnglishPretokeniser
            does not take this into account and just assumes that the alphabet mapping keeps hyphens and apostrophes intact.
-        5. Invert the space character's mapping result and replace it by your word boundary of choice. In the case of
-           SentencePiece, it must be a space because the built-in preprocessor turns spaces into boundaries itself.
+        5. Invert the image of space characters under this mapping, and replace it by your word boundary of choice. In
+           the case of SentencePiece, it must be a space because the built-in preprocessor turns spaces into boundaries itself.
 
     ---
 

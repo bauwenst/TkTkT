@@ -206,9 +206,10 @@ class AllAccessorSummaries:
         self.min  .save(self.corpus_name + "_" + timestamp + "_" + "min")
 
 
-def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIterable[Tuple[str,int]]], bucket_samples_every: int,
-                 split_into_disjunct_examples: Preprocessor=None, print_contexts_for_tokens: Set[str]=None) \
-        -> AccessorDistributions:
+def getAccessorsFromCorpus(
+        tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIterable[Tuple[str,int]]], bucket_samples_every: int,
+        split_into_disjunct_examples: Preprocessor=None, print_contexts_for_tokens: Set[str]=None
+    ) -> AccessorDistributions:
     """
     :param bucket_samples_every: Every type in the vocabulary has a left and right counter associated with it that counts
                                  how many tokens of each type are left resp. right of it. Those counts are bucketed in
@@ -273,11 +274,7 @@ def getAccessors(tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIter
     )
 
 
-def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety: bool=True, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:
-    """
-    :param do_count_ends_as_variety: Whether to pretend that every start/end of an example should've been counted as a unique type
-                                     when computing AV. The longer your examples were, the less this matters.
-    """
+def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:
     # Extract some information from distributions
     vocab, left_of, right_of = accessors.vocab, accessors.left_of, accessors.right_of
     default_subcounter_size = at(0, left_of.accessors.values())._max_size
@@ -308,8 +305,7 @@ def analyseAccessors(accessors: AccessorDistributions, do_count_ends_as_variety:
     )
 
     def fillTypeSummary(summary: TypeAccessorSummary, accessor_counts: ChainedCounter, end_count: int, possible_accessors: int):
-        subcounter_totals = accessor_counts.subcounterSizes()
-        nonend_count      = sum(subcounter_totals)
+        nonend_count = accessor_counts.total()
 
         # Quantities that are either explicitly dependent on corpus size, or which stabilise with corpus size.
         summary.total_accessors     = nonend_count + end_count
