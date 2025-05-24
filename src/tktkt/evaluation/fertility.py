@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from math import log2
 
 from ..util.iterables import streamProgress
+from ..util.types import NamedIterable
 from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab, Tokeniser, Preprocessor
 
 
@@ -69,8 +70,11 @@ class InferenceFertility:
     """
     Statistics about the segmentations that are actually made in practice by a tokeniser, not how many it hypothetically supports.
     """
-    ccc: int
-    ctc: int
+    corpus_name: str
+
+    ccc: int  # sum_w f(w)*len(w)
+    ctc: int  # sum_w f(w)*len(tk(w))
+    cwc: int  # sum_w f(w)
 
     tokens_per_word_type: float        # [1/sum_w 1] * [sum_w len(tk(w))]
     tokens_per_word_token: float       # [1/sum_w f(w)] * [sum_w f(w)*len(tk(w))]
@@ -79,6 +83,11 @@ class InferenceFertility:
     chars_per_word_token_token_micro: float  # [sum_w f(w)*len(w)]/[sum_w f(w)*len(tk(w))]      or "average token length in a corpus"
     chars_per_word_type_token_macro: float   # [1/sum_w 1] * [sum_w len(w)/len(tk(w))]          or "average CPT ratio in a word list"
     chars_per_word_token_token_macro: float  # [1/sum_w f(w)] * [sum_w f(w)*len(w)/len(tk(w))]  or "average CPT ratio in a corpus"
+
+    tokens_per_word_type_char_macro: float   # [1/sum_w 1] * [sum_w len(tk(w))/len(w)]          or "average TPC ratio in a word list" (nobody uses this metric since the ratio can never be 0)
+    tokens_per_word_token_char_macro: float  # [1/sum_w f(w)] * [sum_w f(w)*len(tk(w))/len(w)]  or "average TPC ratio in a corpus"    (idem)
+    segmentality_word_types: float                # [1/sum_w 1] * [sum_w (len(tk(w))-1)/(len(w)-1)]          or "average segmentality in a word list"
+    segmentality_word_tokens: float               # [1/sum_w f(w)] * [sum_w f(w)*(len(tk(w))-1)/(len(w)-1)]  or "average segmentality in a corpus"
 
 
 def getVocabStats(effective_preprocessor: Preprocessor, vocab: Vocab,
@@ -169,11 +178,11 @@ def getVocabStats(effective_preprocessor: Preprocessor, vocab: Vocab,
     )
 
 
-def getInferenceStats(tokeniser: Tokeniser,
-                      raw_words: Iterable[str], counts: Dict[str, float]=None,
+def getInferenceStats(tokeniser: Tokeniser, examples: NamedIterable[str], example_to_words: Preprocessor=None, word_counts: Dict[str, float]=None,
                       do_measure_original_word_length: bool=False, exclude_words_over_length: int=100) -> InferenceFertility:
-    if counts is None:
-        counts = dict()
+    word_iterable = examples if example_to_words is None else examples.flatmap(example_to_words.do)
+    if word_counts is None:
+        word_counts = dict()
 
     sum_one          = 0
     sum_one_weighted = 0
@@ -185,18 +194,27 @@ def getInferenceStats(tokeniser: Tokeniser,
     sum_len_on_tk          = 0
     sum_len_on_tk_weighted = 0
 
-    for raw_word in raw_words:
-        if len(raw_word) > exclude_words_over_length:
+    sum_tk_on_len          = 0
+    sum_tk_on_len_weighted = 0
+    sum_tk1_on_len1          = 0
+    sum_tk1_on_len1_weighted = 0
+
+    for word in word_iterable:
+        if len(word) == 0 or len(word) > exclude_words_over_length:
             continue
 
-        tokens = tokeniser.prepareAndTokenise(raw_word)
+        tokens = tokeniser.prepareAndTokenise(word)
+        if len(tokens) == 0:
+            continue
 
-        chars = len(raw_word) if do_measure_original_word_length else sum(map(len, tokens))
-        tk = len(tokens)
+        chars = len(word) if do_measure_original_word_length else sum(map(len, tokens))
+        tk    = len(tokens)
         char_to_token_ratio = chars/tk
+        token_to_char_ratio = tk/chars
+        segmentality        = (tk-1)/(chars-1) if chars > 1 else 1.0
 
         # Accumulate
-        f_w = counts.get(raw_word, 1)
+        f_w = word_counts.get(word, 1)
 
         sum_one          += 1
         sum_one_weighted += 1*f_w
@@ -206,16 +224,29 @@ def getInferenceStats(tokeniser: Tokeniser,
         sum_len_weighted += chars*f_w
         sum_len_on_tk          += char_to_token_ratio
         sum_len_on_tk_weighted += char_to_token_ratio*f_w
+        sum_tk_on_len          += token_to_char_ratio
+        sum_tk_on_len_weighted += token_to_char_ratio*f_w
+        sum_tk1_on_len1          += segmentality
+        sum_tk1_on_len1_weighted += segmentality*f_w
 
     return InferenceFertility(
+        corpus_name=word_iterable.name,
+
         ccc=sum_len_weighted,
         ctc=sum_tk_weighted,
+        cwc=sum_one_weighted,
 
-        tokens_per_word_type=sum_tk/sum_one,
+        tokens_per_word_type=sum_tk/sum_one if word_counts else 0,  # If counts are given, we assume every word appeared exactly once in the iterable. If not, we assume that words can appear multiple times, and hence they are tokens, in which case we know nothing about deduplicated word types.
         tokens_per_word_token=sum_tk_weighted/sum_one_weighted,
 
-        chars_per_word_type_token_micro=sum_len/sum_tk,
+        chars_per_word_type_token_micro=sum_len/sum_tk if word_counts else 0,
         chars_per_word_token_token_micro=sum_len_weighted/sum_tk_weighted,
-        chars_per_word_type_token_macro=sum_len_on_tk/sum_one,
-        chars_per_word_token_token_macro=sum_len_on_tk_weighted/sum_one_weighted
+
+        chars_per_word_type_token_macro=sum_len_on_tk/sum_one if word_counts else 0,
+        tokens_per_word_type_char_macro=sum_tk_on_len/sum_one if word_counts else 0,
+        chars_per_word_token_token_macro=sum_len_on_tk_weighted/sum_one_weighted,
+        tokens_per_word_token_char_macro=sum_tk_on_len_weighted/sum_one_weighted,
+
+        segmentality_word_types=sum_tk1_on_len1/sum_one if word_counts else 0,
+        segmentality_word_tokens=sum_tk1_on_len1_weighted/sum_one_weighted
     )
