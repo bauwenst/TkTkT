@@ -1,3 +1,6 @@
+"""
+Evaluations that generate distributions, either across the vocabulary or the domain of segmentations.
+"""
 from typing import Iterable, Tuple, Dict, Optional, List, TypeVar, Union
 from dataclasses import dataclass
 from collections import Counter
@@ -9,7 +12,8 @@ from scipy.stats import entropy as _scipy_entropy
 from ..interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
 from ..util.iterables import streamProgress
 from ..util.combinatorics import getBitKey
-from ..util.dicts import argmax
+from ..util.dicts import argmax, normaliseCounter
+from ..util.types import NamedIterable
 
 SHANNON_RENYI_ALPHA = 1.0
 DEFAULT_RENYI_ALPHA = 2.5
@@ -107,43 +111,183 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
 ########################################################################################################################
 
 
-def tokenDistributionFromSentences(tokeniser: TokeniserWithFiniteTypeDomain, corpus: Iterable[str]) -> Dict[str,float]:
-    """
-    For each type that a tokeniser can produce, compute the fraction of produced tokens that belong to that type.
-    (A much more elaborate and caching version of this function can be found in the bpe_inversion.eda.computation package.)
-    """
-    type_frequencies = Counter()
-    for t in tokeniser.types():
-        type_frequencies[t] = 0
+@dataclass
+class TokenDiversity:
+    V: int    # Amount of types in the corpus. In other words, the effective vocabulary size.
+    ctc: int  # Amount of tokens in the corpus.
 
-    for sentence in streamProgress(corpus, "Tokenising"):
+    @property
+    def ttr(self):
+        """Type-token ratio."""
+        return self.V/self.ctc
+
+    mattr: int
+    mattr_window_size: int
+    mattr_stride: int
+
+    renyi_entropy: float
+    renyi_efficiency: float
+    corpus_name: str
+
+
+def getTokenDistributionFromSentences_and_analyse(
+        tokeniser: TokeniserWithFiniteTypeDomain, corpus: NamedIterable[str],
+        # RE arguments
+        renyi_alpha: float=DEFAULT_RENYI_ALPHA, renyi_efficiency_with_effective_vocab: bool=True,
+        # MATTR arguments
+        mattr_window_size: int=2000, mattr_stride: int=1000, mattr_flush_every_example: bool=False
+    ) -> Tuple[Counter[str], TokenDiversity]:
+    """
+    Computes, for each type that a tokeniser can produce, the fraction of produced tokens that belong to that type,
+    a.k.a. the token unigram distribution.
+    (A much more elaborate and caching version of this function can be found in the bpe_hell.eda.computation package.)
+
+    While doing so, it also computes several summary statistics about this distribution, among which the Rényi efficiency
+    of the vocabulary and a generalised version of the moving-average type-token ratio (MATTR).
+    Covington & McFall (2010, https://www.tandfonline.com/doi/full/10.1080/09296171003643098) discuss MATTR for a window
+    stride of 1. This function implements it for any stride.
+
+    We cannot use a ChainedCounter like we otherwise would to average something across counters produced for fixed-size
+    windows. The reason is that in the BEST case, each subcounter will have only 1 entry with count window_size, and the
+    amount of subcounters you will have is corpus_size/window_size. Say you have 1 billion tokens (5 GiB of English data,
+    say), then a window size of 500 tokens will produce 2 million subcounters. That's very steep scaling.
+
+    :param flush_window_every_example: If False, examples in the corpus will be treated as one large document and windows
+                                       can spill from one into the other. The TTR inside a window will be higher if it
+                                       contains tokens from more than one document, especially if they are on different topics.
+    """
+    assert 0 < mattr_stride <= mattr_window_size
+    n_TTR   = 0
+    sum_TTR = 0
+    global_type_frequencies = Counter()  # Will be returned.
+
+    window_type_frequencies = Counter()
+    n_tokens_in_window      = 0
+    stride_history: List[Counter] = [Counter()]
+    n_tokens_in_last_stride       = 0
+    for sentence in corpus:
+        # Type distribution takes two lines of code:
         tokens = tokeniser.prepareAndTokenise(sentence)
-        for t in tokens:
-            type_frequencies[t] += 1
+        global_type_frequencies.update(tokens)
 
-    return normaliseCounter(type_frequencies)
+        # MATTR is a lot more:
+        #  1. Try to fill up the last stride.
+        deficit = mattr_stride - n_tokens_in_last_stride
+        tokens_remaining = tokens
+        n_remaining_tokens = len(tokens_remaining)
+        while n_remaining_tokens >= deficit:  # While you can create new strides.
+            tokens_added, tokens_remaining = tokens_remaining[:deficit], tokens_remaining[deficit:]
+            n_remaining_tokens -= deficit
 
+            stride_history[-1].update(tokens_added)
+            stride_history.append(Counter())
 
-def normaliseCounter(counts: Union[Counter[T], Dict[T,Union[int,float]]]) -> Dict[T,float]:
-    total = sum(counts.values())
-    return {t: c/total for t,c in counts.items()}
+            n_tokens_in_last_stride = 0
+            deficit = mattr_stride
+
+        stride_history[-1].update(tokens_remaining)
+        n_tokens_in_last_stride += n_remaining_tokens
+
+        #  2. Separately, try to fill up the window. If enough tokens have accumulated, get TTR and subtract the oldest stride.
+        deficit = mattr_window_size - n_tokens_in_window
+        tokens_remaining = tokens
+        n_remaining_tokens = len(tokens_remaining)
+        while n_remaining_tokens >= deficit:  # While you can fill the window. This never happens when there isn't at least one stride available.
+            tokens_added, tokens_remaining = tokens_remaining[:deficit], tokens_remaining[deficit:]
+            n_remaining_tokens -= deficit
+
+            # Fill the window, compute stats on the full window
+            window_type_frequencies.update(tokens_added)
+            n_tokens_in_window += deficit
+            sum_TTR += len(window_type_frequencies) / n_tokens_in_window  # Here n_tokens_in_window is always window_size.
+            n_TTR   += 1
+
+            # Shrink the window
+            window_type_frequencies -= stride_history.pop(0)  # In the extreme case, this stride has JUST been formed in step 1.
+            # for t in subtracted_counts.keys():
+            #     if window_type_frequencies[t] == 0:
+            #         window_type_frequencies.pop(t)  # As it turns out, this filtering happens automatically in a Counter -= Counter, but NOT after Counter[key] -= value.
+
+            n_tokens_in_window -= mattr_stride
+            deficit = mattr_stride
+
+        window_type_frequencies.update(tokens_remaining)
+        n_tokens_in_window += n_remaining_tokens
+
+        #  3. Optionally: if you can't move windows across examples, commit now.
+        if mattr_flush_every_example and n_remaining_tokens > 0:
+            sum_TTR += len(window_type_frequencies) / n_tokens_in_window
+            n_TTR   += n_tokens_in_window / mattr_window_size
+
+            window_type_frequencies = Counter()
+            n_tokens_in_window      = 0
+            stride_history: List[Counter] = [Counter()]
+            n_tokens_in_last_stride       = 0
+
+    # The last half-filled window should be counted too unless it already was. You know it already was if the deficit is exactly 1 stride AND the window has already moved.
+    if not mattr_flush_every_example and not(mattr_window_size - n_tokens_in_window == mattr_stride and n_TTR > 0):
+        sum_TTR += len(window_type_frequencies) / n_tokens_in_window
+        n_TTR   += n_tokens_in_window / mattr_window_size
+
+    # Part 2: Analysis
+    effective_vocabulary_size = len(global_type_frequencies)
+    renyi_entropy          = renyiEntropy(global_type_frequencies.values(), alpha=renyi_alpha)
+    _, renyi_efficiency, _ = renyiEfficiency(global_type_frequencies.values(), alpha=renyi_alpha,
+                                             domain_size=effective_vocabulary_size if renyi_efficiency_with_effective_vocab else tokeniser.getVocabSize(),
+                                             sample_size=global_type_frequencies.total())
+
+    # Include the rest in the distribution
+    for t in tokeniser.types():
+        global_type_frequencies[t] += 0
+
+    return global_type_frequencies, TokenDiversity(
+        V=effective_vocabulary_size,
+        ctc=global_type_frequencies.total(),
+
+        mattr=sum_TTR / n_TTR,
+        mattr_window_size=mattr_window_size,
+        mattr_stride=mattr_stride,
+
+        renyi_entropy=renyi_entropy,
+        renyi_efficiency=renyi_efficiency,
+
+        corpus_name=corpus.name
+    )
 
 
 def bitKeyFromTokens(tokens: List[str]) -> int:
     return getBitKey(list(map(len, tokens)))
 
 
-def segmentationDistributionFromWord(tokeniser: Tokeniser, word: str, n_samples: int) -> Dict[int,float]:
-    """Repeatedly segments a word get a distribution across its segmentations."""
+SegmentationCounts = Counter[int]  # Maps segmentation ID to its count.
+
+def segmentationDistributionFromWord(tokeniser: Tokeniser, word: str, n_samples: int) -> SegmentationCounts:
+    """Repeatedly segments a word to get a (unnormalised) distribution across its segmentations."""
     segmentations = Counter()
-    for _ in streamProgress(range(n_samples), "Tokenising", known_size=n_samples):
+    for _ in streamProgress(range(n_samples), f"Tokenising: {word}", known_size=n_samples):
         segmentations[bitKeyFromTokens(tokeniser.prepareAndTokenise(word))] += 1
-    return normaliseCounter(segmentations)
+    return segmentations
 
 
-def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
+@dataclass
+class SegmentationDiversity:
+    uniqueness: float  # Fraction of segmentations that remain when you filter out duplicates. ~precision
+    coverage: float  # Fraction of possible segmentations that have been produced. ~recall
+    max_coverage_uniqueness: float  # Equals uniqueness if you take less than the possible segmentations in samples, otherwise equals coverage. Equivalent to max(U,C).
+
+    regularisation_rate_argmax: float  # Fraction of segmentations that AREN'T the most common one.
+    regularisation_rate_deterministic: Optional[float]  # Fraction of segmentations that AREN'T the given one.
+
+    efficiency_all: float  # Fraction that the actual Shannon entropy of the segmentation distribution is of the highest possible Shannon entropy it could be.
+    efficiency_no_argmax: float  # Same, but for the distribution that doesn't include the most common segmentation.
+    efficiency_no_deterministic: Optional[float]  # Same, but for the given segmentation.
+
+
+def analyseSegmentationDistribution(segmentations_counts: SegmentationCounts,
                                     sample_size: int, domain_size: int, renyi_alpha: float=1.0,
-                                    deterministic_segmentation: Optional[List[str]]=None):
+                                    deterministic_segmentation: Optional[List[str]]=None) -> SegmentationDiversity:
+    segmentation_probabilities = normaliseCounter(segmentations_counts)
+
     uniqueness = len(segmentation_probabilities) / sample_size
     coverage   = len(segmentation_probabilities) / domain_size
     max_coverage_uniqueness = len(segmentation_probabilities) / min(sample_size,domain_size)  # Equals max(coverage,uniqueness).
@@ -183,17 +327,3 @@ def analyseSegmentationDistribution(segmentation_probabilities: Dict[int,float],
         efficiency_no_argmax=entropic_efficiency_no_argmax,
         efficiency_no_deterministic=entropic_efficiency_no_deterministic
     )
-
-
-@dataclass
-class SegmentationDiversity:
-    uniqueness: float  # Fraction of segmentations that remain when you filter out duplicates. ~precision
-    coverage: float  # Fraction of possible segmentations that have been produced. ~recall
-    max_coverage_uniqueness: float  # Equals uniqueness if you take less than the possible segmentations in samples, otherwise equals coverage. Equivalent to max(U,C).
-
-    regularisation_rate_argmax: float  # Fraction of segmentations that AREN'T the most common one.
-    regularisation_rate_deterministic: Optional[float]  # Fraction of segmentations that AREN'T the given one.
-
-    efficiency_all: float  # Fraction that the actual Shannon entropy of the segmentation distribution is of the highest possible Shannon entropy it could be.
-    efficiency_no_argmax: float  # Same, but for the distribution that doesn't include the most common segmentation.
-    efficiency_no_deterministic: Optional[float]  # Same, but for the given segmentation.

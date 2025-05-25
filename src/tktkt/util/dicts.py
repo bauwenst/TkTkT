@@ -85,6 +85,11 @@ def kargmax(d: Dict[K,V], k: int) -> List[List[K]]:
     return key_buckets
 
 
+def normaliseCounter(counts: Union[Counter[K], Dict[K,Union[int,float]]]) -> Dict[K,float]:
+    total = sum(counts.values())
+    return {t: c/total for t,c in counts.items()}
+
+
 class ChainedCounter(Counter[K], Generic[K]):
     """
     Similar to a Counter, except it buckets N observations at a time into sub-counters internally. That way, it is
