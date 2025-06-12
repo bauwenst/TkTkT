@@ -6,9 +6,8 @@ from abc import abstractmethod
 from datasets import Dataset, IterableDataset
 from functools import partial
 
-from .iterables import mapExtend, streamProgress
-
 HuggingfaceDataset = Union[Dataset, IterableDataset]
+Number = TypeVar("Number", bound=Union[int,float])
 
 T = TypeVar("T")
 T2 = TypeVar("T2")
@@ -28,6 +27,7 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
             raise TypeError("The given iteraBLE is an iteraTOR, and hence may not be re-iterable.")
 
     def __iter__(self):
+        from .iterables import streamProgress
         return self._iterable.__iter__() if not self._tqdm else streamProgress(self._iterable).__iter__()
 
     def tqdm(self) -> "NamedIterable[T]":
@@ -69,6 +69,7 @@ class flatmapped(Iterable[T2]):
         self._iterable = iterable
 
     def __iter__(self) -> Iterator[T2]:
+        from .iterables import mapExtend
         return mapExtend(self._function, self._iterable)
 
 

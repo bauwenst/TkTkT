@@ -2,7 +2,7 @@
 Metrics that have to do with (1) how many segmentations a tokeniser could generate in theory,
 and (2) the amount of tokens it generates in practice.
 """
-from typing import Tuple, Iterable, Dict
+from typing import Tuple, Iterable, Dict, Set
 from dataclasses import dataclass
 from math import log2
 
@@ -11,7 +11,7 @@ from ..util.types import NamedIterable
 from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab, Tokeniser, Preprocessor
 
 
-def countValidSegmentations(pretoken: str, vocab: Vocab) -> int:
+def countValidSegmentations(pretoken: str, vocab: Union[Vocab, Set[str]]) -> int:
     """
     Computes how many possible segmentations a vocabulary allows for a given string. Note: no preprocessor is applied here!
     Forward Viterbi algorithm, which is O(n^2) instead of O(2^n) even though there are O(2^n) segmentations.
@@ -25,7 +25,7 @@ def countValidSegmentations(pretoken: str, vocab: Vocab) -> int:
     return options_to_get_before_char[-1]
 
 
-def prepareAndCountValidSegmentations(word: str, preprocessor: Preprocessor, vocab: Vocab) -> Tuple[int, int, int]:
+def prepareAndCountValidSegmentations(word: str, preprocessor: Preprocessor, vocab: Union[Vocab, Set[str]]) -> Tuple[int, int, int]:
     """
     Note that the vocabulary exists in the output space of a preprocessor. This has two implications for counting segmentations:
         1. You should make sure that the given preprocessor is the full, effective preprocessor used before segmenting

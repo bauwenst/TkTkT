@@ -1,3 +1,7 @@
+"""
+Evaluations that involve comparing the outputs of two tokenisers per input before aggregating, rather than
+aggergating the outputs and then comparing per dataset (which is all other evaluations).
+"""
 from typing import Tuple, Iterable, List, TypeVar, Generic
 from collections import Counter
 from abc import ABC, abstractmethod
@@ -5,7 +9,7 @@ from abc import ABC, abstractmethod
 from ..interfaces.tokeniser import Tokeniser, Preprocessor
 from ..preparation.instances import IdentityPreprocessor
 from ..util.iterables import streamProgress
-
+from ..util.printing import warn
 
 R = TypeVar("R")  # Result from computing the metric.
 
@@ -61,6 +65,25 @@ class ExactMatches(ComparisonMetric[Tuple[float,int,int]]):
         return self._n_matches / self._n_total if self._n_total else 1, self._n_matches, self._n_total
 
 
+class MicroMacro:
+
+    def __init__(self):
+        self._micro_num = 0
+        self._micro_den = 0
+        self._macro_num = 0
+        self._macro_den = 0
+
+    def add(self, num: float, den: float):
+        self._micro_num += num
+        self._micro_den += den
+        self._macro_num += num / den
+        self._macro_den += 1
+
+    def compute(self) -> Tuple[float, float]:
+        return self._micro_num/self._micro_den if self._micro_den else float("inf") if self._micro_num else 1.0,  \
+               self._macro_num/self._macro_den if self._macro_den else float("inf") if self._macro_num else 1.0
+
+
 class MicroMacroTokenJaccard(ComparisonMetric[Tuple[float, float]]):
     """
     Gives the micro-average and macro-average of Jaccard similarity of the token sequences produced by the given tokenisers.
@@ -81,8 +104,8 @@ class MicroMacroTokenJaccard(ComparisonMetric[Tuple[float, float]]):
         self._sum_union        += denom
 
     def _compute(self) -> R:
-        return sum_intersection/sum_union if sum_union else 1, \
-               sum_jaccard/n_total if n_total else 1
+        return self._sum_intersection/self._sum_union if self._sum_union else 1, \
+               self._sum_jaccard/self._n_total if self._n_total else 1
 
 
 def jaccard(tokens1: List[str], tokens2: List[str]) -> Tuple[float,int,int]:
@@ -93,7 +116,7 @@ def jaccard(tokens1: List[str], tokens2: List[str]) -> Tuple[float,int,int]:
 
     |{A: 2, B: 1, C: 1}| / |{A: 3, B: 1, C: 1, D: 1, E: 1}|
 
-    The numerator obviously contains the overlap in the two sets,
+    The numerator obviously contains the overlap in the two sets, accounting for multiplicities.
 
     Note that rather than containing the sum count of each element in the sets, the denominator contains the larger of the two.
     If one has 2 As and the other has 3 As, you could say that either there are 4 As that match out of 5 As total, but
@@ -111,3 +134,39 @@ def jaccard(tokens1: List[str], tokens2: List[str]) -> Tuple[float,int,int]:
         denominator += max(c1[t], c2[t])
 
     return numerator/denominator if denominator else 1, numerator, denominator
+
+
+class MicroMacroMultiplicityRatio(ComparisonMetric[Tuple[float, float, float, float]]):
+    """
+    Rather than computing similarity of the tokens, computes similarity of the amount of tokens produced by the given tokenisers
+    by computing their ratio. This ratio has also been called "parity" in literature.
+
+    Reports results for both tokeniser 1 over tokeniser 2 and tokeniser 2 over tokeniser 1.
+    """
+
+    def _reset(self):
+        self._sum_m1 = 0
+        self._sum_m2 = 0
+        self._sum_m1_on_m2 = 0
+        self._sum_m2_on_m1 = 0
+        self._n_total = 0
+
+    def _add(self, global_pretoken: str, tk1: Tokeniser, tk2: Tokeniser):
+        m1 = len(tk1.prepareAndTokenise(global_pretoken))
+        m2 = len(tk2.prepareAndTokenise(global_pretoken))
+        if m1 == 0 or m2 == 0:
+            case = ("1" if m1 == 0 else "") + (" and " if m1 == 0 and m2 == 0 else "") + ("2" if m2 == 0 else "")
+            warn(f"Tokeniser {case} produced no tokens for pretoken '{global_pretoken}'. Skipping it.")
+            return
+
+        self._n_total += 1
+        self._sum_m1 += m1
+        self._sum_m2 += m2
+        self._sum_m1_on_m2 += m1/m2
+        self._sum_m2_on_m1 += m2/m1
+
+    def _compute(self):
+        return (self._sum_m1/self._sum_m2        if self._sum_m2 else float("inf") if self._sum_m1 else 1.0,
+                self._sum_m1_on_m2/self._n_total if self._n_total else 1.0,
+                self._sum_m2/self._sum_m1        if self._sum_m1 else float("inf") if self._sum_m2 else 1.0,
+                self._sum_m2_on_m1/self._n_total if self._n_total else 1.0)

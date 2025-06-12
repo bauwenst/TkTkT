@@ -13,9 +13,8 @@ from pathlib import Path
 from tqdm.auto import tqdm
 import numpy.random as npr
 
-T = TypeVar("T")
-T2 = TypeVar("T2")
-Number = TypeVar("Number", bound=Union[int,float])
+from .types import Number, T, T2, CT
+
 
 def streamLines(path: Path, include_empty_lines=True) -> Iterator[str]:
     with open(path, "r", encoding="utf-8") as handle:
@@ -175,6 +174,34 @@ def count(iterable: Iterable[T]) -> int:
     return total
 
 
+def maxargmax(iterable: Iterable[CT]) -> Tuple[CT, int]:
+    max_element    = None
+    argmax_element = None
+    for index, thing in enumerate(iterable):
+        if max_element is None or max_element < thing:
+            max_element    = thing
+            argmax_element = index
+
+    if max_element is None:
+        raise IndexError("There were no items in the given iterable.")
+
+    return max_element, argmax_element
+
+
+def minargmin(iterable: Iterable[CT]) -> Tuple[CT, int]:
+    min_element    = None
+    argmin_element = None
+    for index, thing in enumerate(iterable):
+        if min_element is None or thing < min_element:
+            min_element    = thing
+            argmin_element = index
+
+    if min_element is None:
+        raise IndexError("There were no items in the given iterable.")
+
+    return min_element, argmin_element
+
+
 def allEqual(iterable: Iterable[T]) -> bool:
     value = _NONE
     for thing in iterable:
@@ -186,6 +213,7 @@ def allEqual(iterable: Iterable[T]) -> bool:
             return False
 
     return True
+
 
 def transpose(matrix: Iterable[Iterable[T]]) -> List[List[T]]:
     new_matrix = []
