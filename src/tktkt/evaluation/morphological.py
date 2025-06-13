@@ -9,6 +9,7 @@ from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 from modest.interfaces.morphologies import MorphologyVisitor, WordSegmentation, MorphSplit, FreeMorphSplit
 
 from ..util.printing import wprint
+from ..util.aggregates import ConfusionMatrix
 from ..paths import TkTkTPaths
 from ..interfaces.tokeniser import Tokeniser, TokeniserWithFiniteIdRange
 
@@ -44,71 +45,6 @@ def compareSplits_cursors(candidate: str, reference: str):
         reference_index += 1 + reference_split
 
     return tp, predicted, relevant, total - 1  # The `total` variable counts the amount of characters, not splits.
-
-
-class ConfusionMatrix:
-
-    def __init__(self):
-        self.total_tp        = 0
-        self.total_predicted = 0
-        self.total_relevant  = 0
-        self.total           = 0
-
-    def add(self, tp: int, predicted: int, relevant: int, total: int, weight: float=1):
-        self.total_tp        += weight*tp
-        self.total_predicted += weight*predicted
-        self.total_relevant  += weight*relevant
-        self.total           += weight*total
-
-    def computePrReF1(self):
-        precision = self.total_tp/self.total_predicted if self.total_predicted else 1.0
-        recall    = self.total_tp/self.total_relevant  if self.total_relevant  else 1.0
-        f1        = ConfusionMatrix.f1(precision, recall)
-        return precision, recall, f1
-
-    def compute(self):
-        N  = self.total
-        tp = self.total_tp
-        fp = self.total_predicted - self.total_tp
-        fn = self.total_relevant - self.total_tp
-        tn = N - tp - fp - fn
-        return tp, fp, tn, fn
-
-    def display(self):
-        tp, fp, tn, fn = self.compute()
-        string = "        \tpredicted\n"    +\
-                 "        \t  +  \t  -\n"   +\
-                f"actual +\t {tp}\t {fn}\n" +\
-                f"       -\t {fp}\t {tn}"
-        wprint(string)
-
-    def displayRePrF1(self, indent=0):
-        P, R, F1 = self.computePrReF1()
-        wprint("\t"*indent + "Precision:", P)
-        print("\t"*indent + "Recall:   ", R)
-        print("\t"*indent + "F1:       ", F1)
-
-    @staticmethod
-    def f1(precision: float, recall: float):
-        return 2*(precision*recall)/(precision+recall)
-
-    @staticmethod
-    def computeMatrixMacroAverage(matrices: List["ConfusionMatrix"]) -> Tuple[float, float, float]:
-        """
-        Computes the macro-average Pr, Re, F1 for a list of confusion matrices.
-
-        Note: although the Pr, Re, F1 returned by .compute() are a micro-average, this method is not the macro-average
-        equivalent of that. This is because .compute() is the micro-average over all added word segmentations, NOT over
-        a list of matrices. It is impossible to reconstruct the macro-average over word segmentations because we don't store
-        their separate Pr, Re, F1.
-        """
-        n = len(matrices)
-        if n == 0:
-            return (1.0, 1.0, 1.0)
-
-        tuples = [matrix.computePrReF1() for matrix in matrices]
-        precisions, recalls, f1s = zip(*tuples)
-        return sum(precisions)/n, sum(recalls)/n, sum(f1s)/n
 
 
 #########################
