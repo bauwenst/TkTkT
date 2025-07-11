@@ -14,6 +14,7 @@ from tqdm.auto import tqdm
 import numpy.random as npr
 
 from .types import Number, T, T2, CT
+from .printing import warn
 
 
 def streamLines(path: Path, include_empty_lines=True) -> Iterator[str]:
@@ -101,12 +102,20 @@ def drop(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
         yield thing
 
 
-def take(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
+def take(n: int, iterable: Iterable[T], exact: bool=False) -> Generator[T, None, None]:
     if n > 0:
-        for i, thing in enumerate(iterable):
+        i = 0
+        for thing in iterable:
+            i += 1
             yield thing
-            if i+1 == n:
+            if i == n:
                 break
+
+        if i < n:
+            if exact:
+                raise IndexError(f"Requested exactly {n} items from iterable, but it ran out after {i}.")
+            else:
+                warn(f"Requested {n} items from iterator, but it ran out after {i}.")
 
 
 def takeAfterShuffle(n: int, known_size: int, iterable: Iterable[T], rng=npr.default_rng(seed=0)) -> Generator[T, None, None]:
@@ -167,7 +176,29 @@ def snd(t: Tuple[T,T2]) -> T2:
     return t[1]
 
 
+def indexSpan(subiterable: Iterable[T], iterable: Iterable[T]) -> Optional[Tuple[int,int]]:
+    """
+    Find the first occurrence of the given subiterable in the other iterable. Also returns the exclusive end index.
+
+    Note that this is equivalent to string search. This implementation uses backtracking and is, in the worst case,
+    O(N*M), whereas algorithms like KMP are faster.
+    """
+    target = list(subiterable)
+    buffer = []
+    if not target:
+        return (0,0)  # Trivial empty span.
+
+    for last_idx,thing in enumerate(iterable):
+        buffer.append(thing)
+        if len(buffer) == len(target):
+            if buffer == target:  # I assume this uses early stopping.
+                return (last_idx+1-len(target), last_idx+1)
+            buffer.pop(0)
+    return None
+
+
 def count(iterable: Iterable[T]) -> int:
+    """Count the elements in the given iterable."""
     total = 0
     for _ in iterable:
         total += 1
