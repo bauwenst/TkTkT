@@ -1,11 +1,15 @@
 from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator, Tuple
 from typing_extensions import Self
 from collections import OrderedDict, Counter
+from pathlib import Path
 
+import json
 import numpy as np
 import numpy.random as npr
 
-from .printing import inequality
+from .timing import datetimeDashed
+from .printing import inequality, warn
+
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -88,6 +92,18 @@ def kargmax(d: Dict[K,V], k: int) -> List[List[K]]:
 def normaliseCounter(counts: Union[Counter[K], Dict[K,Union[int,float]]]) -> Dict[K,float]:
     total = sum(counts.values())
     return {t: c/total for t,c in counts.items()}
+
+
+def saveToJson(data: dict, path: Path, do_indent: bool=True) -> Path:
+    # Imputations
+    if path.is_dir():
+        path = path / datetimeDashed()
+    path = path.with_suffix(".json")
+
+    # Store
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4 if do_indent else None)
+    return path
 
 
 class ChainedCounter(Counter[K], Generic[K]):

@@ -2,7 +2,7 @@
 Metrics that have to do with (1) how many segmentations a tokeniser could generate in theory,
 and (2) the amount of tokens it generates in practice.
 """
-from typing import Tuple, Iterable, Dict, Set
+from typing import Tuple, Iterable, Dict, Set, Union
 from dataclasses import dataclass
 from math import log2
 

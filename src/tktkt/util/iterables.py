@@ -148,6 +148,25 @@ def cumsum(iterable: Iterable[Number]) -> Iterator[Number]:
         yield total
 
 
+def zipSelf(iterable: Iterable[T], offset: int=1) -> Iterator[Tuple[T,T]]:
+    """
+    Zip an iterable with an offset copy of itself.
+    The lagged copy will be first. For example,
+        A B C D E F G
+    with offset 2 will be zipped into
+        (A,C) (B,D) (C,E) (D,F) (E,G)
+    """
+    assert offset > 0
+
+    buffer = []
+    for thing in iterable:
+        buffer.append(thing)
+        if len(buffer) < offset+1:
+            continue
+
+        yield buffer.pop(0), thing
+
+
 def streamPrint(iterable: Iterable[T]) -> Iterator[T]:
     for thing in iterable:
         print(thing)
@@ -158,7 +177,9 @@ def streamProgress(iterable: Iterable[T], show_as: Optional[str]=None, known_siz
     return tqdm(iterable, desc=show_as, total=known_size, smoothing=0.1)
 
 
-# Endpoints below
+#################
+### Endpoints ###
+#################
 
 def at(index: int, iterable: Iterable[T]) -> T:
     for i, thing in enumerate(iterable):
@@ -244,6 +265,14 @@ def allEqual(iterable: Iterable[T]) -> bool:
             return False
 
     return True
+
+
+def areEquidistant(iterable: Iterable[Number], distance: Number) -> bool:
+    return all(a+distance == b for a,b in zipSelf(iterable, offset=1))
+
+
+def areContiguous(iterable: Iterable[int]) -> bool:
+    return areEquidistant(iterable, distance=1)
 
 
 def transpose(matrix: Iterable[Iterable[T]]) -> List[List[T]]:
