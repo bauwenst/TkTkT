@@ -24,6 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.random as npr
 
+from ..interfaces.huggingface import detectSpecials
 from ..interfaces.tokeniser import Tokeniser, Preprocessor, TokeniserWithFiniteTypeDomain
 
 
@@ -152,7 +153,48 @@ class TokeniserMultiplexer_DifferentDomains(TokeniserMultiplexer, TokeniserWithF
         return self._offsets[idx] + self.subtokenisers[idx].typeToId(t)
 
 
-class CompressiveTokeniserMultiplexer(TokeniserMultiplexer):
+class TokeniserMultiplexer_DifferentDomains_Stateful(TokeniserMultiplexer):
+    """
+    Saves the current tokeniser as a state which needs to be preserved and updated externally.
+    When the state is updated, it becomes impossible to know how to decode an old tokenised sequence.
+
+    This kind of multiplexer is useful when you have a model that stores separate embedding matrices and the index of
+    the vocabulary is hence available as input data.
+    """
+
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithFiniteTypeDomain], assert_matching_specials: bool=False):
+        """
+        :param assert_matching_specials: Do a check that makes sure all subtokenisers have the same specials with the
+                                         same IDs. This is necessary in an application as follows: imagine a system that
+                                         turns IDs into embeddings using several embedding matrices, but special IDs are
+                                         supposed to come from a global matrix. To do this, you first embed a tensor of
+                                         IDs, and then you replace the specials. Since practically there is no other
+                                         sensical approach than to use the same tensor of IDs for both parts (indexing
+                                         into the embedding matrix and indexing into the specials matrix), the specials
+                                         need to align across all the vocabularies.
+        """
+        super().__init__(preprocessor, subtokenisers)
+        self.current = None
+
+        if assert_matching_specials:
+            specials = None
+            for subtokeniser in subtokenisers:
+                specials_dict = {t: subtokeniser.typeToId(t) for t in detectSpecials(subtokeniser.types()).all_special_tokens}
+                if specials is None:
+                    specials = specials_dict
+                else:
+                    assert specials == specials_dict, f"Found specials {specials_dict} don't match reference specials {specials}."
+
+    def switchToTokeniser(self, index: int):
+        assert 0 <= index < len(self.subtokenisers)
+        self.current = index
+
+    def select(self, pretoken: str) -> int:
+        assert self.current is not None
+        return self.current
+
+
+class CompressiveTokeniserMultiplexer(TokeniserMultiplexer):  # Based on the idea put forth in https://huggingface.co/Parallia/Fairly-Multilingual-ModernBERT-Embed-BE
     def select(self, pretoken: str) -> int:
         return min(range(len(self.subtokenisers)), key=lambda i: len(self.subtokenisers[i].prepareAndTokenise(pretoken)))
 
