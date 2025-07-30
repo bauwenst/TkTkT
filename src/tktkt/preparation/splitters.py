@@ -13,6 +13,7 @@ import regex  # Has \p{} classes
 
 from .boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ..interfaces.preparation import Pretokeniser, InvertibleTextMapper, _PreprocessorComponentSequence
+from ..interfaces.tokeniser import Tokeniser
 from ..util.iterables import intercalate
 from ..util.strings import maskToTokens
 
@@ -57,6 +58,19 @@ class IdentityPretokeniser(Pretokeniser):
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         return pretokens
+
+
+class TokeniserAsPretokeniser(Pretokeniser):
+
+    def __init__(self, tokeniser: Tokeniser, do_preprocess: bool=False):
+        self._tokeniser = tokeniser
+        self._do_preprocess = do_preprocess
+
+    def split(self, text: str) -> List[str]:
+        if self._do_preprocess:
+            return self._tokeniser.prepareAndTokenise(text)
+        else:
+            return self._tokeniser.tokenise(text)
 
 
 class HyphenMode(Enum):
