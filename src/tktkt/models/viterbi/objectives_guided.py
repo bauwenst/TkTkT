@@ -723,7 +723,7 @@ class HuggingFaceForBinaryCharacterClassification(CharacterClassifier):
         chars_by_classes = prediction.logits.squeeze()  # Remove batch dimension (because it has size 1).
         normalisation_constants = torch.logsumexp(chars_by_classes, dim=1)  # Note that normalisation happens not OVER characters, but PER character. It happens over two binary classes, N times.
         positive_logits = chars_by_classes[:,1]
-        logprobabilities = positive_logits - normalisation_constants
+        logprobabilities = positive_logits - normalisation_constants   # TODO: Can this not just be done with torch.nn.LogSoftmax? A softmax's denominator would be SumExp, so subtracting LogSumExp is the same as taking Log of softmax division, hence LogSoftmax.
         return logprobabilities.cpu().numpy()[:len(pretoken)]  # Always need to go to CPU before casting down to numpy. The slice is needed because models like CANINE add padding characters up to a given amount.
 
 
