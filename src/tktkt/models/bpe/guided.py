@@ -8,7 +8,7 @@ from transformers import PreTrainedTokenizerFast
 
 from ...preparation.boundaries import BoundaryMarker
 from ...interfaces.tokeniser import Preprocessor
-from ..viterbi.objectives_guided import CharacterClassifier
+from ...models.predictive.viterbi import CharacterClassifier
 from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
 
 

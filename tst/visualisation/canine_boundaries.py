@@ -12,7 +12,7 @@ from fiject import MultiHistogram, CacheMode
 def test_probabilityVisualisation():
     # Classifier setup (this is only for illustration purposes; normally you would use a Factory for this!).
     from tktkt.paths import from_pretrained_absolutePath, TkTkTPaths
-    from tktkt.models.viterbi.objectives_guided import HuggingFaceForBinaryCharacterClassification, CanineTokenizer, CanineForTokenClassification
+    from tktkt.models.predictive.viterbi.objectives_guided import HuggingFaceForBinaryCharacterClassification, CanineTokenizer, CanineForTokenClassification
     tk = CanineTokenizer.from_pretrained("google/canine-c")
     core = from_pretrained_absolutePath(CanineForTokenClassification,
                                         TkTkTPaths.pathToCheckpoints() / "CANINE-C_2024-02-12_19-35-28")

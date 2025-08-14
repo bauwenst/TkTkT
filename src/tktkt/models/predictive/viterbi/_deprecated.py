@@ -1,8 +1,8 @@
 from typing import List, Callable
 from dataclasses import dataclass
 
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
-from ...preparation.splitters import WhitespaceAndMarkerPretokeniser, BoundaryMarker
+from ....interfaces.tokeniser import TokeniserWithVocabDict, Vocab
+from ....preparation.splitters import WhitespaceAndMarkerPretokeniser, BoundaryMarker
 
 
 class ViterbiNode:

@@ -6,7 +6,7 @@ https://aclanthology.org/2025.findings-acl.1146.pdf
 """
 from typing import List
 
-from ..viterbi.objectives_guided import CharacterClassifier
+from .viterbi import CharacterClassifier
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
 from ...util.iterables import maxargmax
 

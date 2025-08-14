@@ -1,8 +1,8 @@
 def compareDeprecatedUnguided():
     from transformers import RobertaTokenizer
 
-    from tktkt.models.viterbi._deprecated import UnguidedViterbi
-    from tktkt.models.viterbi.instances import LeastTokenViterbi
+    from tktkt.models.predictive.viterbi import UnguidedViterbi
+    from tktkt.models.predictive.viterbi.instances import LeastTokenViterbi
     from tktkt.preparation.instances import RobertaSpaceMarker, RobertaPreprocessor
 
     baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
@@ -21,8 +21,8 @@ def compareDeprecatedUnguided():
 
 def compareDeprectatedProduct():
 
-    from tktkt.models.viterbi.instances import ProductViterbi
-    from tktkt.models.viterbi._deprecated import RA_Product
+    from tktkt.models.predictive.viterbi.instances import ProductViterbi
+    from tktkt.models.predictive.viterbi import RA_Product
     from tktkt.preparation.instances import RobertaPreprocessor
 
     from bpe_knockout.project.config import morphologyGenerator

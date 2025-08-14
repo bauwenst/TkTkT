@@ -372,7 +372,7 @@ class AddWordBoundary(Pretokeniser):
         return super().getName() + "(" + "+"*(self.marker.location == BoundaryMarkerLocation.END) + self.marker.substitute + "+"*(self.marker.location == BoundaryMarkerLocation.START) + ")"
 
 
-from ..models.viterbi.objectives_guided import CharacterClassifier
+from ..models.predictive.viterbi import CharacterClassifier
 class SplitWithBoundaryClassifier(Pretokeniser):
 
     def __init__(self, classifier: CharacterClassifier, threshold: float=0.5):

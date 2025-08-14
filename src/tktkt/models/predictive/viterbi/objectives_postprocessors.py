@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from ...interfaces.tokeniser import Vocab
+from ....interfaces.tokeniser import Vocab
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, ViterbiStepScoreGeneratorWithTokens, ViterbiStepScoresWithTokens, INFTY
 
 
@@ -114,7 +114,7 @@ class VocabularyConstraintExact(VocabularyConstraint):
                     nested_scores.set(n, k, self.default)
 
 
-from ...util.trie import PrefixTrie
+from ....util.trie import PrefixTrie
 
 class VocabularyConstraintAtLeastAll(VocabularyConstraint, ViterbiStepScoreGeneratorWithTokens):
     """

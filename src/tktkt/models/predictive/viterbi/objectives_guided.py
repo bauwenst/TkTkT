@@ -18,7 +18,7 @@ from math import exp, sin, pi, asin
 from math import log as ln
 
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
-from ...util.printing import sgnprint
+from ....util.printing import sgnprint
 
 
 class CharacterClassifier:
@@ -660,8 +660,8 @@ class BoundaryPrefixAndSuffixLengthExtended(ScoreGeneratorUsingCharacterClassifi
 
 ########################################################################################################################
 
-from ...preparation.boundaries import BoundaryMarkerLocation
-from ...preparation.splitters import WhitespaceAndMarkerPretokeniser
+from ....preparation.boundaries import BoundaryMarkerLocation
+from ....preparation.splitters import WhitespaceAndMarkerPretokeniser
 
 class GoldSplits(CharacterClassifier):
     """
@@ -697,7 +697,7 @@ class GoldSplits(CharacterClassifier):
 from transformers import AutoTokenizer, AutoModelForTokenClassification
 from transformers.models.canine.modeling_canine import CanineForTokenClassification, TokenClassifierOutput
 from transformers.models.canine.tokenization_canine import CanineTokenizer
-from ...util.environment import DEVICE
+from ....util.environment import DEVICE
 
 
 class HuggingFaceForBinaryCharacterClassification(CharacterClassifier):

@@ -1,5 +1,5 @@
-from tktkt.models.viterbi.objectives_postprocessors import DiscretiseScores
-from tktkt.models.viterbi.objectives_unguided import RandomScoreGenerator
+from tktkt.models.predictive.viterbi import DiscretiseScores
+from tktkt.models.predictive.viterbi.objectives_unguided import RandomScoreGenerator
 
 
 def test_discretisation():

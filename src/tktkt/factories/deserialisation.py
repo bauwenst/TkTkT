@@ -1,6 +1,4 @@
 from pathlib import Path
-from abc import abstractmethod
-from typing import Dict
 
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
@@ -15,7 +13,7 @@ from ..interfaces.vocabulariser import Vocab
 from ..interfaces.factories import Deserialiser
 from ..models.bpe.vocabularisation import BPEVocabulariser, Merges
 from ..models.kudopiece.vocabularisation import KudoPieceVocabulariser
-from ..models.viterbi import HuggingFaceForBinaryCharacterClassification
+from ..models.predictive.viterbi import HuggingFaceForBinaryCharacterClassification
 from ..util.trie import PrefixTrie, SuffixTrie
 from ..paths import relativeToCwd, TkTkTPaths
 from .preprocessing import *

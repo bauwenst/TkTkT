@@ -1,7 +1,7 @@
 import numpy as np
 
 
-from ...models.viterbi.objectives_guided import CharacterClassifier
+from ...models.predictive.viterbi import CharacterClassifier
 
 
 def floatToUnicode(f: float) -> str:

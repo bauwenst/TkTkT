@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-from tktkt.util.strings import indent
+from .strings import indent
 
 
 class PrefixTrieNode:
@@ -218,54 +218,3 @@ class SuffixTrieNode:
 
 PrefixTrie = PrefixTrieNode
 SuffixTrie = SuffixTrieNode
-
-
-if __name__ == "__main__":
-    trie = PrefixTrieNode()
-    trie.add("abc", 3)
-    trie.add("ab",  1)
-    trie.add("ac",  2)
-    trie.add("abd", 1)
-    trie.add("abcd", 1)
-    trie.add("b",   1)
-
-    print(trie)
-    print(trie.get("ab"))
-
-    trie.compile()
-    trie._assertBidirectionalAssociation()
-    print(trie)
-    print(trie.get("a"))
-
-    print([node.root for node in trie.getNodesOfPrefices("abc")])
-    trie.compileRoots()
-    print([node.root for node in trie.getNodesOfPrefices("abcefgh")])
-    print([node.root for node in trie.getNodesWithPrefix("a", only_first=True)])
-
-    ###
-
-    print("="*50)
-
-    trie = SuffixTrieNode()
-    trie.add("abc", 3)
-    trie.add("ab",  1)
-    trie.add("ac",  2)
-    trie.add("abd", 1)
-    trie.add("abcd", 1)
-    trie.add("b",   1)
-
-    print(trie)
-    print(trie.get("c"))
-    # print(trie.getNodesOfSuffices("abca"))
-
-    from tktkt.util.printing import lprint
-    print("---")
-    lprint(trie.getNodesOfSuffices("bc"))
-    print("---")
-    lprint(trie.getNodesOfSuffices("cb"))
-    print("---")
-    print(trie.getNodesOfSuffices("a"))
-    print("---")
-
-    trie.compile()
-    print(trie)

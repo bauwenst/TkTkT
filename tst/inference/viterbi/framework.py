@@ -1,7 +1,4 @@
-from tktkt.models.viterbi.framework import *
-from tktkt.models.viterbi.accumulators import *
-from tktkt.models.viterbi.objectives_unguided import *
-from tktkt.models.viterbi.objectives_postprocessors import *
+from tktkt.models.predictive.viterbi import *
 
 def makeTokeniser():
     from transformers import RobertaTokenizer

@@ -21,13 +21,11 @@ TODO: There are two issues with our CANINE evaluation.
             result to the Viterbi tokeniser. Now you have segmentations into strings that include spaces and ë etc.
          2. Apply the byte mapping of the LM to map these tokens into the LM vocabulary.
 """
-import json
 
 from tktkt.factories.tokenisers import *
 from tktkt.util.timing import datetimeDashed
 from tktkt.evaluation.morphological import intrinsicEvaluation
-from tktkt.models.viterbi.objectives_guided import *
-from tktkt.models.viterbi.objectives_postprocessors import *
+from tktkt.models.predictive.viterbi import *
 from tktkt.paths import TkTkTPaths
 
 from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯

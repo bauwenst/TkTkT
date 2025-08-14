@@ -10,10 +10,10 @@ import warnings
 from typing import Iterable, Tuple
 
 from bpe_knockout.knockout.core import Merge
-from tktkt.util.functions import relu
 
 from .base import *
 from ...util.iterables import keepFirst, mapExtend
+from ...util.functions import relu
 
 
 class EnsuredBPE(DeterministicBPETokeniser):

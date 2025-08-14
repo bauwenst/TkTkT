@@ -1,10 +1,10 @@
 """
 Evaluate any tokeniser on English morphology.
 """
-from ..interfaces.factories import TokeniserFactory, T
+from ..interfaces.factories import TokeniserFactory
 from ..factories.deserialisation import *
 from ..preparation.instances import *
-from ..models.viterbi.instances import *
+from ..models.predictive.viterbi import *
 from ..models.bpe.base import ClassicBPE
 from ..models.bpe.knockout import BPEKnockout, ReBPE
 from ..models.bpe.guided import GuidedBPEDropout

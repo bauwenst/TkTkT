@@ -4,8 +4,8 @@ Some examples of common Viterbi objectives.
 from typing import Type, Optional
 from typing_extensions import Self
 
-from ..viterbi import *
-from ...interfaces.tokeniser import Preprocessor, Vocab
+from . import *
+from ....interfaces.tokeniser import Preprocessor, Vocab
 
 
 class LeastTokenViterbi(ViterbiTokeniser):

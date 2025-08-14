@@ -6,9 +6,9 @@ TODO: Has not been tested for equivalence to SentencePiece.
 from typing import Dict, MutableSequence
 
 from ...interfaces.tokeniser import Preprocessor
-from ..viterbi.framework import ViterbiTokeniser, ViterbiObjective, INFTY
-from ..viterbi.objectives_guided import ScoreGeneratorUsingSubstringClassifier, SubstringClassifier
-from ..viterbi.accumulators import ScoreSum
+from ...models.predictive.viterbi.framework import ViterbiTokeniser, ViterbiObjective, INFTY
+from ...models.predictive.viterbi import ScoreGeneratorUsingSubstringClassifier, SubstringClassifier
+from ...models.predictive.viterbi.accumulators import ScoreSum
 
 
 class UnigramClassifier(SubstringClassifier):

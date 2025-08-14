@@ -10,11 +10,10 @@ You can represent this lattice in multiple ways:
 
 The point of this file is NOT to create this lattice. It should have been computed elsewhere already.
 """
-from typing import List, Optional
 import numpy as np
 
 from ...models.random.graph import SegmentationGraph
-from ...models.viterbi.framework import ViterbiStepScores
+from ...models.predictive.viterbi.framework import ViterbiStepScores
 from ...util.strings import indent
 
 

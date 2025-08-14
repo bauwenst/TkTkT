@@ -1,6 +1,6 @@
 from typing import List
 
-from tktkt.interfaces.tokeniser import TokeniserWithVocabDict
+from ..interfaces.tokeniser import TokeniserWithVocabDict
 
 
 class TokeniserWithWordLevelUnk(TokeniserWithVocabDict):

@@ -32,9 +32,9 @@ from typing_extensions import Self
 from abc import abstractmethod
 import numpy as np
 
-from ...interfaces.tokeniser import Tokeniser, Preprocessor
-from ...util.printing import gridify
-from ...util.iterables import transpose
+from ....interfaces.tokeniser import Tokeniser, Preprocessor
+from ....util.printing import gridify
+from ....util.iterables import transpose
 
 INFTY = float("inf")
 
