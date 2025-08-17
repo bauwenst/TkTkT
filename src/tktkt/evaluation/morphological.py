@@ -9,7 +9,8 @@ from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
 from modest.interfaces.morphologies import MorphologyVisitor, WordSegmentation, MorphSplit, FreeMorphSplit
 
 from ..util.printing import wprint
-from ..util.aggregates import ConfusionMatrix
+from ..util.aggregates import ConfusionMatrix, NestedAverage, NestedMicroMacro
+from ..util.iterables import cumsum
 from ..paths import TkTkTPaths
 from ..interfaces.tokeniser import Tokeniser, TokeniserWithFiniteIdRange
 
@@ -45,6 +46,76 @@ def compareSplits_cursors(candidate: str, reference: str):
         reference_index += 1 + reference_split
 
     return tp, predicted, relevant, total - 1  # The `total` variable counts the amount of characters, not splits.
+
+
+def morphFraction(morphs: List[str], tokens: List[str], output: NestedMicroMacro):
+    """
+    For each morph, find the token which contains most of its characters and compute the fraction of its total length
+    that is present in that token. Then micro- or macro-average this across morphs in the corpus.
+
+    Given is the reference AAA BBB CCC. When treating morphological alignment as binary classification,
+    a candidate AAA BBBC CC shows up the same as AAA BBBCC C (both have two splits, of which one is precise
+    and both recall one of two splits). Meanwhile, we want to have a metric that measures the fact that
+    the second one has a token dedicated to the last morpheme which will be much less informative because most of the
+    morpheme has disappeared.
+
+    More examples that illustrate this concept:
+
+        Reference:
+        AAA BBB CCC
+
+        Candidates:
+        AA ABBB CCC    punish for BBB being distorted +1 and AAA being distorted -1 (their majorities are still part of one token), or equivalently, the distance of 1 moved by the split.
+        AA ABBBC CC    idem except two splits with distance 1
+        A AABBBCC C    trickier; the majority of the three morphemes are in one token. you could say two boundaries with distance 2, but arguably, there not being a separate majority-A token means that its meaning is no longer represented
+        AAAB BBC CC    both boundaries shifted; equivalent to the second case.
+        AAABB BCC C    BCC is majority-C, AAABB is majority-A, so no B-specific token. the last split is oversegmentation rather than an offset split between B and C. Indeed, there is a distance limit to how far you can align a split with a reference.
+        AAABBB CC C    oversegmentation of CCC.
+        AAABBB CCC     lack of A/B morpheme.
+        AAABBBC CC
+        AAABBBCC C
+
+    This function has the following trade-off:
+        - Pro: does not have to align splits, so also has no issue when there are more/less splits in reference vs. candidate.
+        - Con: it's somewhat of a precision metric because NOT splitting at all gives you a score of 100% (yet zero recall).
+    """
+    morph_splits = list(cumsum(map(len, morphs)))
+    token_splits = list(cumsum(map(len, tokens)))
+
+    best_token_length = 0
+    token_start = 0
+
+    morph_split_index = 0
+    morph_start = 0
+    morph_end = morph_splits[morph_split_index]
+
+    for index in token_splits:
+        while index >= morph_end:  # In this case, the morph is complete.
+            # Finish morph
+            max_length = morph_end - morph_start
+            token_length = morph_end - token_start
+            best_token_length = max(best_token_length, token_length)
+
+            output.add(best_token_length, max_length)
+
+            morph_split_index += 1
+            if morph_split_index < len(morph_splits):
+                # Start new morph
+                morph_start = morph_end
+                morph_end = morph_splits[morph_split_index]
+            else:
+                morph_end = float("inf")
+
+            # What remains of the token will be used as if the token was always only that remainder.
+            token_start = morph_start
+            best_token_length = 0
+
+        token_length = index - token_start
+        best_token_length = max(best_token_length, token_length)
+        token_start = index
+
+    output.fence()
+
 
 
 #########################

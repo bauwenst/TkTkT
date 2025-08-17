@@ -3,7 +3,7 @@ Random-access tokenisers choose their first token at any point in the string, ra
 starting at the first or last character.
 
 Implementation adapted from my master's thesis (Bauwens, 2023). https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf
-Apparently this was published a year prior by Hofmann (2022). https://aclanthology.org/2022.acl-short.43.pdf
+Apparently this was published as "FLOTA" a year prior by Hofmann (2022). https://aclanthology.org/2022.acl-short.43.pdf
 """
 from typing import List
 
