@@ -117,6 +117,107 @@ def morphFraction(morphs: List[str], tokens: List[str], output: NestedMicroMacro
     output.fence()
 
 
+def alignedSegmentationScore(morphs: List[str], tokens: List[str], adversarial: bool, output: NestedAverage):
+    """
+    For each reference split, compute the distance to the nearest candidate split. Normalise these distances somehow,
+    then again micro- or macro-average.
+
+    The "nearest" split is found only within a limited window around the reference. Otherwise, you would compare splits
+    that have nothing to do with each other. For example:
+            Ref: AAA BBB CCC DDD
+            Can: AAABBBCCC DDD
+    A bad implementation will have two issues: it will compare the AAA BBB reference to the CCC DDD candidate and thus
+    give score for a split that is too far away, and it will give score for a reference that is already aligned. The
+    latter can be solved by using a 1-to-1 alignment algorithm, e.g. Viterbi on cumulative distance. The former issue
+    the still exists: if you have
+        Ref: AAAAA BBBBB CCCCC
+        Can: AAAAABBBBB C CCCC
+    An unwindowed aligner will ignore the fact that there is a perfect match of the B-C split and instead align it with the
+    A-B reference, with the idea being that score(perfect B-C) < score(almost B-C) + score(poor A-B).
+    This is not how you want your scoring to be, because we should not reward the tokeniser by pretending that the A-B
+    split is represented successfully here.
+
+    So, we only align splits within the span of (half of) surrounding morphs. Basically the same as above, except
+    you don't necessarily need Viterbi (you can still do it with Viterbi, but just have the distance function drop to 0
+    faster).
+    If a split falls outside of the span, it should be aligned with a different reference split. For example:
+        Ref: AAA BBB CCC
+        Can: AAABB BCCC
+    This counts as the AAA-BBB split being lost (0 score) and the BBB-CCC split having moved (partial score).
+        Ref: AAA BBB CCC
+        Can: AAAB BBCCC
+    This counts as the AAA-BBB split having moved and the BBB-CCC split being lost.
+    What should the partial score be? In the above example, for the last reference split:
+        AAABBB CCC: score of 1.0
+        AAABB BCCC: lower score because still aligned but not perfectly
+        AAAB BBCCC: score of 0.0 because no longer aligned
+
+     TODO: The current implementation does not use other candidate splits to determine the score of the chosen split,
+           neither as a limit that shortens the distance scale nor as a tiebreaking step at the edges. Possibly you
+           are forced to do Viterbi alignment with a window.
+
+    Trade-off for this metric:
+        - Pro: the converse metric also exists, making a natural precision-recall pair.
+        - Con: Some ambiguity. Say that the last morph is very large, then what happens when the split moves right?
+            AAABBB CCCCCCDDD: score of 1.0
+            AAABBBC CCCCCDDD: lower score
+            AAABBBCC CCCCDDD: lower score
+            AAABBBCCC CCCDDD: lower score, although this is actually an edge case where the split could belong either to the morph boundary on the left or the right. I guess it doesn't matter in a sense, because both cases would have the same distance.
+            AAABBBCCCC CCDDD: score of 0.0
+          You could also wonder whether the distance function should be altered depending on other splits. For example:
+            AAABBBCCC CCCDDD is ambiguous: does this split belong to B-C (distance 3) with missing C-D split, or is it the C-D split (distance 3) with missing B-C split?
+            AAABBBCCC CCC DDD is strange: for each morph split, check the corresponding candidate split. The C-D split is found immediately. But what about the B-C split? There is indeed another split, but we did not know which reference it belonged to at first, yet now, it seems quite obvious that it should belong to the reference split that has no candidate yet. This is starting to look like an alignment/matching.
+            AAABBBCCCCC C DDD is also strange: if aligning morphs, would the first split belong to nothing, or to the B-C reference split? It's out of range, but since the C-D split is correct, should you not get some score for at least trying to have the same amount of tokens as the reference?
+            AAABBBCCCC C CDDD is even more strange: the last split clearly belongs to the C-D reference, but now, despite being out of range, does the B-C reference get to claim a candidate so far away as the first split?
+            AAABBBCCC CCCD DD is equally strange: C-D is present off by 1, and B-C is either:
+                1. missing entirely (aligning the first split with C-D as well);
+                2. present and off by 3, the maximal distance before a score of 0 because CCCCCC has length 6, thus giving 1 - 3/(1+6//2) == 0.25 score.
+                3. present and off by 3, but since C-D has been aligned already, even AAABBBCCCC CCD DD and AAABBBCCCCC CD DD could be considered as having a split in B-C range.
+                   So then, the maximum distance is actually 5 or 6, not 3, thus yielding for the given split of distance 3 the score 1 - 3/(1+5) == 0.5 or 1 - 3/(1+6) == 0.57, not 0.25.
+
+      A good conclusion of all of the above seems to be this:
+        - You need injective alignment either way (one split matches at most one split, on both sides)
+        - You need a distance function that is limited at the very least by the previous and next reference split (so a split can be at most one full morpheme off before getting score 0).
+        - Optionally, you should limit by half of the distance to either. Optionally, you should limit further by other splits between the reference and you, but only those that have been meaningfully selected.
+
+    :param adversarial: A version that, rather than choosing for each reference split the BEST candidate for it,
+                        chooses the WORST candidate for it within the allowed range. The idea is that you make it as
+                        hard as possible to get a perfect score and that every disastrous morpheme split should be counted.
+    """
+    lengths = list(map(len, morphs))
+    starts = [0] + list(cumsum(lengths))[:-1]
+
+    splits = list(cumsum(map(len, tokens)))[:-1]  # A split is represented as the index of the first character of the token after the split.
+    split_index = 0
+    n_splits = len(splits)
+
+    for i in range(1, len(starts)):  # Iterate over all the morpheme boundaries.
+        s_i = starts[i]  # Current morpheme boundary.
+        l_left_half = lengths[i - 1] // 2  # Length of the left morpheme.
+        l_right_half = lengths[i] // 2  # Length of the right morpheme.
+        # print("Start:", s_i)
+
+        # Advance splits until you get in range. (Only relevant for first splits, I believe.)
+        while split_index < n_splits and splits[split_index] < s_i - l_left_half:
+            split_index += 1
+
+        # As long as the splits are within range, find the best one.
+        best_score = 0 if not adversarial else 1
+        while split_index < n_splits and splits[split_index] <= s_i + l_right_half:
+            diff = splits[split_index] - s_i
+            score = 1 - abs(diff) / (1 + (l_left_half if diff < 0 else l_right_half))
+            if adversarial:
+                best_score = min(best_score, score)
+            else:
+                best_score = max(best_score, score)
+
+            # print("Diff", diff)
+            split_index += 1
+
+        output.add(best_score)
+
+    output.fence()
+
 
 #########################
 ### Testing framework ###
