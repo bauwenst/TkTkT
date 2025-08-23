@@ -1,7 +1,28 @@
-from typing import List
+from typing import List, Iterable
 import numpy as np
 
 from .iterables import intercalate, cumsum
+
+
+def findLongestCommonPrefix(strings: Iterable[str]) -> str:
+    ref = None
+    for string in strings:
+        # Trivial cases
+        if ref is None:
+            ref = string
+            continue
+        elif not ref:
+            break
+
+        # Shorten the reference
+        if len(string) < len(ref):
+            ref = ref[:len(string)]
+        for i in range(len(ref)):
+            if string[i] != ref[i]:
+                ref = ref[:i]
+                break
+
+    return ref or ""
 
 
 def indent(level: int, multiline_string: str, tab: str=" "*4) -> str:

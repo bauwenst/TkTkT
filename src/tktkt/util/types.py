@@ -42,6 +42,10 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
         """Refer to the documentation of `flatmapped` class."""
         return NamedIterable(flatmapped(func, self), name=self.name)
 
+    def filter(self, func: Callable[[T],bool]) -> "NamedIterable[T]":
+        """Refer to the documentation of the `filtered` class."""
+        return NamedIterable(filtered(func, self), name=self.name)
+
     def wrap(self, func: Callable[[Iterable[T]], Iterable[T2]]) -> "NamedIterable[T2]":
         """Refer to the documentation of `wrappediterable` class."""
         return NamedIterable(wrappediterable(func, self), name=self.name)
@@ -73,14 +77,38 @@ class flatmapped(Iterable[T2]):
         return mapExtend(self._function, self._iterable)
 
 
+class filtered(Iterable[T]):
+    """
+    Reusable version of filter().
+    """
+    def __init__(self, func: Callable[[T],bool], iterable: Iterable[T]):
+        self._function = func
+        self._iterable = iterable
+
+    def __iter__(self) -> Iterator[T]:
+        return filter(self._function, self._iterable)
+
+
 class wrappediterable(Iterable[T2]):
     """
     Applies the given function once, to the iterable's iterator itself, NOT to its elements nor to the iterable.
-    This is really a generalisation of map(), which applies the following function to the iterable:
+    This is really a generalisation of map()/filter(), which respectively apply the following functions to the iterable:
+
+    def map(iterator):
+        for thing in iterator:
+            yield stored_function(thing)
+
+    def filter(iterator):
+        for thing in iterator:
+            if stored_function(thing):
+                yield thing
+
+    For example, the following would be unachievable using just map() or filter():
 
     def func(item_function, iterator):
-        for thing in iterator:
+        for i,thing in enumerate(iterator):
             yield item_function(thing)
+            yield i
     """
     def __init__(self, func: Callable[[Iterable[T]], Iterable[T2]], iterable: Iterable[T]):
         self._function = func
@@ -110,6 +138,9 @@ class anypartial(partial):
 
 
 class dictget:
+    """
+    Represents the function dict.get with known key.
+    """
     # For some strange reason, just subclassing anypartial is not allowed.
     # def __init__(self, key: T):
     #     super().__init__(dict.get, ..., key)
@@ -122,6 +153,9 @@ class dictget:
 
 
 class pipe(Callable[[T],T3]):
+    """
+    Chain of two callables.
+    """
 
     def __init__(self, f1: Callable[[T], T2], f2: Callable[[T2], T3]):
         self.f1 = f1

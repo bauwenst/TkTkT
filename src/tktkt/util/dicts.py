@@ -37,7 +37,7 @@ def invertdict(d: Dict[K,V], noninjective_ok=True) -> Dict[V,K]:
             else:
                 d_inv[v] = k
 
-        raise ValueError(f"Dictionary could not be inverted because it wasn't injective. The following values were associated with more than one key: {values_with_multiple_keys}")
+        raise ValueError(f"Dictionary could not be inverted because it wasn't injective. The following values were associated with more than one key:\n{values_with_multiple_keys}")
 
     return d_inv
 

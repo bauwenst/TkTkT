@@ -4,7 +4,7 @@ Evaluation of the context around tokens.
 from typing import Iterable, Dict, Set, Union, Tuple, Optional, Callable, List
 from abc import ABC, abstractmethod
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from collections import defaultdict, Counter
 
 import scipy as sp
@@ -16,12 +16,12 @@ import re
 from ..paths import TkTkTPaths
 from ..factories.preprocessing import IdentityPreprocessor
 from ..interfaces.tokeniser import Tokeniser, Preprocessor
-from ..util.iterables import streamProgress, at
+from ..util.arrays import weighted_quantiles
+from ..util.iterables import streamProgress, first
 from ..util.timing import datetimeDashed
-from ..util.dicts import ChainedCounter
+from ..util.dicts import ChainedCounter, invertdict
 from ..util.types import NamedIterable
-from .entropy import renyiEfficiency
-
+from .entropy import renyiEfficiency, DEFAULT_RENYI_ALPHA
 
 VocabRef = int  # To avoid storing token strings over and over, we construct a vocab on-the-fly (even with tokenisers that have no vocab).
 
@@ -42,6 +42,9 @@ class AccessorDistribution:
 
     def countOccurrences(self, accessor_id: VocabRef) -> int:
         return self.accessors.get(accessor_id, Counter()).total() + self.boundaries.get(accessor_id, 0)
+
+    def unigramFrequencyDistribution(self) -> Counter[int]:
+        return Counter({id: self.countOccurrences(id) for id in set(self.accessors.keys()) | set(self.boundaries.keys())})
 
     def remove(self, accessor_id: VocabRef):
         # Remove as thing that (possibly) has neighbours and (possibly) has boundaries
@@ -134,11 +137,10 @@ class AccessorDistributions:
 
         return distributions
 
-
     def filter(self, remove_if: Callable[[str, "AccessorDistributions"], bool]) -> List[str]:
         # Remove
         removed = [t for t in self.vocab if remove_if(t, self)]
-        for t in streamProgress(removed, show_as="Removing types"):
+        for t in streamProgress(removed, show_as="Removing types"):  # NOTE: The reason this loop is so slow is because it is practically O(|V|² x |D|): |V| because you remove some fraction of the vocabulary proportional to it, |V| because for every type you have to look through the neighbours, and |D| because those neighbours are stored in buckets whose amount grows proportionally to the corpus.
             self.remove(t)
 
         # Restore
@@ -153,6 +155,65 @@ class AccessorDistributions:
     def defragment(self):
         self.left_of.defragment()
         self.right_of.defragment()
+
+    def _assertDistributionalConsistency(self):
+        """
+        Because accessors for boundaries are not tracked, the left and right distributions get out of sync after
+        filtering. For example, imagine the following corpus:
+
+            ab 50
+            ac 50
+            cb 25
+
+        We agree that 'a' appears 100 times, 'b' 75 times, and 'c' 75 times too. This gives the distributions
+
+            left = {
+                a: {BOUNDARY: 100}
+                b: {a: 50, c: 25}
+                c: {a: 50, BOUNDARY: 25}
+            }
+            right = {
+                a: {b: 50, c: 50}
+                b: {BOUNDARY: 75}
+                c: {b: 25, BOUNDARY: 50}
+            }
+
+        Note how per type, left and right have equal sums, and that the sums across the entire left is the same as the sum
+        over the entire right distribution. But now if we take out c:
+
+            left = {
+                a: {BOUNDARY: 100}
+                b: {a: 50}
+            }
+            right = {
+                a: {b: 50}
+                b: {BOUNDARY: 75}
+            }
+
+        Neither of the invariants now holds. According to the right distribution, 'a' only appeared 50 times, and vice
+        versa for 'b'. These are completely different frequency distributions, so computing a non-directional distribution
+        is dangerous in this case.
+        """
+        assert self.left_of.unigramFrequencyDistribution() == self.right_of.unigramFrequencyDistribution(), "This computation cannot be performed on a filtered accessor distribution."
+
+    # Note: All the properties below can also be obtained from running unigram analysers rather than a bigram analyser.
+
+    def corpusCharacterCount(self) -> int:
+        self._assertDistributionalConsistency()
+        inverse_vocab = invertdict(self.vocab, noninjective_ok=False)
+        return sum(len(inverse_vocab[id])*count for id, count in self.right_of.unigramFrequencyDistribution().items())
+
+    def corpusTokenCount(self) -> int:
+        self._assertDistributionalConsistency()
+        return self.right_of.unigramFrequencyDistribution().total()
+
+    def renyiEfficiency(self, alpha: float=DEFAULT_RENYI_ALPHA) -> float:
+        self._assertDistributionalConsistency()
+        frequencies = self.right_of.unigramFrequencyDistribution().values()
+        return renyiEfficiency(frequencies, alpha=alpha, domain_size=len(self.vocab), sample_size=sum(frequencies))[1]  # (This function allows unnormalised input.)
+
+
+########################################################################################################################
 
 
 @dataclass
@@ -190,6 +251,8 @@ class MetaSummaries:
     iqr_weighted:    TypeAccessorSummary = field(default_factory=TypeAccessorSummary)
 
 
+AGGREGATE_PREFIX = "$$$ "
+
 @dataclass
 class DistributionAccessorSummaries:
     per_type: Dict[str, TypeAccessorSummary]
@@ -205,7 +268,7 @@ class DistributionAccessorSummaries:
             writer = csv.DictWriter(csvfile, fieldnames=["type"] + list(TypeAccessorSummary().__dict__.keys()))
             writer.writeheader()
             for f, summary in self.aggregates.__dict__.items():
-                writer.writerow({"type": "$$$ " + f} | summary.__dict__)
+                writer.writerow({"type": AGGREGATE_PREFIX + f} | summary.__dict__)
             for t, summary in self.per_type.items():
                 writer.writerow({"type": t} | summary.__dict__)
         return file
@@ -220,12 +283,14 @@ class AllAccessorSummaries:
 
     corpus_name: str
 
-    def save(self):
+    def save(self) -> Tuple[Path,Path,Path,Path]:
         timestamp = datetimeDashed()
-        self.left .save(self.corpus_name + "_" + timestamp + "_" + "left")
-        self.right.save(self.corpus_name + "_" + timestamp + "_" + "right")
-        self.both .save(self.corpus_name + "_" + timestamp + "_" + "both")
-        self.min  .save(self.corpus_name + "_" + timestamp + "_" + "min")
+        return (
+            self.left .save(f"{self.corpus_name}_summary_{timestamp}_left"),
+            self.right.save(f"{self.corpus_name}_summary_{timestamp}_right"),
+            self.both .save(f"{self.corpus_name}_summary_{timestamp}_both"),
+            self.min  .save(f"{self.corpus_name}_summary_{timestamp}_min")
+        )
 
 
 def getAccessorsFromCorpus(
@@ -299,7 +364,7 @@ def getAccessorsFromCorpus(
 def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:
     # Extract some information from distributions
     vocab, left_of, right_of = accessors.vocab, accessors.left_of, accessors.right_of
-    default_subcounter_size = at(0, left_of.accessors.values())._max_size
+    default_subcounter_size = first(left_of.accessors.values())._max_size
 
     # Step 1: Initialise empty summaries
     summaries = AllAccessorSummaries(
@@ -341,9 +406,9 @@ def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Op
     # For each distribution we have (left/right/both/minimum), generate the per-type statistics.
     # You should pretend that all the code between here and step 3 is distribution-agnostic and run four times. That is:
     # ```
-    #     for distribution in (left,right,both,min): [[[ for type in vocab: fill(distribution[type]) ]]]
+    #     for distribution in (left,right,both,min): <<< for type in vocab: fill(distribution[type]) >>>
     # ```
-    # where [[[ ]]] is distribution-agnostic code. In practice, to save some double work, I have implemented it as
+    # where <<< >>> is distribution-agnostic code. In practice, to save some double work, I have implemented it as
     # ```
     #     for type in vocab: for distribution in (left,right,both,min): fill(distribution[type])
     # ```
@@ -361,10 +426,7 @@ def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Op
         fillTypeSummary(summaries.left .per_type[t], left_accessors,                   left_ends,              predefined_vocab_size or vocabulary_size_leftward)
         fillTypeSummary(summaries.right.per_type[t], right_accessors,                  right_ends,             predefined_vocab_size or vocabulary_size_rightward)
         fillTypeSummary(summaries.both .per_type[t], left_accessors + right_accessors, left_ends + right_ends, predefined_vocab_size or vocabulary_size_both)
-        if summaries.left.per_type[t].av < summaries.right.per_type[t].av:
-            summaries.min.per_type[t] = summaries.left.per_type[t]
-        else:
-            summaries.min.per_type[t] = summaries.right.per_type[t]
+        summaries.min.per_type[t] = summaries.left.per_type[t] if summaries.left.per_type[t].av < summaries.right.per_type[t].av else summaries.right.per_type[t]
 
     # Step 3: Compute aggregates of type statistics across the vocabulary
     def fillAggregates(distribution_summaries: DistributionAccessorSummaries):
@@ -380,8 +442,8 @@ def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Op
                 """We reduce all fields of the summaries with the same operator."""
                 return TypeAccessorSummary(
                     **{
-                        field_name: self.reduceField([getattr(s, field_name) for s in type_summaries], type_weights)
-                        for field_name in TypeAccessorSummary().__dict__.keys()
+                        field.name: self.reduceField([getattr(s, field.name) for s in type_summaries], type_weights)
+                        for field in fields(TypeAccessorSummary)
                     }
                 )
 
@@ -443,17 +505,3 @@ def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Op
     fillAggregates(summaries.min)
 
     return summaries
-
-
-def weighted_quantiles(values: List[float], weights: List[float], p: Union[Iterable[float], float] = 0.5):
-    """
-    Given a weighted sample, computes the quantiles at the given .
-    Quantile
-
-    Taken from https://stackoverflow.com/a/73905572/9352077
-    """
-    values  = np.array(values)
-    weights = np.array(weights)
-    sorted_indices    = np.argsort(values)  # This order exists regardless of weight.
-    cumsums_and_total = np.cumsum(weights[sorted_indices])  # This is essentially the unnormalised CDF.
-    return values[sorted_indices[np.searchsorted(cumsums_and_total, v=np.array(p) * cumsums_and_total[-1], side="left")]]  # np.searchsorted computes the index where insertion sort would put each element given to it.

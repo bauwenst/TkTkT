@@ -189,6 +189,21 @@ def at(index: int, iterable: Iterable[T]) -> T:
         raise IndexError(f"Index {index} out of range of iterable.")
 
 
+def first(iterable: Iterable[T]) -> T:
+    for thing in iterable:
+        return thing  # Immediately exits the loop and the function.
+    raise IndexError("There is no first item in an empty iterable.")
+
+
+def last(iterable: Iterable[T]) -> T:
+    last_thing = _NONE
+    for thing in iterable:
+        last_thing = thing
+    if isinstance(last_thing, _NonePlaceholder):
+        raise IndexError("There is no last item in an empty iterable.")
+    return last_thing
+
+
 def fst(t: Tuple[T,T2]) -> T:
     return t[0]
 

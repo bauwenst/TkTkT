@@ -2,11 +2,24 @@
 Batch computations on fixed-length arrays.
 """
 from abc import ABC, abstractmethod
+from typing import Sequence, Union
 import numpy as np
 
 from .functions import *
 
 __all__ = ["BatchNormalisation", "IdentityBatchNormalisation", "LinearNormalisation", "SoftmaxNormalisation", "PowerNormalisation"]
+
+
+def weighted_quantiles(values: Sequence[float], weights: Sequence[float], p: Union[Sequence[float], float] = 0.5):
+    """
+    Given a weighted sample, computes the quantiles at the given probability/probabilities (in batch).
+    Taken from https://stackoverflow.com/a/73905572/9352077
+    """
+    values  = np.array(values)
+    weights = np.array(weights)
+    sorted_indices    = np.argsort(values)  # This order exists regardless of weight.
+    cumsums_and_total = np.cumsum(weights[sorted_indices])  # This is essentially the unnormalised CDF.
+    return values[sorted_indices[np.searchsorted(cumsums_and_total, v=np.array(p)*cumsums_and_total[-1], side="left")]]  # np.searchsorted computes the index where insertion sort would put each element given to it.
 
 
 class BatchNormalisation(ABC):

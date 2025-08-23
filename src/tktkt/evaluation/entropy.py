@@ -150,11 +150,12 @@ def getTokenDistributionFromSentences_and_analyse(
     We cannot use a ChainedCounter like we otherwise would to average something across counters produced for fixed-size
     windows. The reason is that in the BEST case, each subcounter will have only 1 entry with count window_size, and the
     amount of subcounters you will have is corpus_size/window_size. Say you have 1 billion tokens (5 GiB of English data,
-    say), then a window size of 500 tokens will produce 2 million subcounters. That's very steep scaling.
+    say), then a window size of 500 tokens will produce 2 million subcounters. In other words: you need to collapse
+    windows into a few existing variables (e.g. a sum, a count, ...) immediately, rather than keeping them around.
 
-    :param flush_window_every_example: If False, examples in the corpus will be treated as one large document and windows
-                                       can spill from one into the other. The TTR inside a window will be higher if it
-                                       contains tokens from more than one document, especially if they are on different topics.
+    :param mattr_flush_every_example: If False, examples in the corpus will be treated as one large document and windows
+                                      can spill from one into the other. The TTR inside a window will be higher if it
+                                      contains tokens from more than one document, especially if they are on different topics.
     """
     assert 0 < mattr_stride <= mattr_window_size
     n_TTR   = 0
@@ -253,6 +254,9 @@ def getTokenDistributionFromSentences_and_analyse(
 
         corpus_name=corpus.name
     )
+
+
+########################################################################################################################
 
 
 def bitKeyFromTokens(tokens: List[str]) -> int:
