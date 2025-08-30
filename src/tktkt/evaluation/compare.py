@@ -11,6 +11,7 @@ from ..preparation.instances import IdentityPreprocessor
 from ..util.iterables import streamProgress
 from ..util.printing import warn
 from ..util.aggregates import MicroMacro
+from ..util.types import Tokens
 
 R = TypeVar("R")  # Result from computing the metric.
 
@@ -82,7 +83,7 @@ class TokenJaccard(ComparisonMetric[Tuple[float, float]]):
         return self._stats.compute()
 
 
-def jaccard(tokens1: List[str], tokens2: List[str]) -> Tuple[float,int,int]:
+def jaccard(tokens1: Tokens, tokens2: Tokens) -> Tuple[float,int,int]:
     """
     Generalised Jaccard similarity, which is based on multi-sets.
     https://en.wikipedia.org/wiki/Jaccard_index#Weighted_Jaccard_similarity_and_distance

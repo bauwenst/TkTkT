@@ -1,4 +1,4 @@
-from typing import List, Iterable
+from typing import List, Iterable, Set
 import numpy as np
 
 from .iterables import intercalate, cumsum
@@ -23,6 +23,13 @@ def findLongestCommonPrefix(strings: Iterable[str]) -> str:
                 break
 
     return ref or ""
+
+
+def getAlphabet(strings: Iterable[str]) -> Set[str]:
+    alphabet = set()
+    for s in strings:
+        alphabet.update(s)
+    return alphabet
 
 
 def indent(level: int, multiline_string: str, tab: str=" "*4) -> str:

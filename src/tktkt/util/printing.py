@@ -175,16 +175,21 @@ class PrintTable:
     Goal: display large lists of rows like  "thing1 | thing2 | thing3"  but making sure that
     the vertical bars line up over time.
 
-    Ayyy, worked first time.
+    Will not work when the characters in the table have mixed widths (e.g. English and Japanese words).
     """
 
-    def __init__(self, default_column_size: int=0, sep="|", end="", buffer_size=1):
+    def __init__(self, default_column_size: int=0, sep="|", end="", full_width_space: bool=False, buffer_size=1):
+        """
+        :param full_width_space: Whether to use the spacing for wider characters.
+        """
         self.default = default_column_size
         self.sep = sep
         self.end = end
+        self.spacer = "　" if full_width_space else " "
         self.columns = []
+
         self.buffer = []
-        self.bs = buffer_size
+        self.bs     = buffer_size
 
     def print(self, *strings):
         while len(self.columns) < len(strings):
@@ -193,13 +198,13 @@ class PrintTable:
         for i,s in enumerate(strings):
             s = str(s)
             if i != 0:
-                print(f" {self.sep} ", end="")
+                print(f"{self.spacer}{self.sep}{self.spacer}", end="")
             print(s, end="")
 
             if len(s) > self.columns[i]:
                 self.columns[i] = len(s)
 
-            print(" "*(self.columns[i] - len(s)), end="")
+            print(self.spacer*(self.columns[i] - len(s)), end="")
         print(self.end, end="")
         print()
 

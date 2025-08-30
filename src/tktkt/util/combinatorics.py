@@ -12,18 +12,6 @@ from operator import mul
 
 from .iterables import keepFirst, T
 
-# There are four canonical ways to represent the segmentation of a known string:
-#     - A list of token strings;
-#     - A list of their lengths;
-#     - A list of their beginning indices;
-#     - A list where each element is an inter-character position, where True is a split and False is not.
-#       This can also be represented compactly by reading it as a binary number and storing the decimal representation
-#       (e.g. [True,False,False,False,True,False,True] is mask 69 for 8-character strings).
-Tokens = Sequence[str]
-TokenLengths = Sequence[int]
-TokenStartIndices = Sequence[int]
-SplitMask = Sequence[bool]
-
 
 def permutations_no_repeat(sequence: Sequence[T]) -> Generator[Sequence[T],None,None]:
     """

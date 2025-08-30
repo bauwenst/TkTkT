@@ -4,6 +4,7 @@ from typing import List, Iterable
 
 from .vocabulariser import Vocab
 from .preparation import Preprocessor
+from ..util.types import Tokens
 
 
 class Tokeniser(ABC):
@@ -12,10 +13,10 @@ class Tokeniser(ABC):
         self.preprocessor = preprocessor
 
     @abstractmethod
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         pass
 
-    def prepareAndTokenise(self, text: str) -> List[str]:
+    def prepareAndTokenise(self, text: str) -> Tokens:
         tokens = []
         for pretoken in self.preprocessor.do(text):
             tokens.extend(self.tokenise(pretoken))
