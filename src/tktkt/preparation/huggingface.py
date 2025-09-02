@@ -122,7 +122,8 @@ def detectBoundaryMarkerFromTokeniser(hf_tokeniser: PreTrainedTokenizerBase) -> 
     Assumes a couple of things about the marker:
         - It will always appear attached to another letter, even though we assume it starts out as "detached" during tokenisation.
         - It only appears once for very long strings, i.e. it is not a continuation symbol. This isn't an issue for BERT-style
-          tokenisers because there, the tokeniser itself actually adds the continuation symbol.
+          tokenisers (with ## continuation) because such tokenisers add the continuation symbol during tokenisation, rather
+          than expecting the pretoken to already carry a marker.
     """
     CHAR = "a"
     N = 50

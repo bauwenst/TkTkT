@@ -335,6 +335,34 @@ class EnglishApostrophes(Pretokeniser):
         return pretokens
 
 
+class JapaneseWords(Pretokeniser):
+
+    def __init__(self):
+        from fugashi import GenericTagger as MecabWrapper
+        import ipadic  # IPAdic as dictionary makes MeCab behave like a word tokeniser. UniDic would make it behave like a morphological analyser.
+        self.backend = MecabWrapper(ipadic.MECAB_ARGS + ' -Owakati')
+
+    def split(self, text: str) -> List[str]:
+        nodes = self.backend.parseToNodeList(text)  # Produces a list of elements which have type  from fugashi import Node
+        return [node.surface for node in nodes]
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return pretokens
+
+
+class ThaiWords(Pretokeniser):
+
+    def __init__(self):
+        from pythainlp.tokenize import Tokenizer as ThaiWordTokenizer
+        self.backend = ThaiWordTokenizer(engine="newmm", keep_whitespace=False, join_broken_num=True)
+
+    def split(self, text: str) -> List[str]:
+        return self.backend.word_tokenize(text)
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return pretokens
+
+
 class AddWordBoundary(Pretokeniser):
     """
     Does not split text, but only adds a space marker, assuming the text in its entirety needs only one.
@@ -386,6 +414,9 @@ class SplitWithBoundaryClassifier(Pretokeniser):
     def split(self, text: str) -> List[str]:
         mask = np.exp(self._classifier.getPointLogProbabilities(text)) >= self._threshold
         return maskToTokens(text, mask[:-1])
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return pretokens
 
 
 class MapperAsPretokeniser(Pretokeniser, _PreprocessorComponentSequence):

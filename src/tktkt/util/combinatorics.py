@@ -11,6 +11,7 @@ from math import factorial, comb
 from operator import mul
 
 from .iterables import keepFirst, T
+from .types import TokenLengths
 
 
 def permutations_no_repeat(sequence: Sequence[T]) -> Generator[Sequence[T],None,None]:
