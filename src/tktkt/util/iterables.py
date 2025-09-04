@@ -8,10 +8,11 @@ Also -- but this is not part of Python's typing -- iterators are consumable only
 The outputs of all the functions below are explicitly iterables with __next__ method that are consumable only once,
 hence why the output is marked as an Iterator.
 """
-from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional, Iterator, Tuple
+from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional, Iterator, Tuple, Set, Dict
 from pathlib import Path
 from tqdm.auto import tqdm
 import numpy.random as npr
+from functools import reduce
 
 from .types import Number, T, T2, CT
 from .printing import warn
@@ -280,6 +281,14 @@ def allEqual(iterable: Iterable[T]) -> bool:
             return False
 
     return True
+
+
+def sunion(iterable: Iterable[Set[T]]) -> Set[T]:
+    return reduce(set.__or__, iterable, set())
+
+
+def dunion(iterable: Iterable[Dict[T,T2]]) -> Dict[T,T2]:
+    return reduce(dict.__or__, iterable, dict())
 
 
 def areEquidistant(iterable: Iterable[Number], distance: Number) -> bool:

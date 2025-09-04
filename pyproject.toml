@@ -26,9 +26,9 @@ dependencies = [
     "datasets",
     "evaluate",
 
-    "sentencepiece",
-    "bpeasy",
     "regex",
+    "bpeasy",
+    "sentencepiece",
     "nlpaug",
     "fugashi",
     "ipadic",

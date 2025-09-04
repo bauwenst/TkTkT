@@ -12,7 +12,7 @@ Quick navigation:
 
 ## Features
 ### Supported tokenisers
-All subword tokenisers are defined under `tktkt.models`. Many of these can be instantiated without much background knowledge using the builders in `tktkt.factories`.
+All subword tokenisers are defined under `tktkt.models`. Many of these can be instantiated without much background knowledge using the factory classes in `tktkt.factories`.
 Also, **any HuggingFace tokeniser** can be wrapped into a TkTkT tokeniser, and **any TkTkT tokeniser** can be wrapped into a HuggingFace tokeniser.
 
 Currently, the package implements:
@@ -35,13 +35,29 @@ Currently, the package implements:
   - Trainer
 - Character/byte **N-grams**.
 - **SaGe** ([Yehezkel & Pinter, 2023](https://aclanthology.org/2023.eacl-main.45/)) vocabularisation.
-- **Randomised** segmentation from a given subword vocabulary (paper coming soon).
+- **GRaMPa** ([Bauwens et al., 2025](https://aclanthology.org/2025.acl-long.1180/)): randomised segmentation constrained by a vocabulary.
 - **Lempel-Ziv-Welch (LZW)** as a tokeniser ([Zouhar et al., 2023](https://aclanthology.org/2023.acl-long.284/)).
 
 Currently work in progress:
 - Morfessor family
+- PickyBPE
+- ScaffoldBPE
+- VOLT
 
-TkTkT also has classes to alternate between tokenisers across pretokens.
+### Multiplexing
+TkTkT is the only package that supports **multiplexing** multiple tokenisers into one big tokeniser that alternates 
+between each of them. There are multiplexers that do this deterministically (e.g. choosing the tokeniser that compresses
+the input the most) or stochastically (e.g. choosing among a set of tokenisers uniformly).
+
+### Evaluation metrics
+TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
+- **Fertility** statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
+- **Morphological** boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
+  position in a word.
+- **Information-theoretic** measures, including *Rényi entropy* and *Rényi efficiency*.
+- **Window-based** metrics like MATTR.
+- **Bigram metrics** to quantify the richness of token contexts, like *accessor variety*.
+- **Comparisons** between two tokenisers: how much they tokenise words exactly the same, and how much their split points overlap.
 
 ### Preprocessing
 TkTkT has a rich set of text mappings and pretokenisers that preprocess text before it is tokenised, including
@@ -68,14 +84,7 @@ class ExamplePretokeniser(PretokeniserSequence):
         ])
 ```
 
-### Evaluation metrics
-TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
-- *Fertility* statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
-- *Morphological* boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
-  position in a word.
-- Entropy-based measures, including *Rényi efficiency*.
-- Richness of token contexts with *accessor variety*.
-- *Comparison* between two tokenisers: how much they tokenise words exactly the same, and how much their split points overlap.
+TkTkT also comes with language-specific pretokenisation like Japanese word segmentation and Thai word segmentation.
 
 ### Visualisers
 The following tokenisation procedures can be visualised:
@@ -281,12 +290,12 @@ trainer = KudoPieceVocabulariser(
 model_path = trainer.vocabulariseFromStringIterable(sentence_corpus)
 ```
 Once the final model is stored to disk, we can load it as an object (and give it a basic preprocessor).
-Note that all models are stored under `tktkt.files.paths.DataPaths.pathToModels()`.
+Note that all models are stored under `tktkt.paths.TkTkTPaths.pathToModels()`.
 ```python
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
 
 # # If you need to recover the path:
-# from tktkt.files.paths import TkTkTPaths
+# from tktkt.paths import TkTkTPaths
 # model_path = TkTkTPaths.pathToModels() / "kudopiece" / "tutorial_xxxx-yy-zz_aa-bb-cc.model"
 
 tokeniser = KudoPieceTokeniser(preprocessor=preprocessor, model_file=model_path)

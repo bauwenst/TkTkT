@@ -4,6 +4,8 @@ from collections import OrderedDict, Counter
 from pathlib import Path
 
 import json
+import dacite
+import dataclasses
 import numpy as np
 import numpy.random as npr
 
@@ -94,16 +96,37 @@ def normaliseCounter(counts: Union[Counter[K], Dict[K,Union[int,float]]]) -> Dic
     return {t: c/total for t,c in counts.items()}
 
 
-def saveToJson(data: dict, path: Path, do_indent: bool=True) -> Path:
+def dictToJson(data: dict, path_to_store: Path, do_indent: bool=True) -> Path:
     # Imputations
-    if path.is_dir():
-        path = path / datetimeDashed()
-    path = path.with_suffix(".json")
+    if path_to_store.is_dir():
+        path_to_store = path_to_store / datetimeDashed()
+    path_to_store = path_to_store.with_suffix(".json")
 
     # Store
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4 if do_indent else None)
-    return path
+    with open(path_to_store, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4 if do_indent else None, ensure_ascii=False)
+    return path_to_store
+
+def dataclassToJson(dataclass_instance, path_to_store: Path, do_indent: bool=True) -> Path:
+    return dictToJson(dataclasses.asdict(dataclass_instance), path_to_store, do_indent)
+
+
+def jsonToDict(path_to_load: Path) -> dict:
+    with open(path_to_load.with_suffix(".json"), "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def jsonToDataclass(dataclass_type: type[V], path_to_load: Path) -> V:
+    return dacite.from_dict(dataclass_type, jsonToDict(path_to_load))
+
+
+def optionalDataclassToDict(dataclass_or_dict) -> dict:
+    if dataclasses.is_dataclass(dataclass_or_dict):
+        return dataclasses.asdict(dataclass_or_dict)
+    elif isinstance(dataclass_or_dict, dict):
+        return dataclass_or_dict
+    else:
+        raise TypeError(f"Unsupported type: {type(dataclass_or_dict)}")
 
 
 class ChainedCounter(Counter[K], Generic[K]):
