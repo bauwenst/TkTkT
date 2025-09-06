@@ -15,15 +15,29 @@ from typing import List, TypeVar, Generic, Iterator, Any, Callable, Tuple, Union
 from pathlib import Path
 
 import traceback
+import colorama
 
 from ..interfaces import Preprocessor
 from ..interfaces.tokeniser import Tokeniser
 from ..util.dicts import optionalDataclassToDict
 from ..util.iterables import dunion
 from ..util.types import NamedIterable, Tokens
+from ..util.strings import indent
 
 Received = TypeVar("Received")
 Sent     = TypeVar("Sent")
+
+
+def formatException(exception_string: str) -> str:
+    return indent(1, f"{colorama.Fore.YELLOW}{exception_string}{colorama.Fore.RESET}")
+
+
+def formatEarlyExit(msg: str) -> str:
+    return indent(1, f"{colorama.Fore.CYAN}{msg}{colorama.Fore.RESET}")
+
+
+def formatExit(msg: str) -> str:
+    return indent(1, f"{colorama.Fore.GREEN}{msg}{colorama.Fore.RESET}")
 
 
 class ObserverEarlyExit(Exception):
@@ -141,10 +155,39 @@ class PrintIfContainsToken(Observer[Tokens]):
         pass
 
 
-class Observable(Generic[Sent]):
+class ObservableMeta(ABC, Generic[Sent]):
     """
     Knows observers and sends data to them.
-    By default, has no abstract methods to implement; .
+    """
+    @abstractmethod
+    def _initialiseObservers(self, global_run_identifier: str):
+        pass
+
+    @abstractmethod
+    def _send(self, sample: Sent, weight: float):
+        pass
+
+    @abstractmethod
+    def _finishObservers(self):
+        pass
+
+    @abstractmethod
+    def anyObserversAlive(self) -> bool:
+        pass
+
+    @abstractmethod
+    def observerStatusReport(self) -> str:
+        """
+        Formatted string that contains, at least, one line for each of the observers associated with this observable,
+        with some information about its status.
+        """
+        pass
+
+
+class Observable(ObservableMeta[Sent]):
+    """
+    Simplest implementation of the ObservableMeta's methods using a single list of observables, which get sent
+    samples of the type given by the type parameter.
     """
 
     def __init__(self, observers: List[Observer[Sent]]):
@@ -165,11 +208,11 @@ class Observable(Generic[Sent]):
             try:
                 callable(observer)
             except ObserverEarlyExit:
-                print("Observer finished early and moved to the done queue:", observer.__class__.__name__)
+                print(formatEarlyExit(f"Observer finished early: {observer.__class__.__name__}"))
                 done.append(observer)
             except:
-                print("Observer failed and moved to the dead queue:", observer.__class__.__name__)
-                print(traceback.format_exc())
+                print(formatException(f"Observer failed: {observer.__class__.__name__}"))
+                print(formatException(traceback.format_exc()))
                 dead.append(observer)
 
         # Triage observers if they had exceptions. (This is not part of the main loop to prevent having to copy self.observers for each sample to be able to modify self.observers.)
@@ -197,8 +240,32 @@ class Observable(Generic[Sent]):
             except ObserverEarlyExit:
                 pass
             except:
-                print("Observer failed while finishing:", observer.__class__.__name__)
-                print(traceback.format_exc())
+                print(f"Observer failed while finishing: {observer.__class__.__name__}")
+                print(formatException(traceback.format_exc()))
+
+    def anyObserversAlive(self) -> bool:
+        return len(self.observers) > 0
+
+    def observerStatusReport(self) -> str:
+        def getObserverReport(observer: Observer) -> str:
+            if observer in self.observers:
+                prefix = "✅"
+            elif observer in self.done:
+                if isinstance(observer, ObservableMeta) and not observer.anyObserversAlive():
+                    prefix = "💤"
+                else:
+                    prefix = "💾"
+            elif observer in self.dead:
+                prefix = "❌"
+            else:
+                raise RuntimeError()
+
+            report = f"{prefix} {observer.__class__.__name__}"
+            if isinstance(observer, ObservableMeta):
+                report += "\n" + indent(1, observer.observerStatusReport())
+            return report
+
+        return "\n".join(map(getObserverReport, self.observers + self.done + self.dead))
 
 
 class ObservableRoot(Observable[Sent]):
@@ -231,6 +298,9 @@ class ObservableRoot(Observable[Sent]):
 
         # Finish
         self._finishObservers()
+
+        print(formatExit("ObservableRoot finished running."))
+        print(formatExit(self.observerStatusReport()))
 
 
 class ObservableIterable(ObservableRoot[Sent]):
@@ -268,11 +338,14 @@ class ObservableObserver(Observer[Received], Observable[Sent]):
         pass
 
     def _initialise(self, global_run_identifier: str):
-        self._initialiseObservers(global_run_identifier)  # First initialise the observers, since they can't see this object anyway.
-        self._initialiseAsObserver(global_run_identifier)
+        # When you have dependent observers, it is more important to check if THEY can initialise than to check if YOU can.
+        # If all your observers signal to you that you don't need to do any work, you should not even initialise.
+        self._initialiseObservers(global_run_identifier)  # Note also that since the observers can't see this object, they cannot crash due to lack of initialisation here.
+        self._initialiseAsObserver(global_run_identifier)  # This line will only run if there are observers left.
 
     def _finish(self):
-        self._finishAsObserver()  # Object as an observer. First finish yourself, since you may still want to send a sample to your observers.
+        if self.anyObserversAlive():  # You should ONLY finish if you ran to completion, i.e. if they stopped sending you samples because there were no more samples. You can figure this out by checking if you have alive observers (which is only a subset of the observers that need to get a finishing signal).
+            self._finishAsObserver()  # First finish yourself, since you may still want to send a sample to your observers.
         self._finishObservers()
 
 
@@ -321,7 +394,7 @@ class ObservableFunction(ImmediatelyObservableObserver[Received,Sent]):
 
 
 _Received2 = TypeVar("_Received2")
-class SplitObserver(Observer[Tuple[Received,_Received2]]):
+class SplitObserver(Observer[Tuple[Received,_Received2]], ObservableMeta[Tuple[Received,_Received2]]):
     """
     Really, this is an ObservableObserver (it is an observer because it can be sent stuff, and it is an observable because
     it can send stuff), but we can't extend the traditional Observable interface because it expects only one list of observers.
@@ -331,18 +404,57 @@ class SplitObserver(Observer[Tuple[Received,_Received2]]):
         self._observable1 = Observable(observers1)  # We use an observable (i.e. something without a ._receive() method) because we merely need to distribute across the observers, without extra behaviour. Basically equivalent to ImmediatelyObservableObserver with ._transit() being the identity function.
         self._observable2 = Observable(observers2)
 
+    # Observable methods (i.e. methods as something that has observers)
+
+    def _logicalAndExceptions(self, call_observers1: Callable[[],None], call_observers2: Callable[[],None]):
+        """
+        Only throws an exception if both functions throw an exception.
+        """
+        try:  # Try the first function.
+            call_observers1()
+        except ObserverEarlyExit:  # If first function fails, do not protect the second function.
+            call_observers2()
+        else:  # If first function succeeds successfully, always protect the second function.
+            try:
+                call_observers2()
+            except ObserverEarlyExit:
+                pass
+
+    def _initialiseObservers(self, global_run_identifier: str):
+        self._logicalAndExceptions(
+            lambda: self._observable1._initialiseObservers(global_run_identifier),
+            lambda: self._observable2._initialiseObservers(global_run_identifier)
+        )
+
+    def _send(self, sample: Tuple[Received,_Received2], weight: float):
+        left, right = sample
+        self._logicalAndExceptions(
+            lambda: self._observable1._send(left,  weight),  # ._receive() loop across the observers.
+            lambda: self._observable2._send(right, weight)
+        )
+
+    def _finishObservers(self):
+        self._logicalAndExceptions(
+            lambda: self._observable1._finishObservers(),
+            lambda: self._observable2._finishObservers()
+        )
+
+    def anyObserversAlive(self) -> bool:
+        return self._observable1.anyObserversAlive() or self._observable2.anyObserversAlive()
+
+    def observerStatusReport(self) -> str:
+        return self._observable1.observerStatusReport() + "\n" + self._observable2.observerStatusReport()
+
+    # Observer methods
+
     def _initialise(self, global_run_identifier: str):
-        self._observable1._initialiseObservers(global_run_identifier)
-        self._observable2._initialiseObservers(global_run_identifier)
+        self._initialiseObservers(global_run_identifier)
 
     def _receive(self, sample: Tuple[Received,_Received2], weight: float):
-        left, right = sample
-        self._observable1._send(left,  weight)  # ._receive() loop across the observers.
-        self._observable2._send(right, weight)
+        self._send(sample, weight)
 
     def _finish(self):
-        self._observable1._finishObservers()
-        self._observable2._finishObservers()
+        self._finishObservers()
 
 
 class FinallyObservableObserver(ObservableObserver[Received, Sent]):
@@ -409,12 +521,15 @@ class FinallyObservableObserver(ObservableObserver[Received, Sent]):
         # Only after THIS will its own observers be finished.
 
 
+########################################################################################################################
+
+
 def evaluateTokeniser(corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
     """
     Functional shorthand for the object-oriented Observable/Observer approach in case where you want to use a corpus
     and compute metrics over the tokeniser's token outputs.
     """
-    return ObservableIterable(
+    ObservableIterable(
         iterable=corpus,
         observers=[
             ObservableTokeniser(
@@ -422,11 +537,11 @@ def evaluateTokeniser(corpus: NamedIterable[str], tokeniser: Tokeniser, token_co
                 observers=token_consumers
             )
         ]
-    )
+    ).run()
 
 
 def evaluateTokeniserOnWords(corpus: NamedIterable[str], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
-    return ObservableIterable(
+    ObservableIterable(
         iterable=corpus,
         observers=[
             ObservablePreprocessor(
@@ -439,4 +554,4 @@ def evaluateTokeniserOnWords(corpus: NamedIterable[str], word_preprocessor: Prep
                 ]
             )
         ]
-    )
+    ).run()
