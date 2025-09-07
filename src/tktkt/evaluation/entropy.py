@@ -2,6 +2,7 @@
 Evaluations that generate distributions, either across the vocabulary or the domain of segmentations.
 """
 from typing import Iterable, Tuple, Dict, Optional, List, TypeVar, Union
+from pathlib import Path
 from dataclasses import dataclass
 from collections import Counter
 
@@ -10,10 +11,11 @@ import numpy as np
 from scipy.stats import entropy as _scipy_entropy
 
 from ..interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
+from ..paths import TkTkTPaths
 from ..util.iterables import streamProgress
 from ..util.combinatorics import getBitKey
-from ..util.dicts import argmax, normaliseCounter
-from ..util.types import NamedIterable
+from ..util.dicts import argmax, normaliseCounter, jsonToDict, dictToJson, jsonToDataclass, dataclassToJson
+from ..util.types import NamedIterable, Tokens
 
 SHANNON_RENYI_ALPHA = 1.0
 DEFAULT_RENYI_ALPHA = 2.5
@@ -121,7 +123,7 @@ class TokenDiversity:
         """Type-token ratio."""
         return self.V/self.ctc
 
-    mattr: int
+    mattr: float
     mattr_window_size: int
     mattr_stride: int
 
@@ -130,22 +132,101 @@ class TokenDiversity:
     corpus_name: str
 
 
-def getTokenDistributionFromSentences_and_analyse(
-        tokeniser: TokeniserWithFiniteTypeDomain, corpus: NamedIterable[str],
-        # RE arguments
-        renyi_alpha: float=DEFAULT_RENYI_ALPHA, renyi_efficiency_with_effective_vocab: bool=True,
-        # MATTR arguments
-        mattr_window_size: int=2000, mattr_stride: int=1000, mattr_flush_every_example: bool=False
-    ) -> Tuple[Counter[str], TokenDiversity]:
+from .observing import Observer, ObservableTokeniser, FinallyObservableObserver, ImmediatelyObservableObserver, PrintingObserver
+
+
+class TokenUnigramDistribution(FinallyObservableObserver[Tokens,Counter[str]]):
     """
     Computes, for each type that a tokeniser can produce, the fraction of produced tokens that belong to that type,
     a.k.a. the token unigram distribution.
     (A much more elaborate and caching version of this function can be found in the bpe_hell.eda.computation package.)
+    """
 
-    While doing so, it also computes several summary statistics about this distribution, among which the Rényi efficiency
-    of the vocabulary and a generalised version of the moving-average type-token ratio (MATTR).
+    def __init__(self, ensured_vocabulary: Iterable[str]=None, observers: List[Observer[Counter[str]]]=None):
+        super().__init__(observers=observers)
+        self.frequencies = Counter()
+        if ensured_vocabulary is not None:
+            for t in ensured_vocabulary:
+                self.frequencies[t] += 0
+
+    def _initialiseAsObserver(self, identifier: str):
+        self.frequencies.clear()
+
+    def _receive(self, sample: Tokens, weight: float):
+        for token in sample:
+            self.frequencies[token] += weight
+
+    def _compute(self):
+        return self.frequencies
+
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
+        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["distribution"]) / (unambiguous_cache_identifier + ".json")
+
+    def _cacheLoad(self, cache_path: Path) -> Counter[str]:
+        return Counter(jsonToDict(cache_path))
+
+    def _cacheStore(self, cache_path: Path, result: Counter[str]):
+        dictToJson(dict(result), cache_path, do_indent=False)
+
+
+@dataclass
+class ReturnTTR:
+    V: int
+    CTC: int
+
+
+class TTR(ImmediatelyObservableObserver[Counter[str],ReturnTTR]):
+    def _transit(self, sample: Counter[str], weight: float) -> ReturnTTR:
+        assert all(map(lambda x: x >= 0, sample.values()))
+        return ReturnTTR(
+            V=sum(map(lambda x: x != 0, sample.values())),
+            CTC=sample.total()
+        )
+
+
+@dataclass
+class ReturnRenyiEntropy:
+    alpha: float
+    entropy: float
+    efficiency: float
+
+
+class RenyiEntropy(ImmediatelyObservableObserver[Counter[str],ReturnRenyiEntropy]):
+
+    def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: List[Observer[ReturnRenyiEntropy]]=None):
+        super().__init__(observers)
+        self.alpha = alpha
+        self.theoretical_vocab_size = vocab_size_in_denominator
+
+    def _transit(self, sample: Counter[str], weight: float) -> ReturnRenyiEntropy:
+        n_nonzero_counts = sum(map(lambda x: x != 0, sample.values()))
+        return ReturnRenyiEntropy(
+            alpha=self.alpha,
+            entropy=renyiEntropy(sample.values(), alpha=self.alpha),
+            efficiency=renyiEfficiency(
+                sample.values(), alpha=self.alpha,
+                domain_size=self.theoretical_vocab_size or n_nonzero_counts,
+                sample_size=sample.total()
+            )[1]
+        )
+
+
+@dataclass
+class ReturnMATTR:
+    mattr: float
+    window_size: int
+    stride: int
+
+
+class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
+    """
+    Computes a generalised version of the moving-average type-token ratio (MATTR).
     Covington & McFall (2010, https://www.tandfonline.com/doi/full/10.1080/09296171003643098) discuss MATTR for a window
     stride of 1. This function implements it for any stride.
+
+    The basic idea is this: the window size is not necessarily a perfect multiple of the stride. We do know that when
+    you take a stride, what happens is that (1) you need to be able to remove the first stride that makes up the window
+    from its counts, and (2) have a full extra stride waiting for the window to shift to.
 
     We cannot use a ChainedCounter like we otherwise would to average something across counters produced for fixed-size
     windows. The reason is that in the BEST case, each subcounter will have only 1 entry with count window_size, and the
@@ -153,107 +234,128 @@ def getTokenDistributionFromSentences_and_analyse(
     say), then a window size of 500 tokens will produce 2 million subcounters. In other words: you need to collapse
     windows into a few existing variables (e.g. a sum, a count, ...) immediately, rather than keeping them around.
 
-    :param mattr_flush_every_example: If False, examples in the corpus will be treated as one large document and windows
-                                      can spill from one into the other. The TTR inside a window will be higher if it
-                                      contains tokens from more than one document, especially if they are on different topics.
+    :param flush_every_example: If False, examples in the corpus will be treated as one large document and windows
+                                can spill from one into the other. The TTR inside a window will be higher if it
+                                contains tokens from more than one document, especially if they are on different topics.
     """
-    assert 0 < mattr_stride <= mattr_window_size
-    n_TTR   = 0
-    sum_TTR = 0
-    global_type_frequencies = Counter()  # Will be returned.
+    def __init__(self, window_size: int=2000, stride: int=1000, flush_every_example: bool=False, observers: List[Observer[ReturnMATTR]]=None):
+        super().__init__(observers=observers)
+        assert 0 < stride <= window_size
+        self.stride      = stride
+        self.window_size = window_size
+        self.flush       = flush_every_example
 
-    window_type_frequencies = Counter()
-    n_tokens_in_window      = 0
-    stride_history: List[Counter] = [Counter()]
-    n_tokens_in_last_stride       = 0
-    for sentence in corpus:
-        # Type distribution takes two lines of code:
-        tokens = tokeniser.prepareAndTokenise(sentence)
-        global_type_frequencies.update(tokens)
+    def _initialiseAsObserver(self, identifier: str):
+        self.n_TTR   = 0
+        self.sum_TTR = 0
 
-        # MATTR is a lot more:
+        self.window_type_frequencies       = Counter()
+        self.n_tokens_in_window            = 0
+        self.stride_history: List[Counter] = [Counter()]
+        self.n_tokens_in_last_stride       = 0
+
+    def _receive(self, sample: Tokens, _):
         #  1. Try to fill up the last stride.
-        deficit = mattr_stride - n_tokens_in_last_stride
-        tokens_remaining = tokens
+        deficit = self.stride - self.n_tokens_in_last_stride
+        tokens_remaining = sample
         n_remaining_tokens = len(tokens_remaining)
         while n_remaining_tokens >= deficit:  # While you can create new strides.
             tokens_added, tokens_remaining = tokens_remaining[:deficit], tokens_remaining[deficit:]
             n_remaining_tokens -= deficit
 
-            stride_history[-1].update(tokens_added)
-            stride_history.append(Counter())
+            self.stride_history[-1].update(tokens_added)
+            self.stride_history.append(Counter())
 
-            n_tokens_in_last_stride = 0
-            deficit = mattr_stride
+            self.n_tokens_in_last_stride = 0
+            deficit = self.stride  # We have created an empty stride to be filled.
 
-        stride_history[-1].update(tokens_remaining)
-        n_tokens_in_last_stride += n_remaining_tokens
+        self.stride_history[-1].update(tokens_remaining)
+        self.n_tokens_in_last_stride += n_remaining_tokens
 
-        #  2. Separately, try to fill up the window. If enough tokens have accumulated, get TTR and subtract the oldest stride.
-        deficit = mattr_window_size - n_tokens_in_window
-        tokens_remaining = tokens
+        #  2. Separately, try to fill up the window. Assume you have just computed TTR. You can now safely subtract the
+        #     oldest stride to create an incomplete window. Fill it up until enough tokens have accumulated, compute TTR, and repeat.
+        deficit = self.window_size - self.n_tokens_in_window
+        tokens_remaining = sample
         n_remaining_tokens = len(tokens_remaining)
         while n_remaining_tokens >= deficit:  # While you can fill the window. This never happens when there isn't at least one stride available.
             tokens_added, tokens_remaining = tokens_remaining[:deficit], tokens_remaining[deficit:]
             n_remaining_tokens -= deficit
 
             # Fill the window, compute stats on the full window
-            window_type_frequencies.update(tokens_added)
-            n_tokens_in_window += deficit
-            sum_TTR += len(window_type_frequencies) / n_tokens_in_window  # Here n_tokens_in_window is always window_size.
-            n_TTR   += 1
+            self.window_type_frequencies.update(tokens_added)
+            self.n_tokens_in_window += deficit  # Equivalent to self.n_tokens_in_window = self.window_size
+            self.sum_TTR += len(self.window_type_frequencies) / self.n_tokens_in_window  # Here n_tokens_in_window is always window_size.
+            self.n_TTR   += 1
 
             # Shrink the window
-            window_type_frequencies -= stride_history.pop(0)  # In the extreme case, this stride has JUST been formed in step 1.
+            self.window_type_frequencies -= self.stride_history.pop(0)  # In the extreme case, this stride has JUST been formed in step 1.
             # for t in subtracted_counts.keys():
             #     if window_type_frequencies[t] == 0:
             #         window_type_frequencies.pop(t)  # As it turns out, this filtering happens automatically in a Counter -= Counter, but NOT after Counter[key] -= value.
 
-            n_tokens_in_window -= mattr_stride
-            deficit = mattr_stride
+            self.n_tokens_in_window -= self.stride
+            deficit = self.stride  # Equivalent to deficit = self.window_size - self.n_tokens_in_window.
 
-        window_type_frequencies.update(tokens_remaining)
-        n_tokens_in_window += n_remaining_tokens
+        self.window_type_frequencies.update(tokens_remaining)
+        self.n_tokens_in_window += n_remaining_tokens
 
         #  3. Optionally: if you can't move windows across examples, commit now.
-        if mattr_flush_every_example and n_remaining_tokens > 0:
-            sum_TTR += len(window_type_frequencies) / n_tokens_in_window
-            n_TTR   += n_tokens_in_window / mattr_window_size
+        if self.flush and n_remaining_tokens > 0:
+            self.sum_TTR += len(self.window_type_frequencies) / self.n_tokens_in_window
+            self.n_TTR   += self.n_tokens_in_window / self.window_size
 
-            window_type_frequencies = Counter()
-            n_tokens_in_window      = 0
-            stride_history: List[Counter] = [Counter()]
-            n_tokens_in_last_stride       = 0
+            self.window_type_frequencies = Counter()
+            self.n_tokens_in_window      = 0
+            self.stride_history: List[Counter] = [Counter()]
+            self.n_tokens_in_last_stride       = 0
 
-    # The last half-filled window should be counted too unless it already was. You know it already was if the deficit is exactly 1 stride AND the window has already moved.
-    if not mattr_flush_every_example and not(mattr_window_size - n_tokens_in_window == mattr_stride and n_TTR > 0):
-        sum_TTR += len(window_type_frequencies) / n_tokens_in_window
-        n_TTR   += n_tokens_in_window / mattr_window_size
+    def _compute(self) -> ReturnMATTR:
+        # The last half-filled window should be counted too unless it already was. You know it already was if the deficit is exactly 1 stride AND the window has already moved.
+        if not self.flush and not(self.window_size - self.n_tokens_in_window == self.stride and self.n_TTR > 0):
+            self.sum_TTR += len(self.window_type_frequencies) / self.n_tokens_in_window
+            self.n_TTR   += self.n_tokens_in_window / self.window_size
 
-    # Part 2: Analysis
-    effective_vocabulary_size = len(global_type_frequencies)
-    renyi_entropy          = renyiEntropy(global_type_frequencies.values(), alpha=renyi_alpha)
-    _, renyi_efficiency, _ = renyiEfficiency(global_type_frequencies.values(), alpha=renyi_alpha,
-                                             domain_size=effective_vocabulary_size if renyi_efficiency_with_effective_vocab else tokeniser.getVocabSize(),
-                                             sample_size=global_type_frequencies.total())
+        return ReturnMATTR(
+            mattr=self.sum_TTR / self.n_TTR,
+            window_size=self.window_size,
+            stride=self.stride,
+        )
 
-    # Include the rest in the distribution
-    for t in tokeniser.types():
-        global_type_frequencies[t] += 0
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
+        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["mattr"]) / (unambiguous_cache_identifier + ".json")
 
-    return global_type_frequencies, TokenDiversity(
-        V=effective_vocabulary_size,
-        ctc=global_type_frequencies.total(),
+    def _cacheLoad(self, cache_path: Path) -> ReturnMATTR:
+        return jsonToDataclass(ReturnMATTR, cache_path)
 
-        mattr=sum_TTR / n_TTR,
-        mattr_window_size=mattr_window_size,
-        mattr_stride=mattr_stride,
+    def _cacheStore(self, cache_path: Path, result: ReturnMATTR):
+        dataclassToJson(result, cache_path)
 
-        renyi_entropy=renyi_entropy,
-        renyi_efficiency=renyi_efficiency,
 
-        corpus_name=corpus.name
-    )
+class Observer_with_Distribution_TTR_Entropy(ObservableTokeniser):
+    """Receives text, tokenises it, and runs all of the above metrics on the result. Prints the results."""
+    def __init__(self, tokeniser: TokeniserWithFiniteTypeDomain, renyi_alpha: float, mattr_window_size: int, mattr_stride: int):
+        super().__init__(
+            tokeniser=tokeniser,
+            observers=[
+                TokenUnigramDistribution(
+                    ensured_vocabulary=tokeniser.types(),
+                    observers=[
+                        TTR(observers=[PrintingObserver()]),
+                        RenyiEntropy(
+                            alpha=renyi_alpha,
+                            vocab_size_in_denominator=tokeniser.getVocabSize(),
+                            observers=[PrintingObserver()]
+                        )
+                    ]
+                ),
+                MATTR(
+                    window_size=mattr_window_size,
+                    stride=mattr_stride,
+                    flush_every_example=False,
+                    observers=[PrintingObserver()]
+                )
+            ],
+        )
 
 
 ########################################################################################################################

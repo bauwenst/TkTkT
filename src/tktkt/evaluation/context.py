@@ -1,7 +1,7 @@
 """
 Evaluation of the context around tokens.
 """
-from typing import Iterable, Dict, Set, Union, Tuple, Optional, Callable, List
+from typing import Iterable, Dict, Union, Tuple, Optional, Callable, List
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass, field, fields
@@ -9,19 +9,20 @@ from collections import defaultdict, Counter
 
 import scipy as sp
 import numpy as np
+import dacite
 import json
 import csv
 import re
 
+from .entropy import renyiEfficiency, DEFAULT_RENYI_ALPHA
+from .observing import FinallyObservableObserver, Observer
 from ..paths import TkTkTPaths
-from ..factories.preprocessing import IdentityPreprocessor
-from ..interfaces.tokeniser import Tokeniser, Preprocessor
 from ..util.arrays import weighted_quantiles
 from ..util.iterables import streamProgress, first
 from ..util.timing import datetimeDashed
 from ..util.dicts import ChainedCounter, invertdict
-from ..util.types import NamedIterable
-from .entropy import renyiEfficiency, DEFAULT_RENYI_ALPHA
+from ..util.types import Tokens
+
 
 VocabRef = int  # To avoid storing token strings over and over, we construct a vocab on-the-fly (even with tokenisers that have no vocab).
 
@@ -70,10 +71,7 @@ class AccessorDistributions:
     left_of:  AccessorDistribution
     right_of: AccessorDistribution
 
-    # Serialisation logic below.
-    corpus_name: str
-
-    def save(self) -> Path:
+    def save(self, path: Path=None) -> Path:
         def serialiseDistribution(distribution: AccessorDistribution):
             accessors = []
             for t1, counter in distribution.accessors.items():
@@ -86,19 +84,24 @@ class AccessorDistributions:
                 "accessors": accessors
             }
 
-        folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
-        file = folder / f"{self.corpus_name}_{datetimeDashed()}.json"
+        if path is None:
+            folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
+            path = folder / f"distributions_{datetimeDashed()}.json"
+        elif path.is_dir():
+            path = path / f"distributions_{datetimeDashed()}.json"
+        else:
+            path = path.with_suffix(".json")
+
         data = {
-            "source": self.corpus_name,
             "vocab": self.vocab,
             "left": serialiseDistribution(self.left_of),
             "right": serialiseDistribution(self.right_of)
         }
         serialised = json.dumps(data, indent=2, ensure_ascii=False)
         serialised = re.compile(r"\[\s+([0-9]+),\s+([0-9]+)\s+\]").sub(r"[\1,\2]", serialised)
-        with open(file, "w", encoding="utf-8") as handle:
+        with open(path, "w", encoding="utf-8") as handle:
             handle.write(serialised)
-        return file
+        return path
 
     @classmethod
     def load(cls, file: Path) -> "AccessorDistributions":
@@ -106,7 +109,6 @@ class AccessorDistributions:
             data = json.load(handle)
 
         distributions = AccessorDistributions(
-            corpus_name=data["source"],
             vocab=data["vocab"],
             left_of=AccessorDistribution(
                 accessors=dict(),
@@ -258,20 +260,48 @@ class DistributionAccessorSummaries:
     per_type: Dict[str, TypeAccessorSummary]
     aggregates: MetaSummaries
 
-    def save(self, csv_stem: str) -> Path:
-        """
-        Saves as a CSV.
-        """
-        folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
-        file = folder / f"{csv_stem}.csv"
-        with open(file, "w", encoding="utf-8", newline="") as csvfile:
+    def save(self, path: Path, stem_suffix: str="") -> Path:
+        stem_suffix = "_"*bool(stem_suffix) + stem_suffix
+        if path is None:
+            folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
+            path = folder / f"summaries_{datetimeDashed()}{stem_suffix}.csv"
+        elif path.is_dir():
+            path = path / f"summaries_{datetimeDashed()}{stem_suffix}.csv"
+        else:
+            path = path.with_stem(path.stem + stem_suffix).with_suffix(".csv")
+
+        with open(path, "w", encoding="utf-8", newline="") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=["type"] + list(TypeAccessorSummary().__dict__.keys()))
             writer.writeheader()
             for f, summary in self.aggregates.__dict__.items():
                 writer.writerow({"type": AGGREGATE_PREFIX + f} | summary.__dict__)
             for t, summary in self.per_type.items():
                 writer.writerow({"type": t} | summary.__dict__)
-        return file
+        return path
+
+    @classmethod
+    def load(cls, path: Path) -> "DistributionAccessorSummaries":
+        if not path.exists():
+            return None
+
+        per_type = dict()
+        aggregates = dict()
+        with open(path, "r", encoding="utf-8") as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                t = row.pop("type")
+                row = {k: float(v) for k,v in row.items()}
+                if t.startswith(AGGREGATE_PREFIX):
+                    t = t.removeprefix(AGGREGATE_PREFIX)
+                    aggregates[t] = dacite.from_dict(TypeAccessorSummary, row, config=dacite.Config(check_types=False))  # dacite is strict about not having floats where you should have ints.
+                else:
+                    per_type[t] = dacite.from_dict(TypeAccessorSummary, row, config=dacite.Config(check_types=False))
+
+        return DistributionAccessorSummaries(
+            per_type=per_type,
+            aggregates=dacite.from_dict(MetaSummaries, aggregates)
+        )
+
 
 
 @dataclass
@@ -281,87 +311,146 @@ class AllAccessorSummaries:
     both:  DistributionAccessorSummaries
     min:   DistributionAccessorSummaries  # For each type separately, picks the accessor distribution with the fewest types (i.e. the most predictable side) and copies its metrics.
 
-    corpus_name: str
+    def save(self, folder_path: Path=None, file_prefix: str="") -> Tuple[Path,Path,Path,Path]:
+        if folder_path is None:
+            folder_path = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
+        if not file_prefix:
+            file_prefix = "summary_" + datetimeDashed()
 
-    def save(self) -> Tuple[Path,Path,Path,Path]:
-        timestamp = datetimeDashed()
+        path_template = folder_path / f"{file_prefix}.csv"
         return (
-            self.left .save(f"{self.corpus_name}_summary_{timestamp}_left"),
-            self.right.save(f"{self.corpus_name}_summary_{timestamp}_right"),
-            self.both .save(f"{self.corpus_name}_summary_{timestamp}_both"),
-            self.min  .save(f"{self.corpus_name}_summary_{timestamp}_min")
+            self.left .save(path_template, "left"),
+            self.right.save(path_template, "right"),
+            self.both .save(path_template, "both"),
+            self.min  .save(path_template, "min")
+        )
+
+    @classmethod
+    def loadFromPaths(cls, left: Path, right: Path, both: Path, min: Path) -> "AllAccessorSummaries":
+        return AllAccessorSummaries(
+            left= DistributionAccessorSummaries.load(left),
+            right=DistributionAccessorSummaries.load(right),
+            both= DistributionAccessorSummaries.load(both),
+            min=  DistributionAccessorSummaries.load(min)
+        )
+
+    @classmethod
+    def load(cls, folder_path: Path, file_prefix: str) -> "AllAccessorSummaries":
+        return cls.loadFromPaths(
+            left =folder_path / f"{file_prefix}_left.csv",
+            right=folder_path / f"{file_prefix}_right.csv",
+            both =folder_path / f"{file_prefix}_both.csv",
+            min  =folder_path / f"{file_prefix}_min.csv"
         )
 
 
-def getAccessorsFromCorpus(
-        tokeniser: Tokeniser, texts: Union[NamedIterable[str],NamedIterable[Tuple[str,int]]], bucket_samples_every: int,
-        split_into_disjunct_examples: Preprocessor=None, print_contexts_for_tokens: Set[str]=None
-    ) -> AccessorDistributions:
-    """
-    :param bucket_samples_every: Every type in the vocabulary has a left and right counter associated with it that counts
-                                 how many tokens of each type are left resp. right of it. Those counts are bucketed in
-                                 the order they come in with, so that later on, you can average over fixed-size windows of samples.
-    """
-    if split_into_disjunct_examples is None:
-        split_into_disjunct_examples = IdentityPreprocessor()
-    if print_contexts_for_tokens is None:
-        print_contexts_for_tokens = set()
+class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
 
-    max_id: VocabRef = 0
-    vocab: Dict[str,VocabRef] = dict()
+    def __init__(self, bucket_samples_every: int, disable_cache: bool=False, observers: List[Observer[AccessorDistributions]]=None):
+        """
+        :param bucket_samples_every: Every type in the vocabulary has a left and right counter associated with it that counts
+                             how many tokens of each type are left resp. right of it. Those counts are bucketed in
+                             the order they come in with, so that later on, you can average over fixed-size windows of samples.
+        """
+        super().__init__(disable_cache=disable_cache, observers=observers)
+        self._bucket_size = bucket_samples_every
 
-    # Everything you have seen to the left and right of a given type.
-    left_of:  Dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(bucket_samples_every))
-    right_of: Dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(bucket_samples_every))
-    left_bounds:  Dict[VocabRef, int] = defaultdict(int)
-    right_bounds: Dict[VocabRef, int] = defaultdict(int)
+    def _initialiseAsObserver(self, identifier: str):
+        self.max_id: VocabRef           = 0
+        self.vocab: Dict[str, VocabRef] = dict()
 
-    for text,frequency in getIterableWithCounts(texts):
-        for bounded_text in split_into_disjunct_examples.do(text):
-            tokens = tokeniser.prepareAndTokenise(bounded_text)
-            if not tokens:
-                continue
+        # Everything you have seen to the left and right of a given type.
+        self.left_of:  Dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(self._bucket_size))
+        self.right_of: Dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(self._bucket_size))
+        self.left_bounds:  Dict[VocabRef, int] = defaultdict(int)
+        self.right_bounds: Dict[VocabRef, int] = defaultdict(int)
 
-            ids = []
-            for token in tokens:
-                if token in print_contexts_for_tokens:
-                    print(f"Found token '{token}' in pretoken '{bounded_text}'")
-                try:
-                    ids.append(vocab[token])
-                except:
-                    vocab[token] = max_id
-                    max_id += 1
-                    ids.append(vocab[token])
+    def _receive(self, sample: Tokens, weight: float):
+        tokens, frequency = sample, weight
+        if not tokens:
+            return
 
-            # Edge tokens
-            # - When a type appears at the start/end of an example, it probably still has an accessor to its left/right
-            #   in reality, but we can't see it because the example is only an excerpt.
-            # - An upper estimate on accessor variety is to always consider these unknown edges to be unique accessors.
-            # - If you are studying morphology, you probably want to have an edge around every word, because it matters
-            #   much less in such cases what the exact type was that came before (there is no connection between the
-            #   characters of the previous word and of the current word, only the meanings).
-            left_bounds[ids[0]]   += frequency
-            right_bounds[ids[-1]] += frequency
+        ids = []
+        for token in tokens:
+            try:
+                ids.append(self.vocab[token])
+            except:
+                self.vocab[token] = self.max_id
+                self.max_id += 1
+                ids.append(self.vocab[token])
 
-            if len(ids) > 1:
-                right_of[ids[0]][ids[1]]  += frequency  # Has no token to the left
-                left_of[ids[-1]][ids[-2]] += frequency  # Has no token to the right
+        # Edge tokens
+        # - When a type appears at the start/end of an example, it probably still has an accessor to its left/right
+        #   in reality, but we can't see it because the example is only an excerpt.
+        # - An upper estimate on accessor variety is to always consider these unknown edges to be unique accessors.
+        # - If you are studying morphology, you probably want to have an edge around every word, because it matters
+        #   much less in such cases what the exact type was that came before (there is no connection between the
+        #   characters of the previous word and of the current word, only the meanings).
+        self.left_bounds[ids[0]]   += frequency
+        self.right_bounds[ids[-1]] += frequency
 
-            # Middle tokens
-            for i in range(1,len(ids)-1):
-                center = ids[i]
-                left_of[center][ids[i-1]]  += frequency
-                right_of[center][ids[i+1]] += frequency
+        if len(ids) > 1:
+            self.right_of[ids[0]][ids[1]]  += frequency  # Has no token to the left
+            self.left_of[ids[-1]][ids[-2]] += frequency  # Has no token to the right
 
-    return AccessorDistributions(
-        vocab,
-        AccessorDistribution(left_of, left_bounds),
-        AccessorDistribution(right_of, right_bounds),
-        corpus_name=texts.name
-    )
+        # Middle tokens
+        for i in range(1,len(ids)-1):
+            center = ids[i]
+            self.left_of[center][ids[i-1]]  += frequency
+            self.right_of[center][ids[i+1]] += frequency
+
+    def _compute(self) -> AccessorDistributions:
+        return AccessorDistributions(
+            self.vocab,
+            AccessorDistribution(self.left_of, self.left_bounds),
+            AccessorDistribution(self.right_of, self.right_bounds)
+        )
+
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
+        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["av", "counts"]) / (unambiguous_cache_identifier + ".json")
+
+    def _cacheLoad(self, cache_path: Path) -> AccessorDistributions:
+        return AccessorDistributions.load(cache_path)
+
+    def _cacheStore(self, cache_path: Path, result: AccessorDistributions):
+        result.save(cache_path)
 
 
-def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:
+class AccessorVariety(FinallyObservableObserver[AccessorDistributions,AllAccessorSummaries]):
+
+    def __init__(self, predefined_vocab_size: Optional[int]=None, cache_disambiguator: str= "", disable_cache: bool=False, observers: List[Observer[AllAccessorSummaries]]=None):
+        super().__init__(cache_disambiguator=cache_disambiguator, disable_cache=disable_cache, observers=observers)
+        self._predefined_vocab_size = predefined_vocab_size
+
+    def _initialiseAsObserver(self, identifier: str):
+        self.distributions = None
+
+    def _receive(self, sample: AccessorDistributions, _):
+        self.distributions = sample
+
+    def _compute(self) -> AllAccessorSummaries:
+        return summariseAccessors(self.distributions, self._predefined_vocab_size)
+
+    def _cacheExists(self, cache_path: Path) -> bool:
+        unambiguous_cache_identifier = self._cacheIdentifier()
+        return (
+            (cache_path / (unambiguous_cache_identifier + "_left.csv" )).exists() or
+            (cache_path / (unambiguous_cache_identifier + "_right.csv")).exists() or
+            (cache_path / (unambiguous_cache_identifier + "_min.csv"  )).exists() or
+            (cache_path / (unambiguous_cache_identifier + "_both.csv" )).exists()
+        )
+
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
+        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["av", "summaries"])
+
+    def _cacheLoad(self, cache_path: Path) -> AllAccessorSummaries:
+        return AllAccessorSummaries.load(cache_path, file_prefix=self._cacheIdentifier())
+
+    def _cacheStore(self, cache_path: Path, result: AllAccessorSummaries):
+        result.save(cache_path, file_prefix=self._cacheIdentifier())
+
+
+def summariseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:
     # Extract some information from distributions
     vocab, left_of, right_of = accessors.vocab, accessors.left_of, accessors.right_of
     default_subcounter_size = first(left_of.accessors.values())._max_size
@@ -383,8 +472,7 @@ def analyseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Op
         min=DistributionAccessorSummaries(
             per_type=defaultdict(TypeAccessorSummary),
             aggregates=MetaSummaries()
-        ),
-        corpus_name=accessors.corpus_name
+        )
     )
 
     # Step 2: Compute per-type summary statistics

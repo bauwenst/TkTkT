@@ -2,13 +2,19 @@
 Metrics that have to do with (1) how many segmentations a tokeniser could generate in theory,
 and (2) the amount of tokens it generates in practice.
 """
-from typing import Tuple, Iterable, Dict, Set, Union
+from pathlib import Path
+from typing import Tuple, Set, Union, List
 from dataclasses import dataclass
-from math import log2
 
-from ..util.iterables import streamProgress
-from ..util.types import NamedIterable
-from ..interfaces.tokeniser import TokeniserWithVocabDict, Vocab, Tokeniser, Preprocessor
+import json
+from math import log2
+from dacite import from_dict
+
+from ..evaluation.observing import Sent
+from ..paths import TkTkTPaths
+from ..util.types import Tokens
+from ..util.dicts import jsonToDataclass, dataclassToJson
+from ..interfaces.tokeniser import Vocab, Preprocessor
 
 
 def countValidSegmentations(pretoken: str, vocab: Union[Vocab, Set[str]]) -> int:
@@ -70,11 +76,13 @@ class InferenceFertility:
     """
     Statistics about the segmentations that are actually made in practice by a tokeniser, not how many it hypothetically supports.
     """
-    corpus_name: str
-
     ccc: int  # sum_w f(w)*len(w)
     ctc: int  # sum_w f(w)*len(tk(w))
     cwc: int  # sum_w f(w)
+
+    lwc: int  # sum_w 1 or "lexicon word count", i.e. how many unique words occur in the corpus.
+    ltc: int  # sum_w len(tk(w))
+    lcc: int  # sum_w len(w)
 
     tokens_per_word_type: float        # [1/sum_w 1] * [sum_w len(tk(w))]
     tokens_per_word_token: float       # [1/sum_w f(w)] * [sum_w f(w)*len(tk(w))]
@@ -89,167 +97,230 @@ class InferenceFertility:
     segmentality_word_types: float                # [1/sum_w 1] * [sum_w (len(tk(w))-1)/(len(w)-1)]          or "average segmentality in a word list"
     segmentality_word_tokens: float               # [1/sum_w f(w)] * [sum_w f(w)*(len(tk(w))-1)/(len(w)-1)]  or "average segmentality in a corpus"
 
+    @property
+    def mwl(self):
+        return self.ccc/self.cwc
 
-def getVocabStats(effective_preprocessor: Preprocessor, vocab: Vocab,
-                  raw_words: Iterable[str], counts: Dict[str, float]=None,
-                  logarithmic_segmentations: bool=False, do_measure_original_word_length: bool=False,
-                  exclude_words_over_length: int=100) -> VocabularyFertility:
+    @property
+    def mtl(self):
+        return self.ccc/self.ctc
+
+
+from .observing import FinallyObservableObserver, Observer
+
+class PossibleSegmentations(FinallyObservableObserver[Union[str,Tuple[str,int]],VocabularyFertility]):
     """
-    Note: if the preprocessor of the tokeniser adds characters that are supposed to be token-building units yet consist
-    of multiple characters (like </w>), this function's results are wrong.
-
-    :param logarithmic_segmentations: Because segmentations of a string s scale as O(2^|s|), taking the log means scaling as O(|s|).
+    Given words (with or without frequency), measures how many possible segmentations are achievable given a vocabulary.
     """
-    if counts is None:
-        counts = dict()
 
-    sum_one          = 0
-    sum_one_weighted = 0
-    sum_seg          = 0
-    sum_seg_weighted = 0
+    def __init__(
+        self,
+        vocab: Vocab, 
+        effective_preprocessor: Preprocessor,
 
-    sum_len          = 0
-    sum_len_weighted = 0
-    sum_seg_on_len          = 0
-    sum_seg_on_len_weighted = 0
+        track_unique_words: bool=True,
+        do_logarithmic_segmentations: bool=False, 
+        do_measure_original_word_length: bool=False,
+        exclude_words_over_length: int=100,
+        observers: List[Observer[VocabularyFertility]] =None
+    ):
+        """
+        Note: if the preprocessor adds characters that are supposed to be atomic yet consist of multiple characters
+        (like </w>), this object's results are wrong.
 
-    sum_maxseg          = 0
-    sum_maxseg_weighted = 0
-    sum_seg_on_maxseg          = 0
-    sum_seg_on_maxseg_weighted = 0
+        :param vocab: set of subword strings used to segment strings concatenatively after ALL preprocessing is applied.
+        :param track_unique_words: if True, will output an extra set of metrics wherein every unique word has equal
+                                   contribution. This requires storing a set of all seen words, which consumes a lot of memory.
+        :param effective_preprocessor: maps raw strings to the space in which the tokeniser splits.
+                                       Note that libraries like SentencePiece apply hidden extra preprocessing before splitting!
+        :param do_logarithmic_segmentations: Because segmentations of a string s scale as O(2^|s|), taking the log means scaling as O(|s|).
+        """
+        super().__init__(observers=observers)
+        self.vocab                  = vocab
+        self.effective_preprocessor = effective_preprocessor
+        self._unique_words                    = track_unique_words
+        self._do_logarithmic_segmentations    = do_logarithmic_segmentations
+        self._do_measure_original_word_length = do_measure_original_word_length
+        self._exclude_words_over_length       = exclude_words_over_length
 
-    for raw_word in streamProgress(raw_words):
-        if len(raw_word) > exclude_words_over_length:
-            continue
+    def _initialiseAsObserver(self, identifier: str):
+        self.seen = dict()
 
-        segs, chars, n_pretokens = prepareAndCountValidSegmentations(raw_word, effective_preprocessor, vocab)
+        self.sum_one          = 0
+        self.sum_one_weighted = 0
+        self.sum_seg          = 0
+        self.sum_seg_weighted = 0
+    
+        self.sum_len          = 0
+        self.sum_len_weighted = 0
+        self.sum_seg_on_len          = 0
+        self.sum_seg_on_len_weighted = 0
+    
+        self.sum_maxseg          = 0
+        self.sum_maxseg_weighted = 0
+        self.sum_seg_on_maxseg          = 0
+        self.sum_seg_on_maxseg_weighted = 0
+
+    def _receive(self, sample: str, weight: float):
+        raw_word, f_w = sample, weight
+        if len(raw_word) > self._exclude_words_over_length:  # Technically should be done by whichever observable is outputting words to this observer, however, we make it an explicit option because the Viterbi algorithm below can explode otherwise.
+            return 
+
+        II = 0
+        if self._unique_words and raw_word in self.seen:
+            segs, chars, n_pretokens = self.seen[raw_word]
+        else:
+            segs, chars, n_pretokens = prepareAndCountValidSegmentations(raw_word, self.effective_preprocessor, self.vocab)
+            if self._unique_words:
+                self.seen[raw_word] = (segs, chars, n_pretokens)
+                II = 1
 
         # Maximal segmentations are measured in pretoken space.
         max_segs            = 2**(chars-1)  # every position between characters can be split on or not
         max_segs_restricted = 2**(chars-n_pretokens)  # for every extra pretoken, 1 split position is fixed
-        if logarithmic_segmentations:
+        if self._do_logarithmic_segmentations:
             if segs == 0:
                 print("Word", raw_word, "has no segmentations, so its log is -infinite. Skipping it.")
-                continue
+                return
             segs                = log2(segs)
             max_segs            = log2(max_segs)
             max_segs_restricted = log2(max_segs_restricted)
 
         # For metrics that compare against word length, it is possible to work in word space and not pretoken space.
-        if do_measure_original_word_length:
+        if self._do_measure_original_word_length:
             chars = len(raw_word)
         seg_to_char_ratio   = segs/chars
         seg_to_maxseg_ratio = segs/max_segs_restricted if chars-n_pretokens != 0 else 1
 
         # Accumulate
-        f_w = counts.get(raw_word, 1)
+        self.sum_one          += 1*II
+        self.sum_one_weighted += 1*f_w
+        self.sum_seg          += segs*II
+        self.sum_seg_weighted += segs*f_w
 
-        sum_one          += 1
-        sum_one_weighted += 1*f_w
-        sum_seg          += segs
-        sum_seg_weighted += segs*f_w
+        self.sum_len          += chars*II
+        self.sum_len_weighted += chars*f_w
+        self.sum_seg_on_len          += seg_to_char_ratio*II
+        self.sum_seg_on_len_weighted += seg_to_char_ratio*f_w
 
-        sum_len          += chars
-        sum_len_weighted += chars*f_w
-        sum_seg_on_len          += seg_to_char_ratio
-        sum_seg_on_len_weighted += seg_to_char_ratio*f_w
-
-        sum_maxseg          += max_segs_restricted
-        sum_maxseg_weighted += max_segs_restricted*f_w
-        sum_seg_on_maxseg          += seg_to_maxseg_ratio
-        sum_seg_on_maxseg_weighted += seg_to_maxseg_ratio*f_w
+        self.sum_maxseg          += max_segs_restricted*II
+        self.sum_maxseg_weighted += max_segs_restricted*f_w
+        self.sum_seg_on_maxseg          += seg_to_maxseg_ratio*II
+        self.sum_seg_on_maxseg_weighted += seg_to_maxseg_ratio*f_w
         # print(raw_word, "\t\t", segs, "of", max_segs, "or", max_segs_restricted)
 
-    return VocabularyFertility(
-        vocab_size=len(vocab),
+    def _compute(self) -> VocabularyFertility:
+        return VocabularyFertility(
+            vocab_size=len(self.vocab),
 
-        segmentations_per_word_type =sum_seg/sum_one,
-        segmentations_per_word_token=sum_seg_weighted/sum_one_weighted,
+            segmentations_per_word_type =self.sum_seg         /(self.sum_one or 1),
+            segmentations_per_word_token=self.sum_seg_weighted/self.sum_one_weighted,
+    
+            segmentations_per_type_char_micro =self.sum_seg                /(self.sum_len or 1),
+            segmentations_per_token_char_micro=self.sum_seg_weighted       /self.sum_len_weighted,
+            segmentations_per_type_char_macro =self.sum_seg_on_len         /(self.sum_one or 1),
+            segmentations_per_token_char_macro=self.sum_seg_on_len_weighted/self.sum_one_weighted,
+    
+            segmentations_per_type_max_micro =self.sum_seg                   /(self.sum_maxseg or 1),
+            segmentations_per_token_max_micro=self.sum_seg_weighted          /self.sum_maxseg_weighted,
+            segmentations_per_type_max_macro =self.sum_seg_on_maxseg         /(self.sum_one or 1),
+            segmentations_per_token_max_macro=self.sum_seg_on_maxseg_weighted/self.sum_one_weighted
+        )
 
-        segmentations_per_type_char_micro =sum_seg/sum_len,
-        segmentations_per_token_char_micro=sum_seg_weighted/sum_len_weighted,
-        segmentations_per_type_char_macro =sum_seg_on_len/sum_one,
-        segmentations_per_token_char_macro=sum_seg_on_len_weighted/sum_one_weighted,
 
-        segmentations_per_type_max_micro =sum_seg/sum_maxseg,
-        segmentations_per_token_max_micro=sum_seg_weighted/sum_maxseg_weighted,
-        segmentations_per_type_max_macro =sum_seg_on_maxseg/sum_one,
-        segmentations_per_token_max_macro=sum_seg_on_maxseg_weighted/sum_one_weighted
-    )
-
-
-def getInferenceStats(tokeniser: Tokeniser, examples: NamedIterable[str], example_to_words: Preprocessor=None, word_counts: Dict[str, float]=None,
-                      do_measure_original_word_length: bool=False, exclude_words_over_length: int=100) -> InferenceFertility:
+class SegmentationProperties(FinallyObservableObserver[Tokens,InferenceFertility]):
     """
     Apply tokeniser segmentation and compute averages across words generated by pretokenising examples.
     """
-    word_iterable = examples if example_to_words is None else examples.flatmap(example_to_words.do)
-    if word_counts is None:
-        word_counts = dict()
 
-    sum_one          = 0
-    sum_one_weighted = 0
-    sum_tk          = 0
-    sum_tk_weighted = 0  # Equivalent to corpus token count (CTC).
+    def __init__(self, track_unique_words: bool, observers: List[Observer[InferenceFertility]]):
+        """
+        :param track_unique_words: if True, will output an extra set of metrics wherein every unique word has equal
+                                   contribution. This requires storing a set of all seen words, which consumes a lot of memory.
+        """
+        super().__init__(observers=observers)
+        self._unique_words = track_unique_words
 
-    sum_len          = 0
-    sum_len_weighted = 0  # Equivalent to corpus character count (CCC).
-    sum_len_on_tk          = 0
-    sum_len_on_tk_weighted = 0
+    def _initialiseAsObserver(self, identifier: str):
+        self.seen = set()
 
-    sum_tk_on_len          = 0
-    sum_tk_on_len_weighted = 0
-    sum_tk1_on_len1          = 0
-    sum_tk1_on_len1_weighted = 0
+        self.sum_one          = 0
+        self.sum_one_weighted = 0
+        self.sum_tk          = 0
+        self.sum_tk_weighted = 0  # Equivalent to corpus token count (CTC).
 
-    for word in word_iterable:
-        if len(word) == 0 or len(word) > exclude_words_over_length:
-            continue
+        self.sum_len          = 0
+        self.sum_len_weighted = 0  # Equivalent to corpus character count (CCC).
+        self.sum_len_on_tk          = 0
+        self.sum_len_on_tk_weighted = 0
 
-        tokens = tokeniser.prepareAndTokenise(word)
+        self.sum_tk_on_len          = 0
+        self.sum_tk_on_len_weighted = 0
+        self.sum_tk1_on_len1          = 0
+        self.sum_tk1_on_len1_weighted = 0
+
+    def _receive(self, sample: Tokens, weight: float):
+        tokens, f_w = sample, weight
         if len(tokens) == 0:
-            continue
+            return
 
-        chars = len(word) if do_measure_original_word_length else sum(map(len, tokens))
+        II = 0
+        if self._unique_words:
+            word = "".join(tokens)
+            if word not in self.seen:
+                self.seen.add(word)
+                II = 1
+
+        chars = sum(map(len, tokens))
         tk    = len(tokens)
         char_to_token_ratio = chars/tk
         token_to_char_ratio = tk/chars
         segmentality        = (tk-1)/(chars-1) if chars > 1 else 1.0
 
         # Accumulate
-        f_w = word_counts.get(word, 1)
+        self.sum_one          += 1*II
+        self.sum_one_weighted += 1*f_w
+        self.sum_tk          += tk*II
+        self.sum_tk_weighted += tk*f_w
+        self.sum_len          += chars*II
+        self.sum_len_weighted += chars*f_w
+        self.sum_len_on_tk          += char_to_token_ratio*II
+        self.sum_len_on_tk_weighted += char_to_token_ratio*f_w
+        self.sum_tk_on_len          += token_to_char_ratio*II
+        self.sum_tk_on_len_weighted += token_to_char_ratio*f_w
+        self.sum_tk1_on_len1          += segmentality*II
+        self.sum_tk1_on_len1_weighted += segmentality*f_w
 
-        sum_one          += 1
-        sum_one_weighted += 1*f_w
-        sum_tk          += tk
-        sum_tk_weighted += tk*f_w
-        sum_len          += chars
-        sum_len_weighted += chars*f_w
-        sum_len_on_tk          += char_to_token_ratio
-        sum_len_on_tk_weighted += char_to_token_ratio*f_w
-        sum_tk_on_len          += token_to_char_ratio
-        sum_tk_on_len_weighted += token_to_char_ratio*f_w
-        sum_tk1_on_len1          += segmentality
-        sum_tk1_on_len1_weighted += segmentality*f_w
+    def _compute(self) -> InferenceFertility:
+        return InferenceFertility(
+            ccc=self.sum_len_weighted,
+            ctc=self.sum_tk_weighted,
+            cwc=self.sum_one_weighted,
 
-    return InferenceFertility(
-        corpus_name=word_iterable.name,
+            lcc=self.sum_len,
+            ltc=self.sum_tk,
+            lwc=self.sum_one,
 
-        ccc=sum_len_weighted,
-        ctc=sum_tk_weighted,
-        cwc=sum_one_weighted,
+            tokens_per_word_type=self.sum_tk/(self.sum_one or 1),
+            tokens_per_word_token=self.sum_tk_weighted/self.sum_one_weighted,
 
-        tokens_per_word_type=sum_tk/sum_one if word_counts else 0,  # If counts are given, we assume every word appeared exactly once in the iterable. If not, we assume that words can appear multiple times, and hence they are tokens, in which case we know nothing about deduplicated word types.
-        tokens_per_word_token=sum_tk_weighted/sum_one_weighted,
+            chars_per_word_type_token_micro=self.sum_len/(self.sum_tk or 1),
+            chars_per_word_token_token_micro=self.sum_len_weighted/self.sum_tk_weighted,
 
-        chars_per_word_type_token_micro=sum_len/sum_tk if word_counts else 0,
-        chars_per_word_token_token_micro=sum_len_weighted/sum_tk_weighted,
+            chars_per_word_type_token_macro=self.sum_len_on_tk/(self.sum_one or 1),
+            tokens_per_word_type_char_macro=self.sum_tk_on_len/(self.sum_one or 1),
+            chars_per_word_token_token_macro=self.sum_len_on_tk_weighted/self.sum_one_weighted,
+            tokens_per_word_token_char_macro=self.sum_tk_on_len_weighted/self.sum_one_weighted,
 
-        chars_per_word_type_token_macro=sum_len_on_tk/sum_one if word_counts else 0,
-        tokens_per_word_type_char_macro=sum_tk_on_len/sum_one if word_counts else 0,
-        chars_per_word_token_token_macro=sum_len_on_tk_weighted/sum_one_weighted,
-        tokens_per_word_token_char_macro=sum_tk_on_len_weighted/sum_one_weighted,
+            segmentality_word_types=self.sum_tk1_on_len1/(self.sum_one or 1),
+            segmentality_word_tokens=self.sum_tk1_on_len1_weighted/self.sum_one_weighted
+        )
 
-        segmentality_word_types=sum_tk1_on_len1/sum_one if word_counts else 0,
-        segmentality_word_tokens=sum_tk1_on_len1_weighted/sum_one_weighted
-    )
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
+        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["fertility", "inference"]) / (unambiguous_cache_identifier + ".json")
+
+    def _cacheLoad(self, cache_path: Path) -> InferenceFertility:
+        return jsonToDataclass(InferenceFertility, cache_path)
+
+    def _cacheStore(self, cache_path: Path, result: InferenceFertility):
+        dataclassToJson(result, cache_path)
