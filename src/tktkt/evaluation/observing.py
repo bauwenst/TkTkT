@@ -99,9 +99,10 @@ class DataclassCollectorObserver(Observer[Any]):
     supposed to be saved together as one row in a CSV file. The user is then responsible for separating rows.
     """
 
-    def __init__(self):
+    def __init__(self, fence_on_assemble: bool=True):
         self._current_list    = []
         self._completed_lists = []
+        self._fence_on_assemble = fence_on_assemble
 
     def addMetadata(self, metadata: dict):
         self._receive(metadata, 1)
@@ -113,6 +114,8 @@ class DataclassCollectorObserver(Observer[Any]):
 
     def assemble(self) -> List[dict]:
         """For each collection that has been fenced, pool together all the dataclasses/dictionaries."""
+        if self._fence_on_assemble and self._current_list:
+            self.fence()
         return [dunion(map(optionalDataclassToDict, dicts)) for dicts in self._completed_lists]
 
     def _initialise(self, global_run_identifier: str):
@@ -519,6 +522,68 @@ class FinallyObservableObserver(ObservableObserver[Received, Sent]):
 
         self._send(result, 1)
         # Only after THIS will its own observers be finished.
+
+
+class WirelessObserverConnection(Generic[_Received2]):
+    def __init__(self):
+        self._min_index = 0
+        self._splitter: WirelessSplittingObserver[Any,_Received2] = None
+
+    def _registerSplitter(self, splitter: "WirelessSplittingObserver[Any,_Received2]"):
+        self._splitter = splitter
+
+    def _request(self, index: int) -> _Received2:
+        return self._splitter._request(index)
+
+    def _registerReceiver(self):
+        self._splitter._registerReceiver()
+
+
+class WirelessSplittingObserver(ObservableObserver[Tuple[Received,_Received2],Received]):
+    """
+    Takes in tuple samples (e.g. text and frequency) and sends the first half to its observers, while the second
+    half is stored in a buffer until all recombiners on the same connection as the splitter have requested it.
+    """
+    def __init__(self, connection: WirelessObserverConnection[_Received2], observers: List[Observer[Received]]):
+        super().__init__(observers=observers)
+        self._buffer: List[_Received2]      = []
+        self._remaining_requests: List[int] = []
+        self._min_index   = 0
+        self._n_receivers = 0
+        connection._registerSplitter(self)
+
+    def _registerReceiver(self):
+        self._n_receivers += 1
+
+    def _receive(self, sample: Tuple[Received,_Received2], weight: float):
+        left, right = sample
+        self._buffer.append(right)  # Important that this comes before the call to send, because that call will likely trigger all the requests to get the value back.
+        self._remaining_requests.append(self._n_receivers)
+        self._send(left, weight)
+
+    def _request(self, index: int) -> _Received2:
+        result = self._buffer[index - self._min_index]
+        self._remaining_requests[index - self._min_index] -= 1
+
+        # Garbage collection
+        while self._remaining_requests and self._remaining_requests[0] <= 0:  # The < is not a valid case, but you need it to not cause an infinite loop in case other implementation are buggy.
+            self._buffer.pop(0)
+            self._remaining_requests.pop(0)
+            self._min_index += 1
+        return result
+
+
+class WirelessRecombiningObserver(ObservableObserver[Received,Tuple[Received, _Received2]]):
+
+    def __init__(self, connection: WirelessObserverConnection[_Received2], observers: List[Observer[Tuple[Received, _Received2]]]):
+        super().__init__(observers=observers)
+        self._connection = connection
+        self._connection._registerReceiver()
+        self._index = 0
+
+    def _receive(self, sample: Received, weight: float):
+        self._send( (sample, self._connection._request(self._index)), weight)
+        self._index += 1
 
 
 ########################################################################################################################
