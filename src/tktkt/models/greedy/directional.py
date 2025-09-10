@@ -10,7 +10,11 @@ Implementations adapted from my master's thesis (Bauwens, 2023). https://bauwens
 """
 from typing import List
 
-from ...interfaces.tokeniser import TokeniserWithVocabDict
+from math import inf
+
+from ...interfaces import Preprocessor
+from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
+from ...util.types import Tokens
 
 
 class L2R_Greedy(TokeniserWithVocabDict):
@@ -85,7 +89,7 @@ class R2L_Greedy(TokeniserWithVocabDict):
                     token_length = 1
                 tokens.append(word[len(word)-token_length:])
                 word = word[:len(word)-token_length]
-                token_length = 0
+                token_length = len(word)
             else:
                 token_length -= 1
 
@@ -113,6 +117,98 @@ class R2L_Lazy(TokeniserWithVocabDict):
 
         tokens.reverse()
         return tokens
+
+
+class L2R_R2L_Alternating(TokeniserWithVocabDict):
+
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None,
+                 start_left: bool=True):
+        super().__init__(preprocessor=preprocessor, vocab=vocab, unk_type=unk_type)
+        self._start_left = start_left
+
+    def tokenise(self, pretoken: str) -> Tokens:
+        left = self._start_left
+        left_cursor  = 0  # Tokens from the left start on this cursor.
+        right_cursor = len(pretoken)-1  # Tokens from the right end on this cursor. (inclusive indexing)
+
+        left_tokens  = []
+        right_tokens = []
+
+        while left_cursor <= right_cursor:
+            if left:
+                for end in range(right_cursor, left_cursor-1, -1):
+                    token = pretoken[left_cursor:end+1]
+                    if token in self.vocab:
+                        left_cursor = end+1
+                        left_tokens.append(token)
+                        break
+                else:
+                    raise ValueError(f"Character not in vocab: {pretoken[left_cursor]}")
+            else:  # Yes, you could turn these two loops into one loop using some kind of subtraction. No, I'm not going to bother spaghettifying my code.
+                for start in range(left_cursor, right_cursor+1):
+                    token = pretoken[start:right_cursor+1]
+                    if token in self.vocab:
+                        right_cursor = start-1
+                        right_tokens.insert(0, token)
+                        break
+                else:
+                    raise ValueError(f"Character not in vocab: {pretoken[right_cursor]}")
+
+            left = not left
+
+        return left_tokens + right_tokens
+
+
+class L2R2L_Greedy(TokeniserWithVocabDict):
+
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None,
+                 prefer_left: bool=True):
+        super().__init__(preprocessor=preprocessor, vocab=vocab, unk_type=unk_type)
+        self._prefer_left = prefer_left
+
+    def tokenise(self, pretoken: str) -> Tokens:
+        # Inclusive indices
+        left_start = 0
+        right_end  = len(pretoken) - 1
+        best_left_end    = +inf
+        best_right_start = -inf
+
+        left_tokens  = []
+        right_tokens = []
+
+        while left_start <= right_end:
+            if best_left_end > right_end:  # Recompute
+                for end in range(right_end, left_start-1, -1):
+                    token = pretoken[left_start:end+1]
+                    if token in self.vocab:
+                        best_left_end = end
+                        break
+                else:
+                    raise ValueError(f"Character not in vocab: {pretoken[left_start]}")
+
+            if best_right_start < left_start:  # Recompute
+                for start in range(left_start, right_end+1):
+                    token = pretoken[start:right_end+1]
+                    if token in self.vocab:
+                        best_right_start = start
+                        break
+                else:
+                    raise ValueError(f"Character not in vocab: {pretoken[right_end]}")
+
+            # All the indices are
+            left_score  = best_left_end - left_start
+            right_score = right_end - best_right_start
+            equal = left_score == right_score
+            if left_score > right_score or (equal and self._prefer_left):
+                left_tokens.append(pretoken[left_start:best_left_end+1])
+                left_start = best_left_end+1
+                best_left_end = +inf
+            else:
+                right_tokens.insert(0, pretoken[best_right_start:right_end+1])
+                right_end = best_right_start-1
+                best_right_start = -inf
+
+        return left_tokens + right_tokens
 
 
 class Xu(TokeniserWithVocabDict):
