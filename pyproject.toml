@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tktkt"
-version = "2025.08.01"  # Don't forget to replace __version__ as well.
+version = "2025.09.01"  # Don't forget to replace __version__ as well.
 requires-python = ">= 3.9"
 authors = [
   {name = "Thomas Bauwens", email = "thomas.bauwens@kuleuven.be"}

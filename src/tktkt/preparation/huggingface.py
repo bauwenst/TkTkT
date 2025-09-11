@@ -67,7 +67,7 @@ class HuggingFacePreprocessor(Preprocessor):
 class HuggingFacePreprocessorForWords(Preprocessor):
     """
     For tokenising text as if it was an isolated word (i.e. the start of the word is the start of the input and the end
-    is the end of the input). Not trivial since by default, tokenisers like the RobertaTokenizerFast assume a string is
+    is the end of the input). Not easy, since by default, tokenisers like the RobertaTokenizerFast assume a string is
     explicitly not at the start of a word if there is no start-of-word marker.
 
     The motivation behind this implementation:

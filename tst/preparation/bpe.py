@@ -1,5 +1,5 @@
 from tktkt.factories.deserialisation import getEnglishBpeFiles
-from tktkt.preparation.instances import ModernEnglishPreprocessor, RobertaSpaceMarker
+from tktkt.factories.preprocessing import ModernEnglishPreprocessor, RobertaSpaceMarker
 from tktkt.models.bpe.base import ClassicBPE
 
 

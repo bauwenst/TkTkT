@@ -17,7 +17,7 @@ from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
-from ...preparation.instances import KudoSpaceMarker
+from ...factories.preprocessing import KudoSpaceMarker
 from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab, DEFAULT_FIVE_SPECIALS
 from ...util.dicts import substituteKey, argmax, kargmax
 from ...util.iterables import streamProgress

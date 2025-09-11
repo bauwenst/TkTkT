@@ -1,7 +1,7 @@
 from tst.preamble import *
 
 from tktkt.evaluation.entropy import getTokenDistributionFromSentences_and_analyse
-from tktkt.models.identity.segmentation import IdentityTokeniserWithVocab
+from tktkt.models.trivial.identity import IdentityTokeniserWithVocab
 from tktkt.factories.preprocessing import Preprocessor, WhitespacePretokeniser
 from tktkt.util.types import NamedIterable
 

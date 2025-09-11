@@ -1,14 +1,13 @@
 """
 Simplified version of the GuidedBPEDropout implementation, to speed it up.
 """
-from typing import List, Iterable
 from typing_extensions import Self
 
 import numpy.random as npr
 from transformers import PreTrainedTokenizerFast
 
 from ...preparation.boundaries import BoundaryMarker
-from ...interfaces.tokeniser import Preprocessor
+from ...interfaces.tokeniser import Preprocessor, Tokens
 from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
 
 
@@ -39,8 +38,8 @@ class BPEDropout(NonDeterministicBPETokeniser):
             dropout_probability=dropout_probability
         )
 
-    def applyMerges(self, sequence_of_nonspaces: Iterable[str]) -> List[str]:
-        buffer = " " + " ".join(sequence_of_nonspaces) + " "
+    def _finalTokens(self, tokens: Tokens) -> Tokens:
+        buffer = " " + " ".join(tokens) + " "
         while True:
             possible_merges = []
 
@@ -53,7 +52,7 @@ class BPEDropout(NonDeterministicBPETokeniser):
                 if self.rng.random() > self.p:  # Sanity check: when p = 0.9, you expect 90% of all RNGs to not reach above p and hence skip the rest of the loop.
                     # Check which merges are available.
                     for m in self.merges_starting_with.get(t, []):
-                        if buffer[index_in_buffer:index_in_buffer+len(m[1])] == m[1]:  # Note that this is actually (believe it or not) slower than the 'in' check in the original applyMerges.
+                        if buffer[index_in_buffer:index_in_buffer+len(m[1])] == m[1]:  # Note that this is actually (believe it or not) slower than the 'in' check in the original _finalTokens.
                             possible_merges.append((m,index_in_buffer))
                             # print("\t", m[1])
                 index_in_buffer += len(t) + 1  # Move to the next space in the buffer.
@@ -97,8 +96,8 @@ class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
         )
         self.rng = npr.default_rng(0)
 
-    def applyMerges(self, sequence_of_nonspaces: Iterable[str]) -> List[str]:
-        buffer = " " + " ".join(sequence_of_nonspaces) + " "
+    def _finalTokens(self, tokens: Tokens) -> Tokens:
+        buffer = " " + " ".join(tokens) + " "
         while True:
             possible_merges = []
 
@@ -109,7 +108,7 @@ class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
             for t in types:
                 # Check which merges are available.
                 for m in self.merges_starting_with.get(t, []):
-                    if buffer[index_in_buffer:index_in_buffer + len(m[1])] == m[1]:  # Note that this is actually (believe it or not) slower than the 'in' check in the original applyMerges.
+                    if buffer[index_in_buffer:index_in_buffer + len(m[1])] == m[1]:  # Note that this is actually (believe it or not) slower than the 'in' check in the original _finalTokens.
                         possible_merges.append((m, index_in_buffer))
                         # print("\t", m[1])
                 index_in_buffer += len(t) + 1  # Move to the next space in the buffer.
@@ -143,8 +142,8 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
         self.p = breakdown_probability
         self.within_tree = within_tree
 
-    def applyMerges(self, sequence_of_nonspaces: Iterable[str]) -> List[str]:
-        initial_tokens = super().applyMerges(sequence_of_nonspaces)[::-1]  # Reverse so you can pop and append from the back.
+    def _finalTokens(self, tokens: Tokens) -> Tokens:
+        initial_tokens = list(super()._finalTokens(tokens))[::-1]  # Reverse so you can pop and append from the back.
 
         final_tokens = []
         while initial_tokens:

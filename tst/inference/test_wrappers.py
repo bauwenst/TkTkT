@@ -1,5 +1,5 @@
 from tktkt.wrappers.fallbackvocab import TokeniserWithByteFallback
-from tktkt.preparation.instances import IdentityPreprocessor
+from tktkt.factories.preprocessing import IdentityPreprocessor
 from tktkt.models.greedy.directional import L2R_Greedy
 
 

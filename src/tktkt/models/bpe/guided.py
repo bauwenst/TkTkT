@@ -7,7 +7,7 @@ from math import exp, log, inf
 from transformers import PreTrainedTokenizerFast
 
 from ...preparation.boundaries import BoundaryMarker
-from ...interfaces.tokeniser import Preprocessor
+from ...interfaces.tokeniser import Preprocessor, Tokens
 from ...models.predictive.viterbi import CharacterClassifier
 from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
 
@@ -76,14 +76,14 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
             always_dropout_above=always_dropout_above
         )
 
-    def applyMerges(self, sequence_of_nonspaces: Iterable[str]) -> List[str]:
+    def _finalTokens(self, tokens: Tokens) -> Tokens:
         """
         Implementation where each merge instance is treated separately, and the index of each space is also tracked to
         be able to verify if it is allowed to disappear.
         """
-        p_forbidden_to_concatenate = [exp(L) for L in self.classifier.getPointLogProbabilities("".join(sequence_of_nonspaces))]
+        p_forbidden_to_concatenate = [exp(L) for L in self.classifier.getPointLogProbabilities("".join(tokens))]
 
-        buffer = " " + " ".join(sequence_of_nonspaces) + " "
+        buffer = " " + " ".join(tokens) + " "
         while True:
             # print(buffer)
             possible_merges = []

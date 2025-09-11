@@ -1,6 +1,6 @@
 from tst.preamble import *
 from tktkt.models.kudopiece.vocabularisation import *
-from tktkt.preparation.instances import ModernEnglishPreprocessor_SentencePieceCompatible
+from tktkt.factories.preprocessing import ModernEnglishPreprocessor_SentencePieceCompatible
 
 from bpe_knockout.project.config import Pℛ𝒪𝒥ℰ𝒞𝒯, KnockoutDataConfiguration, setupEnglish
 

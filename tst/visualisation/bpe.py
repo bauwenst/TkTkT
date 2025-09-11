@@ -22,7 +22,7 @@ def makeBPE1():
     This one produces the iconic horses/hoe.
     """
     from bpe_knockout.project.config import Pℛ𝒪𝒥ℰ𝒞𝒯, setupEnglish, KnockoutDataConfiguration
-    from tktkt.preparation.instances import RobertaSpaceMarker
+    from tktkt.factories.preprocessing import RobertaSpaceMarker
     from tktkt.models.bpe.base import ClassicBPE
     with KnockoutDataConfiguration(setupEnglish()):
         vocab_and_merges = Pℛ𝒪𝒥ℰ𝒞𝒯.config.base_tokeniser

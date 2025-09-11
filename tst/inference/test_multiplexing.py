@@ -32,7 +32,7 @@ def test_differentVocabulary():
     can be multiplexed by offsetting the IDs of the second, losslessly.
     """
     from tktkt.wrappers.multiplexing import StochasticTokeniserMultiplexer_DifferentDomains, MultiplexedPreprocessor
-    from tktkt.models.identity.segmentation import IdentityTokeniserWithVocab
+    from tktkt.models.trivial.identity import IdentityTokeniserWithVocab
     from tktkt.factories.preprocessing import TraditionalPreprocessor, IdentityPreprocessor
 
     tk1 = IdentityTokeniserWithVocab(IdentityPreprocessor(), {"a": 0, "b": 1, "c": 2, "d": 3, "[UNK]": 4}, unk_type="[UNK]")

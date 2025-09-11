@@ -41,3 +41,6 @@ class RA_Greedy(TokeniserWithVocabDict):
         return self.tokenise(word[:start]) + \
             [subword] + \
             self.tokenise(word[start + size:])
+
+
+FLOTA = RA_Greedy

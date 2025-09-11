@@ -1,5 +1,5 @@
 """
-Wrapper that multiplexes more than one Tokeniser.
+Wrapper that parallel-multiplexes more than one Tokeniser.
 
 There are 5 possible configurations to handle preprocessing:
 
@@ -25,7 +25,7 @@ import numpy as np
 import numpy.random as npr
 
 from ..interfaces.huggingface import detectSpecials
-from ..interfaces.tokeniser import Tokeniser, Preprocessor, TokeniserWithFiniteTypeDomain
+from ..interfaces.tokeniser import Tokeniser, Preprocessor, TokeniserWithFiniteTypeDomain, Tokens
 
 
 @dataclass
@@ -266,3 +266,45 @@ class StochasticTokeniserSwitch(StochasticTokeniserMultiplexer_SameDomains):
 
     def select(self, pretoken: str) -> int:
         return self._rng.random() < self.threshold
+
+
+########################################################################################################################
+
+
+class SuccessionalTokeniser(Tokeniser):
+    """
+    Interface for tokenisers whose algorithms start out with a list of tokens to work off of.
+    """
+    @abstractmethod
+    def _initialTokens(self, pretoken: str) -> Tokens:
+        """Convert a pretoken to initial tokens to be used further by the algorithm."""
+        pass
+
+    @abstractmethod
+    def _finalTokens(self, tokens: Tokens) -> Tokens:
+        """Turn initial sequence of tokens into a final sequence of tokens."""
+        pass
+
+    def tokenise(self, pretoken: str) -> Tokens:
+        return self._finalTokens(self._initialTokens(pretoken))
+
+
+class TokeniserSequence(Tokeniser):
+    """
+    First segments each pretoken using a head tokeniser. The resulting tokens are given to another tokeniser in their
+    entirety, which transforms the sequence to a new sequence. That sequence is given to another tokeniser, etc.
+
+    The preprocessors of the tokenisers in the tail are NOT used, nor are their _initialTokens() methods!
+    """
+
+    def __init__(self, head: Tokeniser, tail: List[SuccessionalTokeniser]):
+        assert tail
+        super().__init__(preprocessor=head.preprocessor)
+        self._head = head
+        self._tail = tail
+
+    def tokenise(self, pretoken: str) -> Tokens:
+        tokens = self._head.tokenise(pretoken)
+        for t in self._tail:
+            tokens = t._finalTokens(tokens)
+        return tokens

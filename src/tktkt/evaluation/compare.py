@@ -7,7 +7,7 @@ from collections import Counter
 from abc import ABC, abstractmethod
 
 from ..interfaces.tokeniser import Tokeniser, Preprocessor
-from ..preparation.instances import IdentityPreprocessor
+from ..factories.preprocessing import IdentityPreprocessor
 from ..util.iterables import streamProgress
 from ..util.printing import warn
 from ..util.aggregates import MicroMacro

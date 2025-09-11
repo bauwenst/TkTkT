@@ -1,7 +1,7 @@
 from typing import Optional
 
 from tktkt.models.predictive.viterbi import *
-from tktkt.preparation.instances import RobertaPreprocessor, IdentityPreprocessor
+from tktkt.factories.preprocessing import RobertaPreprocessor, IdentityPreprocessor
 from tktkt.factories.tokenisers import Factory_BoMMaSum_BPE, getEnglishBpeFiles
 from tktkt.interfaces.tokeniser import Vocab, Preprocessor
 

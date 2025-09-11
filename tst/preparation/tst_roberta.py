@@ -7,7 +7,7 @@ from tktkt.interfaces.preparation import Preprocessor
 from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import *
 from tktkt.preparation.huggingface import HuggingFacePretokeniser
-from tktkt.preparation.instances import RobertaPreprocessor, RobertaSpaceMarker, SennrichSpaceMarker, \
+from tktkt.factories.preprocessing import RobertaPreprocessor, RobertaSpaceMarker, SennrichSpaceMarker, \
     IsolatedSpaceMarker, ModernEnglishPreprocessor
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 

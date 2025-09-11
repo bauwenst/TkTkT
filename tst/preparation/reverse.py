@@ -36,7 +36,7 @@ def tst_reversingprep():
     from transformers import AutoTokenizer
 
     from tktkt.interfaces import Preprocessor
-    from tktkt.preparation.instances import RobertaSpaceMarker
+    from tktkt.factories.preprocessing import RobertaSpaceMarker
     from tktkt.preparation.huggingface import HuggingFaceNormaliser, tn
     from tktkt.preparation.mappers import IdentityMapper
     from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser

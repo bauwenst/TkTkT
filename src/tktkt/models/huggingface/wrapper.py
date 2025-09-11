@@ -6,7 +6,7 @@ import tokenizers.pre_tokenizers as tp
 import tokenizers.normalizers as tn
 
 from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain
-from ...preparation.instances import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
+from ...factories.preprocessing import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
 
 
 class HuggingFaceTokeniser(TokeniserWithFiniteTypeDomain):

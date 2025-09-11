@@ -10,7 +10,7 @@ from bpe_knockout.knockout.core import MergeList
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
-from ...interfaces.tokeniser import Vocab
+from ...interfaces.tokeniser import Vocab, Tokens
 from ...preparation.boundaries import BoundaryMarker
 from ...preparation.huggingface import detectBoundaryMarkerFromTokeniser, HuggingFacePreprocessor, HuggingFacePreprocessorForWords
 
@@ -85,7 +85,7 @@ class DeterministicBPETokeniser(SimplifiedBTEInterface):
         return True
 
     @lru_cache(maxsize=1024*1024)
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         return super().tokenise(pretoken)
 
     def _syncWithGraph(self):

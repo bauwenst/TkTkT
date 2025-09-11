@@ -3,7 +3,7 @@ Evaluate any tokeniser on English morphology.
 """
 from ..interfaces.factories import TokeniserFactory
 from ..factories.deserialisation import *
-from ..preparation.instances import *
+from ..factories.preprocessing import *
 from ..models.predictive.viterbi.instances import *
 from ..models.bpe.base import ClassicBPE
 from ..models.bpe.knockout import BPEKnockout, ReBPE

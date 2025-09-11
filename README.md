@@ -144,21 +144,12 @@ The packages is divided into the following submodules:
 - `tktkt.util`: contains tools peripheral to tokenisation, like string formatting, combinatoric calculations, iterable functions, timing, etc...
 
 ## Installation
-### Non-editable (recommended)
 Simply run
 ```shell
 pip install "tktkt[github] @ git+https://github.com/bauwenst/TkTkT"
 ```
-where you should leave out the `[github]` suffix if you have an editable installation of [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout).
-
-### Editable
-If you want to keep TkTkT out of your `site-packages` for easy editing, an editable install is always possible:
-```shell
-git clone https://github.com/bauwenst/TkTkT
-cd TkTkT
-pip install -e .[github]
-```
-where the same caveat applies about the `[github]` suffix.
+where you should leave out the `[github]` suffix only if you have editable installations of any of my other packages, 
+like [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout) (but you probably don't).
 
 ## Examples
 ### Basic usage
@@ -358,14 +349,12 @@ Here's a non-exhaustive list of reasons:
     whilst there exist many more in the literature, and the likelihood that someone who knows the literature comes along to
     implement all of them in C++ is rather low.
 
-There is also the [pyonmttok](https://github.com/OpenNMT/Tokenizer) package which has better design, but also sticks to
+There is also the [pyonmttok](https://github.com/OpenNMT/Tokenizer) package which has better design than `tokenizers`, but also sticks to
 BPE and KudoPiece.
 
 ## Pronunciation
 The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast, like a beatboxer mimicking hi-hats
-(kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this, because I said so.
-If you are Brazilian, you may pronounce it "tuca tuca" while playing [the official TkTkT theme song](https://open.spotify.com/track/2aX7w5bdbES8A9H5FDydSA),
-which gives you a peek into my demented taste in music.
+(kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this.
 
-If you think all of this is cringe, too bad -- it is the only way not to fall into clinical depression after realising
-just how messy modern subword tokenisation is at the algorithmic *and* an implementational level.
+If you are Brazilian, you may pronounce it "tuca tuca" while playing [the official TkTkT theme song](https://open.spotify.com/track/2aX7w5bdbES8A9H5FDydSA)
+(yes, the demented state of modern-day tokeniser implementations will leave you with an equally demented taste in music).

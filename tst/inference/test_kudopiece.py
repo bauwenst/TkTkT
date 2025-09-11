@@ -1,5 +1,5 @@
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
-from tktkt.preparation.instances import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
+from tktkt.factories.preprocessing import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
 from tktkt.paths import TkTkTPaths
 
 prep = Preprocessor(IdentityMapper(), AppendSpace(front_not_back=True), IdentityPretokeniser())
