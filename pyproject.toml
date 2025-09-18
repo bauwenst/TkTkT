@@ -32,7 +32,8 @@ dependencies = [
     "nlpaug",
     "fugashi",
     "ipadic",
-    "pythainlp"
+    "pythainlp",
+    "dacite"
 ]
 
 # These are not optional, but if you have these packages as editable install, you don't want to let pip install them again!
