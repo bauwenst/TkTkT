@@ -1,5 +1,6 @@
-from typing import Tuple, List
+from typing import Tuple, List, Dict
 from dataclasses import dataclass
+from pathlib import Path
 
 from .printing import wprint
 
@@ -38,11 +39,10 @@ class ConfusionMatrix:
         return precision, recall, f1
 
     def compute(self):
-        N  = self.total
         tp = self.total_tp
         fp = self.total_predicted - self.total_tp
         fn = self.total_relevant - self.total_tp
-        tn = N - tp - fp - fn
+        tn = self.total - tp - fp - fn
         return tp, fp, tn, fn
 
     def display(self):
@@ -80,6 +80,15 @@ class ConfusionMatrix:
         tuples = [matrix.computePrReF1() for matrix in matrices]
         precisions, recalls, f1s = zip(*tuples)
         return sum(precisions)/n, sum(recalls)/n, sum(f1s)/n
+
+    @classmethod
+    def fromPositivesNegatives(cls, tp: int, fp: int, tn: int, fn: int) -> "ConfusionMatrix":
+        cm = ConfusionMatrix()
+        cm.total_tp        = tp
+        cm.total_relevant  = tp + fn
+        cm.total_predicted = tp + fp
+        cm.total = tp + fp + tn + fn
+        return cm
 
 
 class MicroMacro:

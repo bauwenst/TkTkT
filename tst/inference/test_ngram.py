@@ -1,5 +1,5 @@
 from tktkt.models.ngram.base import *
-from tktkt.evaluation.morphological import tokeniseAndDecode
+from tktkt.interfaces.tokeniser import prepare_tokenise_decode
 
 
 if __name__ == "__main__":
@@ -14,6 +14,6 @@ if __name__ == "__main__":
 
         print(n,m)
         print(tk.prepareAndTokenise(sentence))
-        print(tokeniseAndDecode(sentence, tk))
+        print(prepare_tokenise_decode(sentence, tk, tk.preprocessor))
         print(tk.preprocessor.undo(tk.prepareAndTokenise(sentence)))
         print()

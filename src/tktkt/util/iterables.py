@@ -104,6 +104,7 @@ def drop(n: int, iterable: Iterable[T]) -> Generator[T, None, None]:
 
 
 def take(n: int, iterable: Iterable[T], exact: bool=False) -> Generator[T, None, None]:
+    """Stream the first n elements in the iterable and drop the rest."""
     if n > 0:
         i = 0
         for thing in iterable:
@@ -120,19 +121,29 @@ def take(n: int, iterable: Iterable[T], exact: bool=False) -> Generator[T, None,
 
 
 def takeAfterShuffle(n: int, known_size: int, iterable: Iterable[T], rng=npr.default_rng(seed=0)) -> Generator[T, None, None]:
+    """
+    Stream the first n elements in the iterable, but as if it was shuffled first.
+    Implemented as a check in an index set generated before iteration, using the given size.
+    """
     if n > known_size:
         raise ValueError(f"Cannot take {n} items from an iterable whose size is reported as being only {known_size}.")
 
     indices = set(rng.integers(low=0, high=known_size, size=n))
     for i,thing in enumerate(iterable):
         if i in indices:
-            indices.pop(i)
+            indices.remove(i)
             yield thing
 
 
-def takeRandomly(p: float, iterable: Iterable[T], rng=npr.default_rng(seed=0)) -> Generator[T, None, None]:
+def takeRandomly(p: float, iterable: Iterable[T], complement: bool=False, rng=npr.default_rng(seed=0)) -> Generator[T, None, None]:
+    """
+    Stream the elements in the iterable, but keeping only p*100% of the elements at random.
+    If the size of the iterable is known to be N, no guarantee is made that exactly p*N items are returned. Could even be 0 or N.
+
+    :param complement: Yield the elements that are NOT kept rather than those that are kept.
+    """
     for thing in iterable:
-        if rng.random() < p:
+        if (rng.random() < p) != complement:  # So you yield when (1) complement is False and the check triggers, or (2) complement is True and the check doesn't trigger.
             yield thing
 
 

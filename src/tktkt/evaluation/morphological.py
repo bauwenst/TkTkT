@@ -1,18 +1,19 @@
 """
 Taken from the BPE knockout repo.
 """
-from typing import Callable, Dict, List, Tuple, Iterable, Union
+from typing import Dict, List
 from dataclasses import dataclass
 
-from bpe_knockout.datahandlers.holdout import Holdout
-from bpe_knockout.project.config import morphologyGenerator, lexiconWeights
-from modest.interfaces.morphologies import MorphologyVisitor, WordSegmentation, MorphSplit, FreeMorphSplit
+import json
 
-from ..util.printing import wprint
+from modest.interfaces.morphologies import MorphologyVisitor, MorphSplit, FreeMorphSplit
+from modest.interfaces.datasets import ModestDataset, M
+
 from ..util.aggregates import ConfusionMatrix, NestedAverage, NestedMicroMacro
 from ..util.iterables import cumsum
 from ..paths import TkTkTPaths
-from ..interfaces.tokeniser import Tokeniser, TokeniserWithFiniteIdRange
+from ..util.types import HoldoutState
+from .observing import *
 
 
 def compareSplits_cursors(candidate: str, reference: str):
@@ -219,148 +220,86 @@ def alignedSegmentationScore(morphs: List[str], tokens: List[str], adversarial: 
     output.fence()
 
 
-#########################
-### Testing framework ###
-#########################
-def tokeniseAndDecode(string: str, tokeniser: Tokeniser) -> List[str]:
-    """
-    Tokenisation, but afterwards, you run each produced token back through (inverse of) the pretokeniser and (invertible) mappings.
-    """
-    return tokeniser.preprocessor.undo_per_token(tokeniser.prepareAndTokenise(string))
+########################################################################################################################
 
 
-def morphologyVersusTokenisation(
-        morphological_generator: Iterable[WordSegmentation], morphology_method: MorphologyVisitor,
-        tokeniser: Tokeniser,
-        weights: Dict[str, float]=None, holdout: Holdout=None,  # Experiment parameters
-        do_write_fusions: bool=False, quiet: bool=False, display_confusion_matrix: bool=False, log_name: str="log"  # Display
-    ) -> Tuple[ConfusionMatrix, ConfusionMatrix]:
-    # Optional stuff
-    weighted = weights is not None
-    log = None
-    if do_write_fusions:
-        log = open(TkTkTPaths.pathToEvaluations() / f"{log_name}_morpheme-fusions_{morphology_method.__name__}.txt", "w", encoding="utf-8")
+@dataclass
+class ConfusionMatrices:
+    cm:          ConfusionMatrix
+    cm_weighted: ConfusionMatrix
 
-    # Result storage
-    cm   = ConfusionMatrix()
-    cm_w = ConfusionMatrix() if weighted else None
 
-    if holdout is None:
-        holdout = Holdout(0.0)  # 0% is in the training set, 100% in the test set.
+class MorphologyIterable(ObservableRoot[Tuple[str,M]]):
 
-    for obj in holdout(morphological_generator, test=True):
-        lemma = obj.word
+    def __init__(self, dataset: ModestDataset[M], word_weights: Dict[str,float]=None, observers: List[Observer[Tuple[str,M]]]=None):
+        super().__init__(observers=observers)
+        self._dataset = dataset
+        self._weights = word_weights or dict()
 
-        tokeniser_segmentation = " ".join(tokeniseAndDecode(lemma, tokeniser=tokeniser)).strip()
-        reference_segmentation = " ".join(morphology_method(obj))
+    def _globalRunIdentifier(self) -> str:
+        return self._dataset.identifier()
 
+    def _stream(self) -> Iterator[Tuple[Tuple[str,M],float]]:
+        for obj in self._dataset.generate():
+            word = obj.word
+            yield (word, obj), self._weights.get(word, 1)
+
+
+class MorphologyAsClassification(FinallyObservableObserver[Tuple[Tokens,M],ConfusionMatrices]):
+
+    def __init__(self, visitor: MorphologyVisitor, effective_preprocessor: Preprocessor=None,
+                 holdout: HoldoutState=None, do_log_false_negatives: bool=False,
+                 observers: List[Observer[ConfusionMatrices]]=None):
+        super().__init__(cache_disambiguator=visitor.__class__.__name__, observers=observers)
+        self._visitor      = visitor
+        self._preprocessor = effective_preprocessor
+        self._holdout      = holdout
+        self._do_log_fusions = do_log_false_negatives
+
+    def _initialiseAsObserver(self, identifier: str):
+        self._cm   = ConfusionMatrix()
+        self._cm_w = ConfusionMatrix()
+        self._log  = None if not self._do_log_fusions else open(TkTkTPaths.pathToEvaluations() / "" / f"{self._cacheIdentifier()}_morpheme-fusions.txt", "w", encoding="utf-8")
+
+    def _receive(self, sample: Tuple[Tokens,M], weight: float):
+        tokens, obj = sample
+        tokeniser_segmentation = " ".join(self._preprocessor.undo_per_token(tokens)).strip()
+        reference_segmentation = " ".join(self._visitor(obj))
         # print(reference_segmentation, "->", tokeniser_segmentation)
 
         # Compare
         tp, predicted, relevant, total = compareSplits_cursors(candidate=tokeniser_segmentation, reference=reference_segmentation)
-        cm.add(tp, predicted, relevant, total, 1)
-        if weighted:
-            cm_w.add(tp, predicted, relevant, total, weight=weights.get(lemma, 1))
+        self._cm  .add(tp, predicted, relevant, total, weight=1)
+        self._cm_w.add(tp, predicted, relevant, total, weight=weight)
 
-        if do_write_fusions and tp != relevant:  # This condition means "if you merged somewhere you shouldn't have". It ignores errors of excess tokenisation (tp != predicted).
-            log.write(reference_segmentation + "\t->\t" + tokeniser_segmentation + "\n")
+        if self._do_log_fusions and tp != relevant:  # This condition means "if you merged somewhere you shouldn't have". It ignores errors of excess tokenisation (tp != predicted).
+            self._log.write(reference_segmentation + "\t->\t" + tokeniser_segmentation + "\n")
 
-    if do_write_fusions:
-        log.close()
+    def _compute(self) -> ConfusionMatrices:
+        if self._do_log_fusions:
+            self._log.close()
+        # if not quiet:
+        #     self._cm.display()
+        #     self._cm.displayRePrF1(indent=2)
+        #     self._cm_w.display()
+        #     self._cm_w.displayRePrF1(indent=2)
+        return ConfusionMatrices(cm=self._cm, cm_weighted=self._cm_w)
 
-    if not quiet:
-        # Pr, Re, F1
-        cm.displayRePrF1(indent=2)
-        if weighted:
-            print("\tWeighted:")
-            cm_w.displayRePrF1(indent=2)
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
+        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["morphology"]) / (unambiguous_cache_identifier + ".json")
 
-        # Confusion matrices (TP, FP, FN, TN).
-        if display_confusion_matrix:
-            print("Confusion matrix:")
-            cm.display()
-            if weighted:
-                print("Weighted confusion matrix:")
-                cm_w.display()
+    def _cacheStore(self, cache_path: Path, result: ConfusionMatrices):
+        def matrixToDict(cm: ConfusionMatrix):
+            tp, fp, tn, fn = cm.compute()
+            return {"TP": tp, "FP": fp, "TN": tn, "FN": fn}
 
-    return cm, cm_w
+        with open(cache_path, "w", encoding="utf-8") as handle:
+            json.dump({"unweighted": matrixToDict(result.cm), "weighted": matrixToDict(result.cm_weighted)}, handle)
 
+    def _cacheLoad(self, cache_path: Path) -> ConfusionMatrices:
+        def dictToMatrix(d: dict) -> ConfusionMatrix:
+            return ConfusionMatrix.fromPositivesNegatives(d["TP"], d["FP"], d["TN"], d["FN"])
 
-@dataclass
-class TokeniserEvaluation:
-    name: str
-    vocabsize: int
-
-    cm_morph:   ConfusionMatrix
-    cm_morph_w: ConfusionMatrix
-    cm_lex:     ConfusionMatrix
-    cm_lex_w:   ConfusionMatrix
-
-
-# @timeit
-def intrinsicEvaluation(tokenisers: Iterable[Union[Tokeniser, TokeniserWithFiniteIdRange]],
-                        reweighting_function: Callable[[float], float]=None, holdout: Holdout=None, do_whole_word=False,
-                        verbose=False) -> List[TokeniserEvaluation]:
-    """
-    Generates, for each given tokeniser, 12 metrics:
-        - Morph-level unweighted and weighted precision, recall, F1 of morphological split positions;
-        - Whole-word unweighted and weighted precision, recall, F1 of split positions;
-
-    Uses the morphology file (for both) and lemma weights (for the latter) in the CURRENTLY ACTIVE KnockoutDataContext.
-
-    :param tokenisers: The elements of the given list must have a method .tokenize(str) -> List[str].
-    :param reweighting_function: Applied to lemma frequencies. If no function is given, the weighted metrics are dropped
-                                 (rather than applying the identity function to the frequencies).
-                                 It's useful to not automatically fill this function in, because the reweighting function
-                                 used in the config is used in BTE training and nobody says that it needs to be equal here.
-    """
-    if verbose:
-        wprint(f"Batch evaluation of {len(tokenisers) if isinstance(tokenisers, (list, tuple)) else 'generated'} tokenisers...")
-
-    # Load weights
-    lemma_weights = lexiconWeights(reweighting_function) if reweighting_function is not None else None  # If it is None, this is used as a signal to say "I don't want weighting".
-
-    # Evaluation loop
-    results = []
-    for t in tokenisers:
-        # Get metadata
-        try:
-            name = t.getName()
-        except:
-            name = t.__class__.__name__
-
-        try:
-            vocabsize = t.getVocabSize()
-        except:
-            vocabsize = 0  # Technically not wrong, although infinity is equally true.
-
-        # Uncomment this if you need to only simulate the testing framework (e.g. calling this test in a loop), rather than get results.
-        # results.append(TokeniserEvaluation(name=name, vocabsize=size, cm_morph=SegmentationConfusionMatrix(), cm_morph_w=SegmentationConfusionMatrix(), cm_lex=SegmentationConfusionMatrix(), cm_lex_w=SegmentationConfusionMatrix()))
-        # continue
-
-        # Print and evaluate
-        if verbose:
-            print(name)
-            wprint("\tMorph split accuracy:")
-        cm1, cm1_w = morphologyVersusTokenisation(morphologyGenerator(verbose=verbose),
-                                                  MorphSplit(), tokeniser=t,
-                                                  weights=lemma_weights, holdout=holdout,
-                                                  do_write_fusions=False, log_name=name, quiet=not verbose)
-
-        if do_whole_word:
-            if verbose:
-                wprint("\tLemmatic split accuracy:")
-            cm2, cm2_w = morphologyVersusTokenisation(morphologyGenerator(verbose=verbose),
-                                                      FreeMorphSplit(), tokeniser=t,
-                                                      weights=lemma_weights, holdout=holdout,
-                                                      do_write_fusions=False, log_name=name, quiet=not verbose)
-        else:
-            cm2, cm2_w = None, None
-
-        if verbose:
-            wprint()
-
-        results.append(TokeniserEvaluation(name=name, vocabsize=vocabsize,
-                                           cm_morph=cm1, cm_morph_w=cm1_w,
-                                           cm_lex=cm2,   cm_lex_w=cm2_w))
-    return results
+        with open(cache_path, "r", encoding="utf-8") as handle:
+            d = json.load(handle)
+            return ConfusionMatrices(cm=dictToMatrix(d["unweighted"]), cm_weighted=dictToMatrix(d["weighted"]))

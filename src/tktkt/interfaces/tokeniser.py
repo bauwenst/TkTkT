@@ -120,3 +120,13 @@ class TokeniserWithVocabDict(TokeniserWithFiniteTypeDomain):
 
     def getVocabSize(self) -> int:
         return len(self.reverse_vocab)
+
+
+def prepare_tokenise_decode(string: str, tokeniser: Tokeniser, preprocessor: Preprocessor) -> List[str]:
+    """
+    Tokenise, but afterwards, run each produced token back through the (inverse of) the pretokeniser + (invertible) mappings.
+
+    Note: the preprocessor should be the effective preprocessor. E.g.: if you're using SentencePiece, this is your actual
+    preprocessor followed by a mapper that adds the KudoSpaceMarker as a prefix.
+    """
+    return preprocessor.undo_per_token(tokeniser.prepareAndTokenise(string))

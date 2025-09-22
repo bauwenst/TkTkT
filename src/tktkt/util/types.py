@@ -5,6 +5,7 @@ from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Dict,
 from abc import abstractmethod
 from datasets import Dataset, IterableDataset
 from functools import partial
+import numpy.random as npr
 
 # There are four canonical ways to represent the segmentation of a known string:
 #     - A list of token strings;
@@ -128,6 +129,28 @@ class wrappediterable(Iterable[T2]):
 
     def __iter__(self):
         return self._function(self._iterable.__iter__())
+
+
+class HoldoutState:
+
+    def __init__(self, train_fraction: float, seed: int=0):
+        self._p    = train_fraction
+        self._seed = seed
+        self.rng   = npr.default_rng(seed=self._seed)
+
+    def reset(self):
+        self.rng = npr.default_rng(seed=self._seed)
+
+    def decide(self) -> bool:
+        """True if the next item belongs to the train split. Updates the RNG state."""
+        return self.rng.random() < self._p
+
+    def __call__(self, iterator: Iterable[T], train: bool=False, test: bool=False) -> Iterable[T]:
+        self.reset()
+        for output in iterator:
+            train_split = self.decide()
+            if (train_split and train) or (not train_split and test):
+                yield output
 
 
 class anypartial(partial):

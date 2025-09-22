@@ -331,33 +331,6 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
         dataclassToJson(result, cache_path)
 
 
-class Observer_with_Distribution_TTR_Entropy(ObservableTokeniser):
-    """Receives text, tokenises it, and runs all of the above metrics on the result. Prints the results."""
-    def __init__(self, tokeniser: TokeniserWithFiniteTypeDomain, renyi_alpha: float, mattr_window_size: int, mattr_stride: int):
-        super().__init__(
-            tokeniser=tokeniser,
-            observers=[
-                TokenUnigramDistribution(
-                    ensured_vocabulary=tokeniser.types(),
-                    observers=[
-                        TTR(observers=[PrintingObserver()]),
-                        RenyiEntropy(
-                            alpha=renyi_alpha,
-                            vocab_size_in_denominator=tokeniser.getVocabSize(),
-                            observers=[PrintingObserver()]
-                        )
-                    ]
-                ),
-                MATTR(
-                    window_size=mattr_window_size,
-                    stride=mattr_stride,
-                    flush_every_example=False,
-                    observers=[PrintingObserver()]
-                )
-            ],
-        )
-
-
 ########################################################################################################################
 
 

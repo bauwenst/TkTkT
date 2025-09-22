@@ -3,7 +3,8 @@ from tktkt.util.strings import indicesToTokens
 from tst.evaluation.english_morphology import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
 
 from tktkt.factories.tokenisers import Factory_BoMMaSum_BPE
-from tktkt.evaluation.morphological import tokeniseAndDecode, morphologyGenerator
+from tktkt.evaluation.morphological import morphologyGenerator
+from tktkt.interfaces.tokeniser import prepare_tokenise_decode
 from tktkt.visualisation.neural.splitpoints_probabilities import *
 
 from fiject import MultiHistogram, CacheMode
@@ -41,7 +42,7 @@ def test_visualiseCelexMismatches():
             word = obj.word
 
             reference = " ".join(obj.segment())
-            viterbi   = " ".join(tokeniseAndDecode(word, canine_viterbi)).strip()
+            viterbi   = " ".join(prepare_tokenise_decode(word, canine_viterbi, canine_viterbi.preprocessor)).strip()
 
             if reference != viterbi:
                 print(word)

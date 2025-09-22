@@ -14,6 +14,7 @@ from abc import ABC, abstractmethod
 from typing import List, TypeVar, Generic, Iterator, Any, Callable, Tuple, Union
 from pathlib import Path
 
+import numpy.random as npr
 import traceback
 import colorama
 
@@ -21,7 +22,7 @@ from ..interfaces import Preprocessor
 from ..interfaces.tokeniser import Tokeniser
 from ..util.dicts import optionalDataclassToDict
 from ..util.iterables import dunion
-from ..util.types import NamedIterable, Tokens
+from ..util.types import NamedIterable, Tokens, HoldoutState
 from ..util.strings import indent
 
 Received = TypeVar("Received")
@@ -98,6 +99,27 @@ class DataclassCollectorObserver(Observer[Any]):
     Observer meant to be put at various points in the hierarchy, to collect dictionaries/dataclasses that are
     supposed to be saved together as one row in a CSV file. The user is then responsible for separating rows.
     """
+
+    class DataclassSuffixer(Observer[Any]):
+
+        def __init__(self, master: "DataclassCollectorObserver", suffix: str):
+            self._master = master
+            self._suffix = suffix
+
+        def _initialise(self, global_run_identifier: str):
+            pass
+
+        def _receive(self, sample: Any, _):
+            self._master._receive({f"{k}_{self._suffix}": v for k,v in optionalDataclassToDict(sample).items()}, _)
+
+        def _finish(self):
+            pass
+
+    def withSuffix(self, suffix: str) -> DataclassSuffixer:
+        """Add a suffix to the end of the fields of the received dataclasses."""
+        return DataclassCollectorObserver.DataclassSuffixer(self, suffix)
+
+    ####################################################################################################################
 
     def __init__(self, fence_on_assemble: bool=True):
         self._current_list    = []
@@ -317,7 +339,7 @@ class ObservableIterable(ObservableRoot[Sent]):
         self.iterable = iterable
         self._is_tuple_with_weight = already_contains_weights
 
-    def _globalRunIdentifier(self) -> str:  # TODO: You're going to want a constructor that takes an extra name, because just the corpus name is obviously not enough.
+    def _globalRunIdentifier(self) -> str:
         return self.iterable.name
 
     def _stream(self):
@@ -394,6 +416,27 @@ class ObservableFunction(ImmediatelyObservableObserver[Received,Sent]):
 
     def _transit(self, sample: Received, weight: float) -> Sent:
         return self._function(sample, weight)
+
+
+class ObservableFilter(ObservableObserver[Received,Received]):
+
+    def __init__(self, predicate: Callable[[Received],bool], observers: List[Observer[Received]]):
+        super().__init__(observers=observers)
+        self._predicate = predicate
+
+    def _receive(self, sample: Received, weight: float):
+        if self._predicate(sample):
+            self._send(sample, weight)
+
+
+class HoldoutObserver(ObservableFilter[Received]):
+
+    def __init__(self, holdout: HoldoutState, test_split: bool, observers: List[Observer[Received]]):
+        super().__init__(observers=observers, predicate=lambda sample: holdout.decide() != test_split)
+        self._holdout = holdout
+
+    def _initialiseAsObserver(self, identifier: str):
+        self._holdout.reset()
 
 
 _Received2 = TypeVar("_Received2")
@@ -584,39 +627,3 @@ class WirelessRecombiningObserver(ObservableObserver[Received,Tuple[Received, _R
     def _receive(self, sample: Received, weight: float):
         self._send( (sample, self._connection._request(self._index)), weight)
         self._index += 1
-
-
-########################################################################################################################
-
-
-def evaluateTokeniser(corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
-    """
-    Functional shorthand for the object-oriented Observable/Observer approach in case where you want to use a corpus
-    and compute metrics over the tokeniser's token outputs.
-    """
-    ObservableIterable(
-        iterable=corpus,
-        observers=[
-            ObservableTokeniser(
-                tokeniser=tokeniser,
-                observers=token_consumers
-            )
-        ]
-    ).run()
-
-
-def evaluateTokeniserOnWords(corpus: NamedIterable[str], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
-    ObservableIterable(
-        iterable=corpus,
-        observers=[
-            ObservablePreprocessor(
-                preprocessor=word_preprocessor,
-                observers=[
-                    ObservableTokeniser(
-                        tokeniser=tokeniser,
-                        observers=token_consumers
-                    )
-                ]
-            )
-        ]
-    ).run()
