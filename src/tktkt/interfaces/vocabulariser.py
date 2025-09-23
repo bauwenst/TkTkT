@@ -77,6 +77,12 @@ class Vocabulariser(ABC):
         """
         return sentence_iterable.map(self.preprocessor.do).map(sep.join)
 
+    def _preprocessSentencesToPretokens_counter(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[Tuple[str,int]]:
+        counter = Counter()
+        for word in streamProgress(sentence_iterable, "Counting pretokens"):
+            counter.update(self.preprocessor.do(word))
+        return NamedIterable(list(counter.items()), name=sentence_iterable.name)
+
     def _preprocessWordsToSentences(self, word_iterable: NamedIterable[Tuple[str, int]]) -> NamedIterable[str]:
         """
         Converts an iterable
@@ -123,7 +129,7 @@ class Vocabulariser(ABC):
         for word,count in streamProgress(word_iterable, "Counting pretokens"):
             for pretoken in self.preprocessor.do(word):
                 counter[pretoken] += count
-        return NamedIterable(counter.most_common(), name=word_iterable.name)
+        return NamedIterable(list(counter.items()), name=word_iterable.name)
 
     def _makeOutputFolder(self, extra_suffix: str="") -> Path:
         """
@@ -142,18 +148,18 @@ class Vocabulariser(ABC):
 
     def vocabulariseFromTsv(self, word_frequency_tsv: Path) -> Path:
         return self._vocabulariseFromWords(NamedIterable(
-            ( (word, int(count)) for word, count in iterateTsv(word_frequency_tsv, verbose=True) ), name=word_frequency_tsv.stem
+            [(word,int(count)) for word, count in iterateTsv(word_frequency_tsv, verbose=True)], name=word_frequency_tsv.stem
         ))
 
-    def vocabulariseFromCounter(self, word_frequency_counter: Counter) -> Path:
-        return self._vocabulariseFromWords(NamedIterable(word_frequency_counter.items(), name=""))
+    def vocabulariseFromCounter(self, word_frequency_counter: Counter, name: str="[unnamed_counter]") -> Path:
+        return self._vocabulariseFromWords(NamedIterable(word_frequency_counter.items(), name=name))
 
-    def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]]) -> Path:
-        return self._vocabulariseFromSentences(string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name="[unnamed]"))
+    def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]], name_if_not_named: str="[unnamed_iterable]") -> Path:
+        return self._vocabulariseFromSentences(string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name=name_if_not_named))
 
-    def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str) -> Path:
+    def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str, name_if_not_named: str="[unnamed_HF]") -> Path:
         return self._vocabulariseFromSentences(
-            NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else "")
+            NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else name_if_not_named)
                 .map(anypartial(dict.get, ..., text_field))  # Equivalent to `lambda example: example[text_field]` but this one can be pickled.
         )
 

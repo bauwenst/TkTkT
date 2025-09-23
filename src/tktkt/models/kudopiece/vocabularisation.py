@@ -138,7 +138,7 @@ class KudoPieceVocabulariser(Vocabulariser):
         )
 
     def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> Path:
-        output_prefix = self._makeOutputFolder(string_iterable.name) / "spm"
+        output_folder = self._makeOutputFolder(string_iterable.name)
 
         alphabet = self.preprocessor.getAlphabet()
         required_characters = alphabet.getCharacters() if alphabet else []
@@ -152,7 +152,7 @@ class KudoPieceVocabulariser(Vocabulariser):
             input_format="tsv" if is_wordfile else "",
             max_sentence_length=self._arguments.skip_sentences_over_length,
             train_extremely_large_corpus=True,  # Why not, right?
-            model_prefix=output_prefix.as_posix(),
+            model_prefix=(output_folder / "spm").as_posix(),  # The "spm" will be suffixed with a file extension.
 
             # Alphabet
             required_chars=required_characters,
@@ -167,7 +167,7 @@ class KudoPieceVocabulariser(Vocabulariser):
             num_sub_iterations=self._arguments.num_sub_iterations,
         )
 
-        return output_prefix.parent
+        return output_folder
 
     def _addSpace(self, word: str) -> str:
         return " " * (self._marker.location == BoundaryMarkerLocation.START) + word + " " * (self._marker.location == BoundaryMarkerLocation.END)
