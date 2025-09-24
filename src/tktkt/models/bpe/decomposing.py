@@ -2,14 +2,20 @@
 Tokenisers that have flags attached to types in the vocabulary and recursively decompose the results of BPE merging
 until no token has a flag.
 """
-from typing import List, Set
+from typing import List, Set, Tuple
+from pathlib import Path
+from abc import abstractmethod
 
+import json
 from functools import lru_cache
 from collections import Counter
 import numpy.random as npr
 
-from .base import DeterministicBPETokeniser, Preprocessor, BoundaryMarker, Vocab
+from .base import DeterministicBPETokeniser, Preprocessor, Vocab, MergeList, ClassicBPE
+from .vocabularisation import BPEVocabulariser
 from ...util.iterables import fst
+from ...interfaces.vocabulariser import Vocabulariser, UnidentifiedVocab
+from ...util.types import NamedIterable
 
 
 class RecursivelyDecomposingBPE(DeterministicBPETokeniser):
@@ -17,20 +23,19 @@ class RecursivelyDecomposingBPE(DeterministicBPETokeniser):
     First applies BPE like normal, and then recursively undoes applied merges until all tokens are NOT in a predefined set of illegal types.
     """
 
-    def __init__(self, preprocessor: Preprocessor, marker: BoundaryMarker,
-                 expanded_vocab: Vocab, merges: List[str],
+    def __init__(self, preprocessor: Preprocessor,
+                 expanded_vocab: Vocab, merges: List[str],  # TODO: Although you need the expanded vocabulary in the constructor (you need the full BPE graph), you should report a smaller vocabulary size and have a compacted ID mapping for downstream models, lest you have unused embeddings. The same is true for BPE-knockout and PickyBPE.
                  disabled_set: Set[str]):
         """
         :param expanded_vocab: Vocabulary including both the types that remain accessible AND the types to be disabled.
         """
         super().__init__(
             preprocessor=preprocessor,
-            boundary_marker=marker,
 
             vocab=expanded_vocab,
             merges=merges
         )
-        self.disabled = disabled_set & set(expanded_vocab.keys())
+        self._disabled = disabled_set & set(expanded_vocab.keys())
 
     @lru_cache(maxsize=1024*1024)
     def tokenise(self, pretoken: str) -> List[str]:
@@ -47,20 +52,14 @@ class RecursivelyDecomposingBPE(DeterministicBPETokeniser):
         if token not in self.vocab:  # Might be a problem considering that BTE doesn't automatically convert unknown characters to [UNK].
             raise ValueError(f"Cannot decompose token that doesn't have a type in the vocabulary: {token}")
 
-        if token not in self.disabled:
+        if token not in self._disabled:
             return [token]
         else:
             part1, part2 = self.merge_graph.merges_of[token][0].parts
             return self._recursivelyDecompose(part1) + self._recursivelyDecompose(part2)
 
-    def _disableType(self, type_to_disable: str):
-        if type_to_disable not in self.vocab or not self.merge_graph.merges_of[type_to_disable]:
-            raise ValueError(f"Cannot trim a type from the vocabulary that cannot be decomposed further: {type_to_disable}")
 
-        self.disabled.add(type_to_disable)
-
-
-class ScaffoldBPETokeniser(RecursivelyDecomposingBPE):
+class ScaffoldBPE(RecursivelyDecomposingBPE):
     """
     ScaffoldBPE is a recursively decomposing BPE tokeniser which flags types based on their frequency during training.
     During segmentation (after vocabularisation), it is just another recursively decomposing BPE tokeniser.
@@ -74,73 +73,105 @@ class TrimmedBPE(RecursivelyDecomposingBPE):
     Flags types for decomposition if they are too infrequent.
     https://aclanthology.org/2024.insights-1.7/
     """
+    pass
 
-    def __init__(self, preprocessor: Preprocessor, marker: BoundaryMarker,
-                 vocab: Vocab, merges: List[str],
-                 word_corpus: Counter[str], keep_type_if_more_frequent_than: int):
-        super().__init__(
-            preprocessor=preprocessor,
-            marker=marker,
 
-            expanded_vocab=vocab, merges=merges,
-            disabled_set=set()
-        )
-        self._threshold = keep_type_if_more_frequent_than
-        self.trim(word_corpus)
+########################################################################################################################
 
-    def trim(self, corpus: Counter[str]):
-        """
-        Disable all types that appear <= threshold times when tokenising the given corpus.
-        This process is done in parallel (find all types, then disable them) rather than serially (find a type, disable
-        it, find a type with the updated tokeniser, disable it, ...).
 
-        I suspect that this method is idempotent, but I'm too lazy to prove it.
-        """
-        # Get counts
+class _RecursivelyDecomposingBPEVocabulariser(Vocabulariser):
+    """
+    Vocabulariser that finds the types to disable for a RecursivelyDecomposingBPE tokeniser,
+    by tokenising a corpus and computing the unigram distribution on which some operation is applied.
+
+    Note: this vocabulariser does NOT train the BPE tokeniser used to tokenise the corpus.
+    """
+
+    def __init__(self, name: str, preprocessor: Preprocessor,
+                 vocab: Vocab, merges: MergeList):
+        super().__init__(name=name, preprocessor=preprocessor)
+        self._tokeniser = ClassicBPE(preprocessor=preprocessor, vocab=vocab, merges=merges)
+
+    @abstractmethod
+    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> Set[str]:
+        pass
+
+    def _getNonAlphabet(self) -> Set[str]:
+        return {t for t in self._tokeniser.vocab if not self._tokeniser.merge_graph.inAlphabet(t)}
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+        folder = self._makeOutputFolder(word_iterable.name)
+
+        # Get counts and find types
         type_counts = Counter()
-        for word, count in corpus.items():
-            for token in self.prepareAndTokenise(word):
+        for word, count in word_iterable:
+            for token in self._tokeniser.prepareAndTokenise(word):
                 type_counts[token] += count
+        disabled_types = self._selectTypesToTrim(type_counts) & self._getNonAlphabet()
 
-        # Find and disable infrequent types
-        for t in self._selectTypesToTrim(type_counts):
-            try:
-                self._disableType(t)
-            except:  # t is part of the alphabet.
-                pass
+        # Save tokeniser as usual.
+        BPEVocabulariser._storeVocab(self._tokeniser.vocab, folder)
+        BPEVocabulariser._storeMerges(self._tokeniser.merge_graph.getRawMerges(), folder)
+        with open(folder / "ablations.json", "w", encoding="utf-8") as handle:
+            json.dump({
+                typ: self._tokeniser.typeToId(typ)
+                for typ in disabled_types
+            }, handle, indent=4)
 
-        # Reset cache
-        self._syncWithGraph()
+        return folder
 
-    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> List[str]:
-        return [t for t in self.vocab if type_distribution[t] <= self._threshold]
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+        return self._vocabulariseFromWords(self._preprocessSentencesToPretokenCounts(sentence_iterable))
+
+    @classmethod
+    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
+        if file_or_folder.is_file():
+            file_or_folder = file_or_folder.parent
+
+        # Load only the ablated types. BPEVocabulariser.load() can be used to load the expanded vocab.
+        with open(file_or_folder / "ablations.json") as handle:
+            ablations = set(json.load(handle))
+
+        return [t for t in BPEVocabulariser._load(file_or_folder) if t in ablations]
 
 
-class RandomDropBPE(TrimmedBPE):
+class TrimmedBPEVocabulariser(_RecursivelyDecomposingBPEVocabulariser):
+    """
+    Disable all types that appear <= threshold times when tokenising the given corpus.
+    This process is done in parallel (find all types, then disable them) rather than serially (find a type, disable
+    it, find a type with the updated tokeniser, disable it, ...).
+
+    I suspect that this process is idempotent, but I'm too lazy to prove it.
+    """
+
+    def __init__(self, preprocessor: Preprocessor,
+                 vocab: Vocab, merges: MergeList,
+                 keep_type_if_more_frequent_than: int):
+        super().__init__(name="trimmedbpe", preprocessor=preprocessor, vocab=vocab, merges=merges)
+        self._threshold = keep_type_if_more_frequent_than
+
+    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> Set[str]:
+        return {t for t in self._tokeniser.vocab if type_distribution[t] <= self._threshold}
+
+
+class RandomDropBPE(_RecursivelyDecomposingBPEVocabulariser):
     """
     Flags k types for decomposition randomly from the N most frequent types.
     https://aclanthology.org/2024.lrec-main.1469.pdf
     """
 
-    def __init__(self, preprocessor: Preprocessor, marker: BoundaryMarker,
-                 vocab: Vocab, merges: List[str],
-                 word_corpus: Counter[str], top_N_sampling_domain: int, random_k_sampling_size: int, seed: int=0):
+    def __init__(self, preprocessor: Preprocessor,
+                 vocab: Vocab, merges: MergeList,
+                 top_N_sampling_domain: int, random_k_sampling_size: int, seed: int=0):
+        super().__init__(
+            name="randomdropbpe",
+            preprocessor=preprocessor,
+            vocab=vocab, merges=merges
+        )
         self._N = top_N_sampling_domain
         self._k = random_k_sampling_size
         self._rng = npr.default_rng(seed)
-
-        super().__init__(  # First constructs BPE graph, then calls .trim().
-            preprocessor=preprocessor, marker=marker,
-            vocab=vocab, merges=merges,
-            word_corpus=word_corpus, keep_type_if_more_frequent_than=-1
-        )
-
-    def trim(self, corpus: Counter[str]):
         assert 0 <= self._k <= self._N <= len(self._getNonAlphabet())  # This assertion can only happen when the BPE graph is constructed.
-        super().trim(corpus)
-
-    def _getNonAlphabet(self) -> List[str]:
-        return [t for t in self.vocab if not self.merge_graph.inAlphabet(t)]
 
     def _selectTypesToTrim(self, type_distribution: Counter[str]) -> List[str]:
         subcounter = Counter()  # Contains only the counts for non-alphabet types (even if not part of the given counter).

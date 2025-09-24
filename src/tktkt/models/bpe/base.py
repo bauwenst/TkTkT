@@ -11,7 +11,6 @@ from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
 from ...interfaces.tokeniser import Vocab, Tokens
-from ...preparation.boundaries import BoundaryMarker
 from ...preparation.huggingface import detectBoundaryMarkerFromTokeniser, HuggingFacePreprocessor, HuggingFacePreprocessorForWords
 
 
@@ -20,7 +19,7 @@ class SimplifiedBTEInterface(BTE):
     Wrapper class around the BPE-knockout library that abstracts away the config.
     """
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
                  do_morphemic_knockout: bool=False, do_reification: bool=False, backwards_compatible: bool=False, iterations: int=1,
                  unk_type: str=None):
@@ -32,9 +31,9 @@ class SimplifiedBTEInterface(BTE):
             config.knockout = RefMode.MORPHEMIC
         if do_reification:
             if backwards_compatible:
-                config.reify = ReifyMode.BACKWARDS_COMPATIBLE
+                config.reify = ReifyMode.FIX_AND_LINK
             else:
-                config.reify = ReifyMode.ALL
+                config.reify = ReifyMode.FIX_AND_LINK_AND_MAKE
 
         super().__init__(
             # Init
@@ -44,7 +43,7 @@ class SimplifiedBTEInterface(BTE):
 
             # Prep
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
+            boundary_marker=preprocessor.getBoundaryMarker(),
 
             # Niche parameters
             autorun_modes=True,
@@ -100,11 +99,10 @@ class ClassicBPE(DeterministicBPETokeniser):
     Technically the constructor allows merges with more than two types.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
                  unk_type: str=None):
         super().__init__(
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
 
             vocab=vocab,
             merges=merges,
@@ -123,7 +121,6 @@ class ClassicBPE(DeterministicBPETokeniser):
 
             vocab=vocab_and_merges.loadVocabulary(),
             merges=vocab_and_merges.loadMerges(),
-            boundary_marker=marker,
 
             unk_type=hf_bpe_tokenizer.unk_token,
         )

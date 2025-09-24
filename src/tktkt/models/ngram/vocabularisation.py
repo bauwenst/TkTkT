@@ -37,6 +37,7 @@ class NgramVocabulariser(Vocabulariser):
         self._intermediate_size = truncate_to_top
         self._final_size        = vocab_size
 
+    @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
         if file_or_folder.is_dir():
             file_or_folder /= "vocab.json"
