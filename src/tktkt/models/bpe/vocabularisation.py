@@ -8,10 +8,12 @@ from tqdm.auto import tqdm
 
 # Core libraries
 from tokenizers import Tokenizer, models, pre_tokenizers, trainers
+import bpe_knockout._lib.sbpe.learn_bpe as sbpe
 import bpeasy
 from ..kudopiece.vocabularisation import KudoPieceVocabulariser, EXOTIC_SCRIPT_PRETOKEN_SEPARATOR
-import bpe_knockout._lib.sbpe.learn_bpe as sbpe
+from .picky import BPEVocabulariser_Chizhov as _BPEVocabulariser_Chizhov
 
+from bpe_knockout.knockout.core import MergeOnDisk
 from bpe_knockout.auxiliary.tokenizer_interface import SennrichTokeniserPath, HuggingFaceTokeniserPath
 from modest.formats.tsv import iterateTsv
 
@@ -28,25 +30,34 @@ Merges = List[Tuple[str,str]]
 
 
 class BpeTrainerImplementation(Enum):
+    CHIZHOV       = 0
     SENTENCEPIECE = 1
-    HUGGINGFACE = 2
-    BPEASY = 3
-    SBPE = 4
+    HUGGINGFACE   = 2
+    BPEASY        = 3
+    SBPE          = 4
 
 
 class BPEVocabulariser(Vocabulariser):
+    """
+    Create a BPE tokeniser from a corpus.
+
+    Not all constructor arguments apply to each implementation. (Yes, perhaps these implementations should be subclasses,
+    rather than switching using an enumeration.)
+    """
 
     def __init__(self, preprocessor: Preprocessor,
-                 vocab_size: int, skip_sentences_over_length: int=8192, max_token_length: int=64,
-                 implementation: BpeTrainerImplementation=BpeTrainerImplementation.SENTENCEPIECE,
+                 vocab_size: int, implementation: BpeTrainerImplementation=BpeTrainerImplementation.CHIZHOV,
+                 max_token_length: int=64, character_coverage: float=1.0, sentencepiece_skip_sentences_over_length: int=8192,
                  replace_boundary_marker_with: BoundaryMarker=None):
         super().__init__(name="bpe", preprocessor=preprocessor)
         self._size = vocab_size
         self._max_token_length = max_token_length
-        self._max_sentence_length = skip_sentences_over_length
+
+        self._character_coverage = character_coverage
+        self._max_sentence_length = sentencepiece_skip_sentences_over_length
+
         self._marker = self.preprocessor.getBoundaryMarker()
         self._replacement_marker = replace_boundary_marker_with or self._marker
-
         assert self._marker.location == self._replacement_marker.location
 
         self._mode = implementation
@@ -58,9 +69,13 @@ class BPEVocabulariser(Vocabulariser):
         elif self._mode == BpeTrainerImplementation.BPEASY:
             return self._withBPEasyTrainer(self._preprocessWordsToSentences(word_iterable))
         elif self._mode == BpeTrainerImplementation.SBPE:
-            return self._withSBPETrainer(word_iterable, is_wordfile=True)
+            return self._withSBPETrainer(word_iterable, words_not_sentences=True)
         elif self._mode == BpeTrainerImplementation.SENTENCEPIECE:
-            return self._withSentencePieceTrainer(word_iterable, is_wordfile=True)
+            return self._withSentencePieceTrainer(word_iterable, words_not_sentences=True)
+        elif self._mode == BpeTrainerImplementation.CHIZHOV:
+            return self._withChizhovTrainer(word_iterable, words_not_sentences=True)
+        else:
+            raise NotImplementedError()
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
         # Note: calling self._preprocessSentencesToSentences is up to the individual trainer implementations below.
@@ -72,6 +87,10 @@ class BPEVocabulariser(Vocabulariser):
             return self._withSBPETrainer(sentence_iterable)
         elif self._mode == BpeTrainerImplementation.SENTENCEPIECE:
             return self._withSentencePieceTrainer(sentence_iterable)
+        elif self._mode == BpeTrainerImplementation.CHIZHOV:
+            return self._withChizhovTrainer(sentence_iterable)
+        else:
+            raise NotImplementedError()
 
     @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
@@ -83,20 +102,26 @@ class BPEVocabulariser(Vocabulariser):
 
     ####################################################################################################################
 
-    def _storeVocab(self, vocab: Union[OrderedDict[str, int], Dict[str, int], Iterable[str]], folder: Path) -> Path:
+    @classmethod
+    def _storeVocab(cls, vocab: Union[OrderedDict[str, int], Dict[str, int], Iterable[str]], folder: Path) -> Path:
         if not isinstance(vocab, dict):
             vocab = OrderedDict((t,i) for i,t in enumerate(vocab))
+        else:
+            vocab = OrderedDict((t,vocab[t]) for t in sorted(vocab.keys(), key=vocab.get))
 
         output_path = folder / "vocab.json"
         with open(output_path, "w", encoding="utf-8") as handle:
             json.dump(vocab, handle, ensure_ascii=False, indent=4)
         return output_path
 
-    def _storeMerges(self, merges: Iterable[Tuple[str,str]], folder: Path) -> Path:
+    @classmethod
+    def _storeMerges(cls, merges: Iterable[MergeOnDisk], folder: Path) -> Path:
         output_path = folder / "merges.txt"
         with open(output_path, "w", encoding="utf-8") as handle:
-            for left, right in merges:
-                handle.write(f"{left} {right}\n")
+            for parts in merges:
+                if isinstance(parts, str):
+                    parts = parts.split(" ")
+                handle.write(f"{' '.join(parts)}\n")
 
         return output_path
 
@@ -151,7 +176,7 @@ class BPEVocabulariser(Vocabulariser):
         vocab = {typ.replace(" ", self._replacement_marker.substitute): vocab.get(typ) for typ in vocab}
         return vocab
 
-    def _withSBPETrainer(self, iterable: Union[NamedIterable[Tuple[str,int]], NamedIterable[str]], is_wordfile: bool=False) -> Path:
+    def _withSBPETrainer(self, iterable: Union[NamedIterable[Tuple[str,int]], NamedIterable[str]], words_not_sentences: bool=False) -> Path:
         out_folder = self._makeOutputFolder(iterable.name)
 
         paths = SennrichTokeniserPath(folder=out_folder)
@@ -159,12 +184,12 @@ class BPEVocabulariser(Vocabulariser):
 
         # Learn merges
         iterables = []
-        if is_wordfile:
+        if words_not_sentences:
             iterables.append(f"{word} {count}" for word, count in iterable)  # Generator
         else:
             iterables.append(iterable)
         with open(path_merges, "w", encoding="utf-8") as out_handle:
-            sbpe.learn_bpe(iterables, out_handle, is_dict=is_wordfile,
+            sbpe.learn_bpe(iterables, out_handle, is_dict=words_not_sentences,
                            num_symbols_ori=self._size, total_symbols=True,
                            preprocessor=self.preprocessor, marker=self._marker)
 
@@ -213,7 +238,7 @@ class BPEVocabulariser(Vocabulariser):
             out_handle.writelines([merge + "\n" for merge in hf.loadMerges()])
         return out_folder
 
-    def _withSentencePieceTrainer(self, word_or_sentence_iterable: NamedIterable, is_wordfile: bool=False):
+    def _withSentencePieceTrainer(self, word_or_sentence_iterable: NamedIterable, words_not_sentences: bool=False):
         """
         Benchmarks:
             - Training from a HuggingFace dataset, it takes about 2 hours to stream the next 1 million lines.
@@ -222,8 +247,8 @@ class BPEVocabulariser(Vocabulariser):
         """
         output_prefix = self._makeOutputFolder(word_or_sentence_iterable.name) / "spm"
 
-        if is_wordfile:
-            word_or_sentence_iterable = self._preprocessWordsToPretokens_approx(word_or_sentence_iterable)  # TODO: I wonder if SP prefixes every TSV entry with a SoW. If not, you can use the non-approximative _counter variant here too.
+        if words_not_sentences:
+            word_or_sentence_iterable = self._preprocessWordsToPretokenCounts_approx(word_or_sentence_iterable)  # TODO: I wonder if SP prefixes every TSV entry with a SoW. If not, you can use the non-approximative _counter variant here too.
         else:
             word_or_sentence_iterable = self._preprocessSentencesToSentences(word_or_sentence_iterable, sep=EXOTIC_SCRIPT_PRETOKEN_SEPARATOR)
 
@@ -237,14 +262,14 @@ class BPEVocabulariser(Vocabulariser):
 
             # I/O
             sentence_iterator=streamProgress(word_or_sentence_iterable).__iter__(),
-            input_format="tsv" if is_wordfile else "",
+            input_format="tsv" if words_not_sentences else "",
             max_sentence_length=self._max_sentence_length,
             train_extremely_large_corpus=True,  # Why not, right?
             model_prefix=output_prefix.as_posix(),
 
             # Alphabet
             required_chars=[],  # Note: Required characters must have a frequency > 0 otherwise you get an error. Hence, we can only add them in a post-processing step. https://github.com/google/sentencepiece/blob/d8f741853847553169444afc12c00f4bbff3e9ce/src/bpe_model_trainer.cc#L37
-            character_coverage=1.0 if required_characters else 0.9995,
+            character_coverage=self._character_coverage,
 
             # Algorithm
             treat_whitespace_as_suffix=self._marker.location == BoundaryMarkerLocation.END,
@@ -332,6 +357,18 @@ class BPEVocabulariser(Vocabulariser):
         vocab = {typ.replace(KudoSpaceMarker.substitute, self._replacement_marker.substitute): id for typ,id in vocab.items()}
 
         return vocab
+
+    def _withChizhovTrainer(self, iterable: NamedIterable, words_not_sentences: bool=False):
+        vocabulariser = _BPEVocabulariser_Chizhov(
+            preprocessor=self.preprocessor,
+            vocab_size=self._size,
+            character_coverage=self._character_coverage,
+            max_type_length=self._max_token_length
+        )
+        if words_not_sentences:
+            return vocabulariser._vocabulariseFromWords(iterable)
+        else:
+            return vocabulariser._vocabulariseFromSentences(iterable)
 
     ####################################################################################################################
 

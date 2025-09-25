@@ -1,5 +1,18 @@
 import time
 from typing import Iterable, List
+import logging
+
+
+def setLoggingLevel(level: int=logging.WARNING):
+    """
+    For some reason this is necessary to change the logging level.
+    https://stackoverflow.com/a/73284328/9352077
+    """
+    logger  = logging.getLogger()
+    channel = logging.StreamHandler()
+    logger .setLevel(logging.INFO)
+    channel.setLevel(logging.INFO)
+    logger.addHandler(channel)
 
 
 def dprint(d: dict, indent: int=0):

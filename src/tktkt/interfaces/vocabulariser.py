@@ -77,7 +77,7 @@ class Vocabulariser(ABC):
         """
         return sentence_iterable.map(self.preprocessor.do).map(sep.join)
 
-    def _preprocessSentencesToPretokens_counter(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[Tuple[str,int]]:
+    def _preprocessSentencesToPretokenCounts(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[Tuple[str,int]]:
         counter = Counter()
         for word in streamProgress(sentence_iterable, "Counting pretokens"):
             counter.update(self.preprocessor.do(word))
@@ -112,7 +112,7 @@ class Vocabulariser(ABC):
     def _preprocessWordsToTsv(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[str]:
         return word_iterable.map(lambda tup: f"{tup[0]}\t{tup[1]}\n")
 
-    def _preprocessWordsToPretokens_approx(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
+    def _preprocessWordsToPretokenCounts_approx(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
         """
         Apply the preprocessor onto the given words, CONCATENATE the resulting pretokens, and return the result with
         the given counts. Loses the pretoken boundaries, but unlike _preprocessWordsToPretokens_counter, you don't have
@@ -120,7 +120,7 @@ class Vocabulariser(ABC):
         """
         return word_iterable.map(lambda tup: ("".join(self.preprocessor.do(tup[0])), tup[1]))
 
-    def _preprocessWordsToPretokens_counter(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
+    def _preprocessWordsToPretokenCounts(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
         """
         Apply the preprocessor to each word, count the pretokens separately, and return the pretoken counts.
         This requires loading all pretokens into memory.
