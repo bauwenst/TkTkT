@@ -45,6 +45,8 @@ class L2R_Greedy(TokeniserWithVocabDict):
 
         return tokens
 
+MaxMatch = L2R_Greedy
+
 
 class L2R_Lazy(TokeniserWithVocabDict):
     """

@@ -1,3 +1,17 @@
+"""
+Code that brings specific instances of pre-trained tokenisers into Python data structures.
+
+Essentially, this file replaces HuggingFace's string-based
+    AutoTokenizer.from_pretrained(name)
+interface with an import- and class-based
+    from tktkt.factories.deserialisation import Name
+    Name()
+interface, which has the benefit of being typed and allowing to specify the necessary preprocessor in Python itself
+rather than some strange serialised format (unlike e.g. spm.model files).
+
+Perhaps that means these classes should actually live in a separate package entirely (although currently, the
+amount of deserialisers is limited enough not to bother with this).
+"""
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download

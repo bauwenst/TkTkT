@@ -7,9 +7,7 @@ TODO: What isn't possible currently is path insurance, where you can ensure that
       in the tokeniser already. The reason that would be powerful is that you could e.g. force compounds to be merged from constituents.
 """
 import warnings
-from typing import Iterable, Tuple
-
-from bpe_knockout.knockout.core import Merge
+from typing import Iterable
 
 from .base import *
 from ...util.iterables import keepFirst, mapExtend
@@ -18,7 +16,7 @@ from ...util.functions import relu
 
 class EnsuredBPE(DeterministicBPETokeniser):
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList, ensure_strings: Iterable[str], forbid_strings: Iterable[str], forbid_forming: Iterable[str], unk_type: str=None,
                  do_preprocess_these: bool=False, do_expand_vocabulary: bool=False, do_binary_merges: bool=True):
         """
@@ -36,7 +34,6 @@ class EnsuredBPE(DeterministicBPETokeniser):
         """
         super().__init__(
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
 
             vocab=vocab,
             merges=merges,

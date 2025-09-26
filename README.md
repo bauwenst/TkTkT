@@ -17,31 +17,35 @@ Also, **any HuggingFace tokeniser** can be wrapped into a TkTkT tokeniser, and *
 
 Currently, the package implements:
 - Byte-pair encoding (BPE) tokenisers:
-  - Classical **BPE** ([Sennrich et al., 2016](https://aclanthology.org/P16-1162/)), with added support for *n*-ary merges (byte-tuple encoding, BTE) and any word boundary marker (start-of-words like GPT-2 and end-of-words like Sennrich).
+  - Classical **BPE** ([Sennrich et al., 2016](https://aclanthology.org/P16-1162/)), with added support for any word boundary marker (`Ġ`, `_`, `</w>`, ...) and *n*-ary merges (byte-tuple encoding, BTE).
   - **BPE-dropout** ([Provilkov et al., 2020](https://aclanthology.org/2020.acl-main.170/))
   - **BPE-knockout** ([Bauwens & Delobelle, 2024](https://aclanthology.org/2024.naacl-long.324/))
+  - **PickyBPE** ([Chizhov et al., 2024](https://aclanthology.org/2024.emnlp-main.925/))
+  - **ScaffoldBPE** ([Lian et al., 2025](https://dl.acm.org/doi/10.1609/aaai.v39i23.34633))
   - **TrimmedBPE** ([Cognetta et al., 2024](https://arxiv.org/abs/2404.00397))
-  - Other variants:
+  - Other experimental variants I implemented just for fun:
+    - **BPE-breakdown**: BPE which starts randomly undoing merges after it finishes deterministically, similar to [StochasTok](https://arxiv.org/abs/2506.01687).
+    - **Non-geometric BPE-dropout**: BPE-dropout, but rather than picking merges geometrically, picks them uniformly.
     - **EnsuredBPE**: BPE where the last merges have been replaced by the merges necessary to ensure that a given list of strings is in the vocabulary.
     - **ShuffledBPE**: BPE but with merge priorities shuffled, although types are never shuffled to a priority before the ancestors in their merge tree.
 - **Unigram language model (ULM)**, dubbed *KudoPiece* in TkTkT ([Kudo, 2018](https://aclanthology.org/P18-1007/)):
-  - Wrapper around the [SentencePiece](https://github.com/google/sentencepiece) package
+  - Wrapper around the [SentencePiece](https://github.com/google/sentencepiece) package, or
   - Native implementation in TkTkT
 - Greedy tokenisers:
-  - **MaxMatch**, a.k.a. left-to-right greedy tokenisation, and also right-to-left ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289))
-  - **FLOTA** ([Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/)), i.e. random-access greedy tokenisation. 
-- **Derivative leverager (DeL)** ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)).
-  - Segmentation
-  - Trainer
-- Character/byte **N-grams**.
-- **SaGe** ([Yehezkel & Pinter, 2023](https://aclanthology.org/2023.eacl-main.45/)) vocabularisation.
+  - **MaxMatch** ([Hiraoka, 2022](https://aclanthology.org/2022.coling-1.430)), a.k.a. **left-to-right greedy** tokenisation, and also **right-to-left** ([Bauwens, 2023](https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf) and later [Uzan et al., 2024](https://arxiv.org/abs/2403.01289))
+  - **FLOTA** ([Hofmann et al., 2022](https://aclanthology.org/2022.acl-short.43/)), i.e. random-access longest-first tokenisation. 
+  - Other experimental variants:
+    - **Last-BPE-first**: random-access youngest-first tokenisation (specifically for BPE vocabularies).
+    - **Left-to-right-to-left greedy**: L2R2L_Greedy
 - **GRaMPa** ([Bauwens et al., 2025](https://aclanthology.org/2025.acl-long.1180/)): randomised segmentation constrained by a vocabulary.
-- **Lempel-Ziv-Welch (LZW)** as a tokeniser ([Zouhar et al., 2023](https://aclanthology.org/2023.acl-long.284/)).
+- **SaGe** ([Yehezkel & Pinter, 2023](https://aclanthology.org/2023.eacl-main.45/)) vocabularisation.
+- **Derivative leverager (DeL)** ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)), both training and segmentation.
+- Other, less interesting tokenisers:
+  - Character/byte **N-grams**.
+  - **Lempel-Ziv-Welch (LZW)** as a tokeniser ([Zouhar et al., 2023](https://aclanthology.org/2023.acl-long.284/)).
 
 Currently work in progress:
 - Morfessor family
-- PickyBPE
-- ScaffoldBPE
 - VOLT
 
 ### Multiplexing
@@ -131,15 +135,16 @@ The packages is divided into the following submodules:
   - The most important classes are `TextMapper`, `Pretokeniser`, `Preprocessor`, `Vocabulariser`, `Tokeniser`, `Deserialiser`, and `TokeniserFactory`.
 - `tktkt.preparation`: contains all the text preprocessing tools.
 - `tktkt.models`: contains all the tokenisation (i.e. vocabularisation and/or segmentation) algorithms.
-- `tktkt.wrappers`: contains classes that wrap around existing tokenisers to equip them with more features.
-  - `tktkt.wrappers.multiplexing`: alternate between multiple tokenisers within the same sentence.
-  - `tktkt.wrappers.hashingvocab`: add a string-to-integer mapping to a `Tokeniser` that can produce any substring, turning it into a `TokeniserWithFiniteIdRange`.
+- `tktkt.evaluation`: contains procedures with which to quantify a `Tokeniser` through inference.
 - `tktkt.factories`: contains a bunch of pre-defined constructor calls, for both vocabularies and tokenisers:
   - `tktkt.factories.deserialisation`: contains classes that load the files for specific tokenisers.
   - `tktkt.factories.tokenisers`: contains tokeniser factories.
   - `tktkt.factories.preprocessing`: contains a bunch of pre-defined preprocessors so you don't have to.
     Check out the `ModernEnglishPreprocessor`, for example.
-- `tktkt.evaluation`: contains procedures to quantify a `Tokeniser` with through inference.
+  - `tktkt.factories.evaluation`: contains pre-built tokeniser evaluation pipelines.
+- `tktkt.wrappers`: contains classes that wrap around existing tokenisers to equip them with more features.
+  - `tktkt.wrappers.multiplexing`: alternate between multiple tokenisers within the same sentence.
+  - `tktkt.wrappers.hashingvocab`: add a string-to-integer mapping to a `Tokeniser` that can produce any substring, turning it into a `TokeniserWithFiniteIdRange`.
 - `tktkt.visualisation`: contains procedures to generate explanatory LaTeX code about some models.
 - `tktkt.util`: contains tools peripheral to tokenisation, like string formatting, combinatoric calculations, iterable functions, timing, etc...
 
@@ -152,40 +157,6 @@ where you should leave out the `[github]` suffix only if you have editable insta
 like [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout) (but you probably don't).
 
 ## Examples
-### Basic usage
-Let's first instantiate a toy preprocessor in TkTkT:
-```python
-from tktkt.factories.preprocessing import Preprocessor, KudoSpaceMarker, \
-    Lowercaser, Replace, \
-    PretokeniserSequence, WhitespacePretokeniser, PunctuationPretokeniser, AddWordBoundary
-
-toy_preprocessor = Preprocessor(
-    Lowercaser(),
-    Replace("!", "."),
-    PretokeniserSequence([
-        WhitespacePretokeniser(),
-        PunctuationPretokeniser(),
-        AddWordBoundary(KudoSpaceMarker)
-    ])
-)
-
-print(toy_preprocessor.do("This example will be preprocessed (even without a tokeniser)!"))
-```
-Now we instantiate a greedy TkTkT tokeniser with that preprocessor:
-```python
-from tktkt.models.greedy.directional import L2R_Greedy
-
-tokeniser = L2R_Greedy(
-    preprocessor=toy_preprocessor,
-    vocab={"a": 0, "b": 1, "c": 2, "d": 3, "ab": 4, "ba": 5, ".": 6, ",": 7, "▁": 8}
-)
-
-print(tokeniser.prepareAndTokenise("A bad cab, ABBA!"))
-print(tokeniser.tokenise("abc."))
-```
-There are many more preprocessing classes available, some pre-made. Check out the `ModernEnglishPreprocessor` 
-for typical modern use-cases.
-
 ### HuggingFace compatibility
 In the example below, a BPE tokeniser is loaded from the HuggingFace hub as a `PreTrainedTokenizerFast` and converted into a TkTkT `Tokeniser` object.
 Then, this object is itself converted into a HuggingFace `PreTrainedTokenizer` again.
@@ -214,32 +185,23 @@ print(hf_tktkt_roberta.tokenize(sentence))
 ```
 
 ### Training and instantiating BPE
-Here's a minimal working example to train a BPE tokeniser on the first 10 000 examples of the English part of C4.
+Here's a minimal working example to train a BPE tokeniser on the first 100 000 examples of an English Wikipedia dataset:
 ```python
 from datasets import load_dataset
-corpus = load_dataset("allenai/c4", "en", streaming=True)["train"].take(10_000)
+from tktkt.factories.preprocessing import ModernEnglishPreprocessor, KudoSpaceMarker
+from tktkt.models.bpe.vocabularisation import BPEVocabulariser
 
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor_SentencePieceCompatible, RobertaSpaceMarker
-from tktkt.models.bpe.vocabularisation import BPEVocabulariser, BpeTrainerImplementation
-
-marker = RobertaSpaceMarker
-preprocessor = ModernEnglishPreprocessor_SentencePieceCompatible(marker_location=marker.location)
-
-vocabulariser = BPEVocabulariser(
-    preprocessor=preprocessor, 
-    implementation=BpeTrainerImplementation.SENTENCEPIECE,
-    vocab_size=32_768,
-    replace_boundary_marker_with=marker
-)
+corpus        = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train", streaming=True).take(100_000)
+preprocessor  = ModernEnglishPreprocessor(marker=KudoSpaceMarker)
+vocabulariser = BPEVocabulariser(preprocessor=preprocessor, vocab_size=32_768)
 bpe_folder = vocabulariser.vocabulariseFromHf(corpus, text_field="text")
 ```
-and to load the result into a HuggingFace-accelerated tokeniser, we can call
+That's _**just 7 lines of code to get a tokeniser from a corpus!**_ To load the result into a HuggingFace-accelerated tokeniser, we can call
 ```python
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor
 from tktkt.models.huggingface.bpe import HuggingFaceBPETokeniser
 
 tokeniser = HuggingFaceBPETokeniser(
-    preprocessor=ModernEnglishPreprocessor(marker),
+    preprocessor=preprocessor,
     vocab=vocabulariser.load(bpe_folder), 
     merges=vocabulariser.loadMerges(bpe_folder)
 )
@@ -293,6 +255,42 @@ tokeniser = KudoPieceTokeniser(preprocessor=preprocessor, model_file=model_path)
 
 print(tokeniser.prepareAndTokenise("Hello there, my good friend!"))
 ```
+
+### Custom preprocessing
+TkTkT preprocesses text into pretokens _not_ with a regular expression, but with a sequence of Python objects that can
+perform any operation they want on the current pretokens. It is hence strictly more expressive than regex-based pretokenisation.
+For example:
+```python
+from tktkt.factories.preprocessing import Preprocessor, KudoSpaceMarker, \
+    Lowercaser, Replace, \
+    PretokeniserSequence, WhitespacePretokeniser, PunctuationPretokeniser, AddWordBoundary
+
+toy_preprocessor = Preprocessor(
+    Lowercaser(),
+    Replace("!", "."),
+    PretokeniserSequence([
+        WhitespacePretokeniser(),
+        PunctuationPretokeniser(),
+        AddWordBoundary(KudoSpaceMarker)
+    ])
+)
+
+print(toy_preprocessor.do("This example will be preprocessed (even without a tokeniser)!"))
+```
+This can then be used to instantiate any TkTkT tokeniser, whose functionality is decoupled from the preprocessor. For example:
+```python
+from tktkt.models.greedy.directional import L2R_Greedy
+
+tokeniser = L2R_Greedy(
+    preprocessor=toy_preprocessor,
+    vocab={"a": 0, "b": 1, "c": 2, "d": 3, "ab": 4, "ba": 5, ".": 6, ",": 7, "▁": 8}
+)
+
+print(tokeniser.prepareAndTokenise("A bad cab, ABBA!"))
+print(tokeniser.tokenise("abc."))
+```
+There are many more preprocessing classes available, some pre-made. Check out the `ModernEnglishPreprocessor` 
+for typical modern use-cases.
 
 ## Why does this package exist if we have HuggingFace `tokenizers`?
 First of all, note again that TkTkT has backwards compatibility with HuggingFace `tokenizers`. 

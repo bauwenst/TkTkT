@@ -6,21 +6,19 @@ from typing_extensions import Self
 import numpy.random as npr
 from transformers import PreTrainedTokenizerFast
 
-from ...preparation.boundaries import BoundaryMarker
 from ...interfaces.tokeniser import Preprocessor, Tokens
 from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
 
 
 class BPEDropout(NonDeterministicBPETokeniser):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
                  dropout_probability: float, unk_type: str=None):
         super().__init__(
             vocab=vocab, merges=merges,
             unk_type=unk_type,
 
-            preprocessor=preprocessor,
-            boundary_marker=boundary_marker
+            preprocessor=preprocessor
         )
         self.p = dropout_probability
         self.rng = npr.default_rng(0)
@@ -32,7 +30,6 @@ class BPEDropout(NonDeterministicBPETokeniser):
             preprocessor=classic_implementation.preprocessor,
             vocab=classic_implementation.vocab,
             merges=classic_implementation.merge_graph.getRawMerges(),
-            boundary_marker=classic_implementation._boundary_marker,
             unk_type=classic_implementation.unk,
 
             dropout_probability=dropout_probability
@@ -85,14 +82,13 @@ class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
     each is chosen with probability 1/N. (This is equivalent to classic BPE with random merge priorities.)
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
                  unk_type: str = None):
         super().__init__(
             vocab=vocab, merges=merges,
             unk_type=unk_type,
 
-            preprocessor=preprocessor,
-            boundary_marker=boundary_marker
+            preprocessor=preprocessor
         )
         self.rng = npr.default_rng(0)
 
@@ -127,16 +123,19 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
     """
     Rather than dropping merges BEFORE doing them, drop merges AFTER doing them, starting all the way at the end of the
     merge process.
+
+    Implemented August 2024. An extension of this idea (within_tree=False) was published in the literature in July 2025,
+    called "StochasTok" (https://arxiv.org/abs/2506.01687). It slightly differs in how it decides when to stop breaking
+    down, and it also points out explicitly that the breakdown process is independent of BPE (already the case here).
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
                  unk_type: str=None, within_tree: bool=False, breakdown_probability: float=0.33):
         super().__init__(
             vocab=vocab, merges=merges,
             unk_type=unk_type,
 
-            preprocessor=preprocessor,
-            boundary_marker=boundary_marker
+            preprocessor=preprocessor
         )
         self.rng = npr.default_rng(0)
         self.p = breakdown_probability
@@ -181,7 +180,6 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
         classic_implementation = ClassicBPE.fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
         return cls(
             preprocessor=classic_implementation.preprocessor,
-            boundary_marker=classic_implementation._boundary_marker,
             unk_type=classic_implementation.unk,
 
             vocab=classic_implementation.vocab,

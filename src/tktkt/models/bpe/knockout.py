@@ -29,7 +29,7 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
     also the language config.
     """
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
                  language: Union[Language, str], iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False, unk_type: str=None):
         # Impute language
@@ -45,7 +45,6 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
         with KnockoutDataConfiguration(config):
             super().__init__(
                 preprocessor=preprocessor,
-                boundary_marker=boundary_marker,
                 unk_type=unk_type,
 
                 vocab=vocab,
@@ -60,11 +59,10 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
 
 class BPEKnockout(DeterministicBPETokeniserWithLanguage):
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList, language: Union[Language, str], unk_type: str=None):
         super().__init__(
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
 
             vocab=vocab,
             merges=merges,
@@ -84,11 +82,8 @@ class BPEKnockout(DeterministicBPETokeniserWithLanguage):
         (rather than wrapping it), and *also* apply knockout using the given language.
         """
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        marker = detectBoundaryMarkerFromTokeniser(hf_bpe_tokenizer)
-        # byte_based = detectByteBased(tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
-            boundary_marker=marker,
             unk_type=hf_bpe_tokenizer.unk_token,
 
             vocab=vocab_and_merges.loadVocabulary(),
@@ -100,12 +95,11 @@ class BPEKnockout(DeterministicBPETokeniserWithLanguage):
 
 class ReBPE(DeterministicBPETokeniserWithLanguage):
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
                  language: Union[Language, str], iterations: int, backwards_compatible: bool=False, unk_type: str=None):
         super().__init__(
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
 
             vocab=vocab,
             merges=merges,
@@ -122,10 +116,8 @@ class ReBPE(DeterministicBPETokeniserWithLanguage):
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str], iterations: int, backwards_compatible: bool) -> Self:
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        marker = detectBoundaryMarkerFromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
-            boundary_marker=marker,
             unk_type=hf_bpe_tokenizer.unk_token,
 
             vocab=vocab_and_merges.loadVocabulary(),

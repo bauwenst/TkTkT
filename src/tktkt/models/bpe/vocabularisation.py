@@ -21,7 +21,7 @@ from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
 from ...factories.preprocessing import KudoSpaceMarker
 from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab, DEFAULT_FIVE_SPECIALS
-from ...util.dicts import substituteKey, argmax, kargmax
+from ...util.dicts import substituteKey, argmax
 from ...util.iterables import streamProgress
 from ...util.printing import logger, pluralise
 
@@ -49,6 +49,10 @@ class BPEVocabulariser(Vocabulariser):
                  vocab_size: int, implementation: BpeTrainerImplementation=BpeTrainerImplementation.CHIZHOV,
                  max_token_length: int=64, character_coverage: float=1.0, sentencepiece_skip_sentences_over_length: int=8192,
                  replace_boundary_marker_with: BoundaryMarker=None):
+        """
+        :param replace_boundary_marker_with: only applies to implementations that aren't free to use any preprocessor with
+                                             any boundary marker (SentencePiece and BPEasy).
+        """
         super().__init__(name="bpe", preprocessor=preprocessor)
         self._size = vocab_size
         self._max_token_length = max_token_length

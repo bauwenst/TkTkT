@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 import tokenizers.normalizers as tn
@@ -29,7 +29,7 @@ class HuggingFaceNormaliser(TextMapper):
 
 class HuggingFacePretokeniser(Pretokeniser):
 
-    def __init__(self, encoder: tp.PreTokenizer, decoder: td.Decoder):
+    def __init__(self, encoder: tp.PreTokenizer, decoder: td.Decoder, marker: BoundaryMarker):
         """
         Steals the pretokeniser from a HuggingFace tokeniser.
         Only possible for the "Fast" variants because some people don't know how to design a software system.
@@ -37,6 +37,10 @@ class HuggingFacePretokeniser(Pretokeniser):
         """
         self.encode: tp.PreTokenizer = encoder
         self.decode: td.Decoder      = decoder
+        self.marker = marker
+
+    def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
+        return self.marker
 
     def split(self, text: str) -> List[str]:
         return [w for w, _ in self.encode.pre_tokenize_str(text)]
@@ -52,7 +56,7 @@ class HuggingFacePretokeniser(Pretokeniser):
             encoder = tp.Sequence([])
         if decoder is None:
             decoder = td.Sequence([])
-        return HuggingFacePretokeniser(encoder, decoder)
+        return HuggingFacePretokeniser(encoder, decoder, marker=detectBoundaryMarkerFromTokeniser(hf_model))
 
 
 class HuggingFacePreprocessor(Preprocessor):

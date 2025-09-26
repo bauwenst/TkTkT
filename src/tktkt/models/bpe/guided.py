@@ -1,4 +1,4 @@
-from typing import List, Iterable, MutableSequence, Union, Optional
+from typing import MutableSequence, Union, Optional
 from typing_extensions import Self
 
 import numpy.random as npr
@@ -6,7 +6,6 @@ from math import exp, log, inf
 
 from transformers import PreTrainedTokenizerFast
 
-from ...preparation.boundaries import BoundaryMarker
 from ...interfaces.tokeniser import Preprocessor, Tokens
 from ...models.predictive.viterbi import CharacterClassifier
 from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
@@ -30,7 +29,7 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
     If you want to use vanilla BPE-dropout, you should probably use a more efficient version than this.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
                  dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None, unk_type: str=None):
         """
         TODO: To improve non-deterministic performance, you might want to apply companding
@@ -52,8 +51,7 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
             unk_type=unk_type,
 
             # Prep
-            preprocessor=preprocessor,
-            boundary_marker=boundary_marker
+            preprocessor=preprocessor
         )
 
         self.classifier = dropout_probability if not isinstance(dropout_probability, float) else ConstantCharacterClassifier(dropout_probability)
@@ -69,7 +67,6 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
             preprocessor=classic_implementation.preprocessor,
             vocab=classic_implementation.vocab,
             merges=classic_implementation.merge_graph.getRawMerges(),
-            boundary_marker=classic_implementation._boundary_marker,
             unk_type=classic_implementation.unk,
 
             dropout_probability=dropout_probability,

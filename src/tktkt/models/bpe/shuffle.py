@@ -1,4 +1,4 @@
-from typing import Set, List
+from typing import Set
 import numpy.random as npr
 
 from bpe_knockout.knockout.core import Merge
@@ -9,13 +9,12 @@ RNG = npr.default_rng(0)
 
 class ShuffledBPE(DeterministicBPETokeniser):
 
-    def __init__(self, preprocessor: Preprocessor, boundary_marker: BoundaryMarker,
+    def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList, unk_type: str=None,
 
                  constrained: bool=True):
         super().__init__(
             preprocessor=preprocessor,
-            boundary_marker=boundary_marker,
             unk_type=unk_type,
 
             vocab=vocab,

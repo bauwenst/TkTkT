@@ -12,7 +12,7 @@ authors = [
 maintainers = [
   {name = "Thomas Bauwens", email = "thomas.bauwens@kuleuven.be"}
 ]
-description = "Tokeniser toolkit: a collection of Pythonic subword tokenisers and supporting tools."
+description = "Tokeniser toolkit: a collection of Pythonic subword tokenisers and text preprocessing tools."
 readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["NLP", "tokenizers", "tokenization", "subwords", "segmentation", "natural language"]
@@ -39,10 +39,16 @@ dependencies = [
 # These are not optional, but if you have these packages as editable install, you don't want to let pip install them again!
 [project.optional-dependencies]
 github = [
+    # Packages by me
     "modest[github]       @ git+https://github.com/bauwenst/MoDeST",
     "bpe_knockout[github] @ git+https://github.com/bauwenst/BPE-knockout",
-    "sage_tokenizer       @ git+https://github.com/bauwenst/SaGe-tokeniser",
     "fiject               @ git+https://github.com/bauwenst/fiject",
+
+    # Forks by me
+    "sage_tokenizer       @ git+https://github.com/bauwenst/SaGe-tokeniser",
+    "pickybpe             @ git+https://github.com/bauwenst/PickyBPE",
+
+    # Other GitHub packages
     "clavier              @ git+https://github.com/MaxHalford/clavier"
 ]
 
