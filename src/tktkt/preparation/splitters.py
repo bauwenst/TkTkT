@@ -1,7 +1,7 @@
 """
 Pretokenisation, i.e. splitting text into the units that will be tokenised separately.
 """
-from typing import List, Optional
+from typing import List, Optional, Union
 from enum import Enum
 import numpy as np
 
@@ -235,25 +235,58 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
         return [self.invertToken(p) for p in pretokens]
 
 
-class WhitespacePretokeniser(Pretokeniser):
+class RegexSeparator(Pretokeniser):
     """
+    Uses the given regular expression to identify a separator to split on.
+    """
+    def __init__(self, separator_pattern: Union[re.Pattern,regex.Pattern], destructive: bool=True):
+        """
+        :param destructive: If False, the separator is not removed, but just separated from other characters.
+        """
+        is_group = separator_pattern.pattern[0] == "(" and separator_pattern.pattern[-1] == ")"
+        if destructive and is_group:  # This is contradictory.
+            while is_group:
+                separator_pattern = regex.compile(separator_pattern.pattern[1:-1])
+                is_group = separator_pattern.pattern[0] == "(" and separator_pattern.pattern[-1] == ")"
+        elif not destructive and not is_group:  # This is also contradictory.
+            separator_pattern = regex.compile("(" + separator_pattern.pattern + ")")
+        self.pattern = separator_pattern
+
+    def split(self, text: str) -> List[str]:
+        return [t for t in self.pattern.split(text) if t]
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # Should be overridden if possible.
+        return pretokens
+
+
+class RegexPretokens(Pretokeniser):
+    """
+    Uses the given regular expression to identify pretokens. Everything that doesn't match is discarded.
+    """
+    def __init__(self, pretoken_pattern: Union[re.Pattern,regex.Pattern]):
+        self.pattern = pretoken_pattern
+
+    def split(self, text: str) -> List[str]:
+        return self.pattern.findall(text)
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # Actually not invertible.
+        return pretokens
+
+
+class WhitespacePretokeniser(RegexSeparator):
+    """
+    Isolates whitespace and (optionally) destroys it.
+
     Slightly broader splitter than Python's native .split() since this also reacts to word separators that aren't
     visible to the naked eye, e.g. ZWSP.
     """
 
     def __init__(self, destructive: bool=True):
         """
-        :param destructive: If false, whitespace is not removed, but just separated from other characters.
+        :param destructive: If False, whitespace is not removed, but just separated from other characters.
         """
         self._keep_spaces = not destructive
-        if destructive:
-            self.pattern = re.compile(r"[\s​]+")
-        else:
-            self.pattern = re.compile(r"([\s​]+)")
-
-    def split(self, text: str) -> List[str]:
-        pretokens = self.pattern.split(text)
-        return [t for t in pretokens if t]
+        super().__init__(separator_pattern=re.compile(r"[\s​]+"), destructive=destructive)
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: This is actually very wrong. If you start out with > 1 pretoken, and only one of them (or neither) is split on a space, then inverting by putting a space between EVERY pretoken is clearly wrong.
         if self._keep_spaces:
@@ -262,17 +295,19 @@ class WhitespacePretokeniser(Pretokeniser):
             return list(intercalate(pretokens, " "))
 
 
-class SplitNextToWhitespace(Pretokeniser):
+class SplitNextToWhitespace(RegexPretokens):
+    """
+    Rather than isolating whitespace, this pretokeniser finds whitespace and splits right before or right after it,
+    including the whitespace in the resulting tokens with non-whitespace characters.
+    """
 
     def __init__(self, before_not_after: bool=True):
         if before_not_after:
-            self.pattern = re.compile(r"(?:^|\s|​)[^\s​]*")
+            pattern = re.compile(r"(?:^|\s|​)[^\s​]*")
         else:
-            self.pattern = re.compile(r"[^\s​]+(?:$|\s|​)")  # The + is intentional, although I can't really explain why it works.
+            pattern = re.compile(r"[^\s​]+(?:$|\s|​)")  # The + is intentional, although I can't really explain why it works.
         self._before_not_after = before_not_after
-
-    def split(self, text: str) -> List[str]:
-        return self.pattern.findall(text)
+        super().__init__(pretoken_pattern=pattern)
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         buffer = []
@@ -297,7 +332,21 @@ class SplitNextToWhitespace(Pretokeniser):
         return new_pretokens
 
 
-class IsolateDigits(Pretokeniser):
+class IsolateNumbers(RegexSeparator):
+    r"""
+    Explanation of the regex:
+    (?:             The following group, without capturing it.
+        \p{N}       A character that counts as a number
+        |           or
+        [.,]        a comma or point
+        (?=\p{N})   which sees ahead of it another character that counts as a number.
+    )+              And of this group, one or more.
+    """
+    def __init__(self):
+        super().__init__(separator_pattern=regex.compile(r"(?:\p{N}|[.,](?=\p{N}))+"), destructive=False)
+
+
+class IsolateDigits(RegexSeparator):
     """
     Isolate all digits into single-character tokens. If you don't know why we need this, read
     https://www.beren.io/2023-02-04-Integer-tokenization-is-insane/
@@ -307,13 +356,41 @@ class IsolateDigits(Pretokeniser):
     """
 
     def __init__(self):
-        self.pattern = regex.compile(r"(\p{N})")
-
-    def split(self, text: str) -> List[str]:
-        pretokens = self.pattern.split(text)
-        return [t for t in pretokens if t]
+        super().__init__(separator_pattern=regex.compile(r"\p{N}"), destructive=False)
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Should actually look for adjacent digits and merge them. Careful merging sequences like "2024 10 02" to "20241002" though.
+        return pretokens
+
+
+class GroupDigits(Pretokeniser):
+    """
+    Groups digits into sequences of at most N digits, working right-to-left. For example, for N=3, the number
+        1234567
+    would be pretokenised into
+        1 234 567
+    rather than
+        123 456 7
+    """
+    def __init__(self, n: int=3):
+        self.pattern_to_get_runs_of_numbers = regex.compile(r"(\d+)")
+        self.pattern_to_split_numbers       = regex.compile(r"(\d{" + str(n) + r"})(?=\d)")
+
+    def split(self, text: str) -> List[str]:
+        pretokens = []
+
+        is_digit = True
+        for run in self.pattern_to_get_runs_of_numbers.split(text):
+            is_digit = not is_digit
+            if is_digit:
+                pretokens.extend(
+                    self.pattern_to_split_numbers.sub(r"\1/", run[::-1])[::-1].split("/")
+                )
+            elif run:
+                pretokens.append(run)
+
+        return pretokens
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Again, you could do some work to concatenate digits.
         return pretokens
 
 

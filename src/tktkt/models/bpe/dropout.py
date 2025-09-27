@@ -124,7 +124,7 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
     Rather than dropping merges BEFORE doing them, drop merges AFTER doing them, starting all the way at the end of the
     merge process.
 
-    Implemented August 2024. An extension of this idea (within_tree=False) was published in the literature in July 2025,
+    Implemented August 2024. An extension of this idea (within_tree=False) was published in the literature in June 2025,
     called "StochasTok" (https://arxiv.org/abs/2506.01687). It slightly differs in how it decides when to stop breaking
     down, and it also points out explicitly that the breakdown process is independent of BPE (already the case here).
     """

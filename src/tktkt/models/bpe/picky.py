@@ -1,110 +1,17 @@
-from typing import Union, Iterable, Tuple
+from typing import Union, Iterable
 from pathlib import Path
 from dataclasses import dataclass
 
 import json
-from collections import defaultdict, Counter
+from collections import defaultdict
 
-from pickybpe.utils import PathLike
-from pickybpe.vocabularisation import logger, EventType, PickyBPETrainer as _PickyBPETrainerBase, BPETrainer as _BPETrainerBase
+from pickybpe.vocabularisation import logger, EventType, PickyBPETrainer as _PickyBPETrainerBase
 from pickybpe.segmentation import Token, MergeEventIds, SplitEventIds, SplitResults, PickyBPESegmenter as _PickyBPETokeniserBackend
 
-from ...interfaces import Deserialiser, Vocabulariser, Preprocessor
+from ...interfaces import Deserialiser, Preprocessor
 from ...interfaces.vocabulariser import Vocab, UnidentifiedVocab
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Tokens
-from ...util.types import NamedIterable
-
-
-class _ChizhovBackend_BPE(_BPETrainerBase):
-    """
-    Overrides the way the pickybpe package initially splits words, and how it dumps the vocab/merges.
-
-    The former should actually apply to all TkTkT derivatives that have _BPETrainerBase as a parent class, but unfortunately
-    TkTkT is not a dependency of the pickybpe package, and thus we add this functionality to all three derived classes
-    (this one, PickyBPE backend, ScaffoldBPE) by repeating the same method implementation every time.
-    """
-
-    def __init__(self, preprocessor: Preprocessor, vocab_size: int, character_coverage: float, max_type_length: int):
-        super().__init__(
-            vocab_size=vocab_size,
-            character_coverage=character_coverage,
-            ensured_vocabulary=preprocessor.getAlphabet().getCharacters() if preprocessor.getAlphabet() else [],
-            max_type_length=max_type_length,
-            include_specials=False
-        )
-        self._marker = preprocessor.getBoundaryMarker()
-
-    def _string_to_atoms(self, word: str) -> Iterable[str]:
-        return self._marker.intoCharacters(word)
-
-    def _dump(self, path: PathLike):
-        folder = Path(path).resolve()
-        if folder.suffix:
-            folder = folder.parent
-        logger.info(f'Dumping model to {folder.as_posix()}...')
-
-        # Vocab
-        from .vocabularisation import BPEVocabulariser
-        BPEVocabulariser._storeVocab({
-            typ.str: i
-            for i, typ in enumerate(sorted(self.str2token.values(), key=lambda token: token.id))
-        }, folder)
-
-        # Merges
-        def validate_characters(token: str) -> str:
-            for c in token:
-                if c.isspace() or len(c.__repr__()) == 6:  # Cannot be printed properly in a text file.
-                    raise ValueError(f"Token contains invalid character: {repr(c)}.")
-            return token
-
-        BPEVocabulariser._storeMerges(
-            (
-                [validate_characters(part.str) for part in parts]
-                for event_type, parts, _ in self.events if event_type == EventType.MERGE
-            ),
-            folder
-        )
-        return folder
-
-
-class _VocabulariserWithChizhovBackend(Vocabulariser):
-    """
-    Puts a Vocabulariser interface around the pickybpe package.
-    Supports word frequency files, HuggingFace datasets, ... which were not supported by the original codebase.
-
-    This class itself cannot be instantiated because it doesn't know which _dump() implementation the backend uses.
-    """
-
-    def __init__(self, name: str, preprocessor: Preprocessor, backend: _BPETrainerBase):
-        super().__init__(name=name, preprocessor=preprocessor)
-        self._backend = backend
-
-    def _vocabulariseFromPretokenCounts(self, pretoken_iterable: NamedIterable[Tuple[str,int]]) -> Path:
-        """Does no preprocessing."""
-        folder = self._makeOutputFolder(pretoken_iterable.name)
-        return self._backend._fit_from_counts(Counter(dict(pretoken_iterable)), folder, logging_step=100)
-
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
-        return self._vocabulariseFromPretokenCounts(self._preprocessWordsToPretokenCounts(word_iterable))
-
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
-        return self._vocabulariseFromPretokenCounts(self._preprocessSentencesToPretokenCounts(sentence_iterable))
-
-
-class BPEVocabulariser_Chizhov(_VocabulariserWithChizhovBackend):
-
-    def __init__(self, preprocessor: Preprocessor, vocab_size: int, character_coverage: float, max_type_length: int):
-        super().__init__(name="bpe", preprocessor=preprocessor, backend=_ChizhovBackend_BPE(
-            preprocessor=preprocessor,
-            vocab_size=vocab_size,
-            character_coverage=character_coverage,
-            max_type_length=max_type_length
-        ))
-
-    @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        from .vocabularisation import BPEVocabulariser
-        return BPEVocabulariser._load(file_or_folder)
+from .vocabularisation import _VocabulariserWithChizhovBackend
 
 
 class _ChizhovBackend_PickyBPE_SmallFormat(_PickyBPETrainerBase):

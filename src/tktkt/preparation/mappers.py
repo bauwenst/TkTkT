@@ -89,12 +89,16 @@ class TruncateOnNearestWhitespace(TextMapper):
 
 
 class FilterRegex(TextMapper):
+    """
+    Erases everything that matches the given pattern.
+    """
 
-    def __init__(self, pattern: Union[re.Pattern, regex.Pattern]):
+    def __init__(self, pattern: Union[re.Pattern, regex.Pattern], replacement: str=""):
         self.pattern = pattern
+        self.replacement = replacement
 
     def convert(self, text: str) -> str:
-        return self.pattern.sub("", text)
+        return self.pattern.sub(self.replacement, text)
 
 
 class FilterCharacters(FilterRegex):
