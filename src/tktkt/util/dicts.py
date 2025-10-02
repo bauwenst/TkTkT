@@ -11,11 +11,10 @@ import numpy.random as npr
 
 from .timing import datetimeDashed
 from .printing import inequality, warn
-
+from .types import Number
 
 K = TypeVar("K")
 V = TypeVar("V")
-Number = TypeVar("Number", bound=Union[int,float])
 
 
 def invertdict(d: Dict[K,V], noninjective_ok=True) -> Dict[V,K]:
@@ -128,6 +127,8 @@ def optionalDataclassToDict(dataclass_or_dict) -> dict:
     else:
         raise TypeError(f"Unsupported type: {type(dataclass_or_dict)}")
 
+K = TypeVar("K")
+V = TypeVar("V")
 
 class ChainedCounter(Counter[K], Generic[K]):
     """

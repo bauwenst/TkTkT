@@ -9,6 +9,8 @@ from collections import Counter
 from math import ceil
 import numpy as np
 from scipy.stats import entropy as _scipy_entropy
+from tktkt.interfaces.vocabulariser import UnidentifiedVocab
+from tktkt.util.printing import pluralise, percent
 
 from ..interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
 from ..paths import TkTkTPaths
@@ -365,6 +367,9 @@ class SegmentationDiversity:
 def analyseSegmentationDistribution(segmentations_counts: SegmentationCounts,
                                     sample_size: int, domain_size: int, renyi_alpha: float=1.0,
                                     deterministic_segmentation: Optional[List[str]]=None) -> SegmentationDiversity:
+    """
+    Produces an analysis like Table 8 of the GRaMPa paper: https://aclanthology.org/2025.acl-long.1180
+    """
     segmentation_probabilities = normaliseCounter(segmentations_counts)
 
     uniqueness = len(segmentation_probabilities) / sample_size

@@ -149,10 +149,10 @@ def roundHuman(number: float, round_to: int=2, base2: bool=False, trim_zeroes: b
     """
     if base2:
         base     = 1024
-        suffixes = ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi']
+        suffixes = ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi', 'Yi']
     else:
         base     = 1000
-        suffixes = ['', 'K', 'M', 'G', 'T', 'P']
+        suffixes = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
 
     magnitude = 0
     while abs(number) >= base and magnitude < len(suffixes)-1:

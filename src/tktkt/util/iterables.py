@@ -40,7 +40,8 @@ def intercalate(lst: Iterable[T], new_element: T2) -> Iterator[Union[T,T2]]:
             yield buffer
             yield new_element
         buffer = e  # In the last iteration, the loop will exit while the last element has not been yielded yet.
-    yield buffer
+    if buffer != _NONE:
+        yield buffer
 
 
 def foldSpans(lst: Iterable[T], only_delete_specific_value: Any=_NONE) -> Iterator[T]:
@@ -192,6 +193,11 @@ def streamProgress(iterable: Iterable[T], show_as: Optional[str]=None, known_siz
 #################
 ### Endpoints ###
 #################
+
+def flush(iterable: Iterable[T]):
+    for thing in iterable:
+        pass
+
 
 def at(index: int, iterable: Iterable[T]) -> T:
     for i, thing in enumerate(iterable):

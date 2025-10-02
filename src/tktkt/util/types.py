@@ -1,5 +1,6 @@
 """
-General new types.
+Contains type aliases and classes which are mainly a type of data -- something you could see in a type annotation of
+a method/function -- rather than being focused on operations.
 """
 from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Dict, Sequence
 from abc import abstractmethod
