@@ -25,22 +25,18 @@ class PretokeniserSequence(Pretokeniser, _PreprocessorComponentSequence):
 
     def split(self, text: str) -> List[str]:
         current_pretokens = [text]
-        # print(current_pretokens)
         for pretokeniser in self.sequence:
             generated_pretokens = []
             for pretoken in current_pretokens:
                 generated_pretokens.extend(pretokeniser.split(pretoken))
 
             current_pretokens = generated_pretokens
-            # print("\t->", pretokeniser.getName(), "->", current_pretokens)
 
         return current_pretokens
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
-        # print(pretokens)
         for pretokeniser in reversed(self.sequence):
             pretokens = pretokeniser.invertTokens(pretokens)
-            # print("\t->", pretokeniser.getName() + "⁻¹", "->", pretokens)
         return pretokens
 
     def getName(self) -> str:
@@ -49,6 +45,39 @@ class PretokeniserSequence(Pretokeniser, _PreprocessorComponentSequence):
     def __iter__(self):
         for pretokeniser in self.sequence:
             yield from iter(pretokeniser)
+
+
+class PretokeniserSequence_Diagnostic(PretokeniserSequence):
+    """
+    Identical to a PretokeniserSequence except it prints every step it executes and the results from doing so.
+    This is not just a flag in the PretokeniserSequence constructor because that would cause a lot of overhead
+    on the critical path of all preprocessors (either an empty method call or a conditional statement).
+    """
+
+    def __init__(self, sub_pretokenisers: List[Pretokeniser]):
+        super().__init__(sub_pretokenisers)
+        max_name_length     = max(map(len, map(Pretokeniser.getName, sub_pretokenisers)))
+        self._indents = [max_name_length - len(p.getName()) for p in sub_pretokenisers]
+
+    def split(self, text: str) -> List[str]:
+        current_pretokens = [text]
+        print(current_pretokens)
+        for pretokeniser, indent in zip(self.sequence, self._indents):
+            generated_pretokens = []
+            for pretoken in current_pretokens:
+                generated_pretokens.extend(pretokeniser.split(pretoken))
+
+            current_pretokens = generated_pretokens
+            print("\t->", pretokeniser.getName() + " "*indent, "->", current_pretokens)
+
+        return current_pretokens
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        print(pretokens)
+        for pretokeniser, indent in zip(reversed(self.sequence), reversed(self._indents)):
+            pretokens = pretokeniser.invertTokens(pretokens)
+            print("\t->", pretokeniser.getName() + "⁻¹" + " "*indent, "->", pretokens)
+        return pretokens
 
 
 class IdentityPretokeniser(Pretokeniser):
@@ -133,7 +162,7 @@ class PunctuationPretokeniser(Pretokeniser):
         self.core = tp.Split(pattern=Regex(pattern), behavior="isolated")
 
     @staticmethod
-    def buildPunctuationString(hyphen_mode: HyphenMode=HyphenMode.INCLUDED):
+    def buildPunctuationString(hyphen_mode: HyphenMode=HyphenMode.INCLUDED):  # TODO: You might consider \p{P} from the regex package.
         punctuation_hyphens_only = "-–_"
         if hyphen_mode == HyphenMode.ONLY:
             punctuation = punctuation_hyphens_only
@@ -187,6 +216,8 @@ class DistinctPunctuation(Pretokeniser):
 class WhitespaceAndMarkerPretokeniser(Pretokeniser):
     """
     Splits on (and DESTROYS) consecutive whitespace, replacing it by a marker.
+
+    You should probably not use this class; WhitespacePretokeniser and AddWordBoundary will do the job.
 
     A general principle I adhere to is that the addition of space markings should NOT be signalled by the user text.
     For example, the user should not have to put a space in front of his input to make the tokeniser put a marker
@@ -382,9 +413,7 @@ class GroupDigits(Pretokeniser):
         for run in self.pattern_to_get_runs_of_numbers.split(text):
             is_digit = not is_digit
             if is_digit:
-                pretokens.extend(
-                    self.pattern_to_split_numbers.sub(r"\1/", run[::-1])[::-1].split("/")
-                )
+                pretokens.extend(self.pattern_to_split_numbers.sub(r"\1/", run[::-1])[::-1].split("/"))
             elif run:
                 pretokens.append(run)
 
@@ -394,22 +423,51 @@ class GroupDigits(Pretokeniser):
         return pretokens
 
 
-class EnglishApostrophes(Pretokeniser):
+class IsolateConnectingHyphens(RegexSeparator):
+    """
+    Isolates hyphens that are surrounded by non-space on both sides.
+    """
+
+    def __init__(self):
+        pattern = re.compile(r"((?<!-)(?<=\S)-+(?=\S)(?!-))")  # Maximally large spans of hyphens, but only take those that do have a character on both sides that is non-space, but not those cases where those characters are just hyphens.
+        super().__init__(pattern, destructive=False)
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        new_pretokens = []
+        buffer = []
+        active_hyphen = False
+        for pretoken in pretokens:
+            if all(c == "-" for c in pretoken) and buffer:
+                active_hyphen = True
+                buffer.append(pretoken)
+            elif active_hyphen:
+                buffer.append(pretoken)
+                active_hyphen = False
+            else:
+                if buffer:
+                    new_pretokens.append("".join(buffer))
+                    buffer = []
+                buffer.append(pretoken)
+        if buffer:
+            if len(buffer) > 1 and all(c == "-" for c in buffer[-1]):
+                new_pretokens.append("".join(buffer[:-1]))
+                buffer = [buffer[-1]]
+            new_pretokens.append("".join(buffer))
+
+        return new_pretokens
+
+
+class EnglishApostrophes(RegexSeparator):
     """
     Splits English contractions ('ve, 'll, 'd, 's, 're, ...) off the rest of the word.
     """
 
     def __init__(self, do_nt=True):
         if do_nt:
-            self.pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|n't)(?=\s|$|\p{P})""", re.IGNORECASE)
+            pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|n't)(?=\s|$|\p{P})""", re.IGNORECASE)
         else:  # This is the GPT-2 standard (except GPT-2 doesn't ignore case).
-            self.pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|'t)(?=\s|$|\p{P})""", re.IGNORECASE)
-
-    def split(self, text: str) -> List[str]:
-        return [p for p in self.pattern.split(text) if p]
-
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Should be smarter.
-        return pretokens
+            pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|'t)(?=\s|$|\p{P})""", re.IGNORECASE)
+        super().__init__(pattern, destructive=False)
 
 
 class JapaneseWords(Pretokeniser):
@@ -471,10 +529,89 @@ class AddWordBoundary(Pretokeniser):
         return self.marker.isolate(pretoken)[0]
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
-        return [self.invertToken(p) for p in pretokens]
+        """
+        Because we know that this pretokeniser adds exactly one word boundary, a sequence with multiple pretokens
+        can be treated according to the rule that if a pretoken doesn't end with a boundary and the next pretoken
+        doesn't start with a boundary, they can be safely concatenated.
+
+        Similar implementations are found in DistinctPunctuation and SplitNextToWhitespace.
+        """
+        buffer = []
+        new_pretokens = []
+        for pretoken in pretokens:
+            root, mark = self.marker.isolate(pretoken)
+            if mark:
+                if self.marker.location == BoundaryMarkerLocation.END:  # The next pretoken will start a new run.
+                    buffer.append(root)
+
+                if buffer:
+                    new_pretokens.append("".join(buffer))
+                buffer = []
+
+                if self.marker.location == BoundaryMarkerLocation.START:  # You have found the start of a new run.
+                    buffer.append(root)
+            else:
+                buffer.append(root)
+
+        if buffer:
+            new_pretokens.append("".join(buffer))
+
+        return new_pretokens
 
     def getName(self):
         return super().getName() + "(" + "+"*(self.marker.location == BoundaryMarkerLocation.END) + self.marker.substitute + "+"*(self.marker.location == BoundaryMarkerLocation.START) + ")"
+
+
+class AddCapitalMarker(Pretokeniser):
+    """
+    Lowercases characters, but adds special pretokens in front to losslessly recover the capitals later.
+
+    Note: this class does not work after a byte mapping has been applied.
+    """
+    # TODO: "delete-space" character
+    # TODO: Just like with boundary markers, you should actually add the symbols to the processor's alphabet.
+
+    def __init__(self, ignore_marker: BoundaryMarker=None):
+        """
+        :param ignore_marker: If the incoming text is known to carry a boundary marker, you should ignore it when checking case.
+        """
+        self.marker = ignore_marker if ignore_marker is not None else BoundaryMarker("", detached=False, location=BoundaryMarkerLocation.START)
+
+    def split(self, text: str) -> List[str]:
+        root, mark = self.marker.isolate(text)
+        if not root:
+            return [mark] if mark else []
+        elif root.isupper():  # Caps-lock
+            return ["⇪", self.marker.concatenate(root.lower(), mark)]
+        elif root[0].isupper():  # Capitalised
+            return ["⇧", self.marker.concatenate(root[0].lower() + root[1:], mark)]
+        else:
+            return [text]
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        shift     = False
+        caps_lock = False
+        recased_pretokens = []
+        for pretoken in pretokens:
+            if pretoken == "⇪":
+                caps_lock = True
+                shift     = False
+            elif pretoken == "⇧":
+                caps_lock = False
+                shift     = True
+            elif caps_lock:
+                root, mark = self.marker.isolate(pretoken)
+                recased_pretokens.append(self.marker.concatenate(root.upper(), mark))
+                caps_lock = False
+            elif shift:
+                root, mark = self.marker.isolate(pretoken)
+                recased_pretokens.append(self.marker.concatenate(root[0].upper() + root[1:], mark))
+                shift = False
+            else:
+                recased_pretokens.append(pretoken)
+
+        return recased_pretokens
+
 
 
 from ..models.predictive.viterbi import CharacterClassifier

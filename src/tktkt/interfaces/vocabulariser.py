@@ -146,9 +146,9 @@ class Vocabulariser(ABC):
 
     # User-facing interface
 
-    def vocabulariseFromTsv(self, word_frequency_tsv: Path) -> Path:
+    def vocabulariseFromTsv(self, word_frequency_tsv: Path, name_instead_of_stem: str="") -> Path:
         return self._vocabulariseFromWords(NamedIterable(
-            [(word,int(count)) for word, count in iterateTsv(word_frequency_tsv, verbose=True)], name=word_frequency_tsv.stem
+            [(word,int(count)) for word, count in iterateTsv(word_frequency_tsv, verbose=True)], name=name_instead_of_stem or word_frequency_tsv.stem
         ))
 
     def vocabulariseFromCounter(self, word_frequency_counter: Counter, name: str="[unnamed_counter]") -> Path:
