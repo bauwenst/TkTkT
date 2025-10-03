@@ -90,6 +90,24 @@ class PathManager:
         full_path.mkdir(exist_ok=True, parents=True)
         return full_path
 
+    @staticmethod
+    def files(base_path: Path) -> List[Path]:
+        try:
+            _, _, filenames = next(base_path.walk())
+        except AttributeError:  # Python < 3.12
+            import os
+            _, _, filenames = next(os.walk(base_path))
+        return [base_path / filename for filename in filenames]
+
+    @staticmethod
+    def folders(base_path: Path) -> List[Path]:
+        try:
+            _, subfolders, _ = next(base_path.walk())
+        except AttributeError:  # Python < 3.12
+            import os
+            _, subfolders, _ = next(os.walk(base_path))
+        return [base_path / folder for folder in subfolders]
+
     # Define typical paths in any ML context:
 
     def pathToModels(self) -> Path:

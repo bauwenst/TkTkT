@@ -68,9 +68,9 @@ class CountWords(Vocabulariser):
         folder_intermediate.mkdir(exist_ok=True)
 
         # Find prior work in this folder.
-        _, _, files = next(folder_intermediate.walk())
-        caches      = [folder_intermediate / name for name in files if "_" not in name]
-        checkpoints = [folder_intermediate / name for name in files if "_" in name]
+        files = TkTkTPaths.files(folder_intermediate)
+        caches      = [file for file in files if "_" not in file.stem]
+        checkpoints = [file for file in files if "_"     in file.stem]
 
         latest_cache      = max(map(lambda path: int(path.stem), caches),                        default=0)
         latest_checkpoint = max(map(lambda path: int(path.stem.removeprefix("_")), checkpoints), default=0)
