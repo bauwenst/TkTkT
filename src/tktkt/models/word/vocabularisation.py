@@ -80,16 +80,18 @@ class CountWords(Vocabulariser):
                 logger.warning(f"Found obsolete checkpoint(s). Only using highest one.")
                 for checkpoint in checkpoints:
                     if checkpoint.stem == f"_{latest_checkpoint}":
-                        break
+                        continue
                     checkpoint.unlink()
             counter = self._loadCounter(folder_intermediate / f"_{latest_checkpoint}.tsv")
+            resume_after_idx = latest_checkpoint
         else:  # No checkpoint to load. It either doesn't exist or caches are more recent.
             if len(checkpoints) > 0:
                 logger.warning(f"Found obsolete checkpoints. Caches are more recent.")
                 for checkpoint in checkpoints:
                     checkpoint.unlink()
+                latest_checkpoint = 0
             counter = Counter()
-            latest_checkpoint = latest_cache
+            resume_after_idx = latest_cache
 
         done_flag = folder / ".done"
         if done_flag.exists():
@@ -99,7 +101,7 @@ class CountWords(Vocabulariser):
         idx = 0
         for idx,text in enumerate(sentence_iterable, start=1):
             # Resume where you left off.
-            if idx < latest_checkpoint:
+            if idx <= resume_after_idx:
                 continue
 
             for word in self.preprocessor.do(text):
