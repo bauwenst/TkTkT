@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tktkt"
-version = "2025.09.01"  # Don't forget to replace __version__ as well.
+version = "2025.10.01"  # Don't forget to replace __version__ as well.
 requires-python = ">= 3.9"
 authors = [
   {name = "Thomas Bauwens", email = "thomas.bauwens@kuleuven.be"}
@@ -21,6 +21,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    # HuggingFace
     "transformers",
     "tokenizers",
     "datasets",
@@ -33,7 +34,8 @@ dependencies = [
     "fugashi",
     "ipadic",
     "pythainlp",
-    "dacite"
+    "dacite",
+    "clavier_lib"
 ]
 
 # These are not optional, but if you have these packages as editable install, you don't want to let pip install them again!
@@ -47,9 +49,6 @@ github = [
     # Forks by me
     "sage_tokenizer       @ git+https://github.com/bauwenst/SaGe-tokeniser",
     "pickybpe             @ git+https://github.com/bauwenst/PickyBPE",
-
-    # Other GitHub packages
-    "clavier              @ git+https://github.com/MaxHalford/clavier"
 ]
 
 # Include data and tokeniser files.

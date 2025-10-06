@@ -588,18 +588,27 @@ class FinallyObservableObserver(ObservableObserver[Received, Sent]):
 
 
 class WirelessObserverConnection(Generic[_Received2]):
+    """
+    Proxy object so that wireless receivers can be instantiated without needing a reference to the sender which is
+    instantiated in the same tree.
+    """
+
     def __init__(self):
-        self._min_index = 0
-        self._splitter: WirelessSplittingObserver[Any,_Received2] = None
+        self._sender: WirelessSplittingObserver[Any,_Received2] = None
+        self._pending_receivers: List[WirelessRecombiningObserver] = []
 
-    def _registerSplitter(self, splitter: "WirelessSplittingObserver[Any,_Received2]"):
-        self._splitter = splitter
+    def _connectSender(self, splitter: "WirelessSplittingObserver[Any,_Received2]"):
+        self._sender = splitter
+        for receiver in self._pending_receivers:
+            self._connectReceiver(receiver)
+        self._pending_receivers = []
 
-    def _request(self, index: int) -> _Received2:
-        return self._splitter._request(index)
-
-    def _registerReceiver(self):
-        self._splitter._registerReceiver()
+    def _connectReceiver(self, receiver: "WirelessRecombiningObserver"):
+        if self._sender is None:
+            self._pending_receivers.append(receiver)
+        else:
+            receiver._registerServer(self._sender)
+            self._sender._registerReceiver()
 
 
 class WirelessSplittingObserver(ObservableObserver[Tuple[Received,_Received2],Received]):
@@ -612,8 +621,9 @@ class WirelessSplittingObserver(ObservableObserver[Tuple[Received,_Received2],Re
         self._buffer: List[_Received2]      = []
         self._remaining_requests: List[int] = []
         self._min_index   = 0
+
         self._n_receivers = 0
-        connection._registerSplitter(self)
+        connection._connectSender(self)
 
     def _registerReceiver(self):
         self._n_receivers += 1
@@ -640,10 +650,14 @@ class WirelessRecombiningObserver(ObservableObserver[Received,Tuple[Received, _R
 
     def __init__(self, connection: WirelessObserverConnection[_Received2], observers: List[Observer[Tuple[Received, _Received2]]]):
         super().__init__(observers=observers)
-        self._connection = connection
-        self._connection._registerReceiver()
         self._index = 0
 
+        self._server = None
+        connection._connectReceiver(self)
+
     def _receive(self, sample: Received, weight: float):
-        self._send( (sample, self._connection._request(self._index)), weight)
+        self._send( (sample, self._server._request(self._index)), weight)
         self._index += 1
+
+    def _registerServer(self, server: WirelessSplittingObserver[Any,_Received2]):
+        self._server = server

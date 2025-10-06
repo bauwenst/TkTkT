@@ -9,8 +9,6 @@ import warnings
 from pathlib import Path
 from typing import Tuple, List
 
-from sage_tokenizer import SaGeVocabBuilder, setSageFolder
-
 from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
 from .schedules import *
 
@@ -44,6 +42,8 @@ class SageVocabulariser(Vocabulariser):
         :param n_embedding_samples: How many equidistant samples to take on the index scale.
         """
         super().__init__(name="sage", preprocessor=preprocessor)
+
+        import sage_tokenizer  # Just to check that you have it.
 
         self.vocabulary_points: List[int] = [
             round(vocabulary_schedule.get(i/(n_vocab_samples-1))) for i in range(n_vocab_samples)  # This round() produces vocabulary sizes in the thousands. The -1 is because we want to normalise the N samples 0, 1, ..., N-1 such that the extrema are 0.0 and 1.0.
@@ -81,6 +81,8 @@ class SageVocabulariser(Vocabulariser):
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
         if not self.initial_hex_vocab:
             raise RuntimeError("SaGe vocabulary wasn't yet initialised.")
+
+        from sage_tokenizer import SaGeVocabBuilder, setSageFolder
 
         builder = SaGeVocabBuilder(
             full_vocab_schedule=self.vocabulary_points,

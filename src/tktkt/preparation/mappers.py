@@ -1,4 +1,5 @@
-from typing import List, Iterable, Dict, Union, Set, Optional
+from __future__ import annotations  # To support TYPE_CHECKING
+from typing import List, Iterable, Dict, Union, Set, Optional, TYPE_CHECKING
 from collections import OrderedDict
 
 import re
@@ -205,7 +206,8 @@ class AsPhonemes(FiniteCharacterSet):
                 self.model.phone_dict[word] = [phone_string.split(',')[0]]
 
 
-import nlpaug
+if TYPE_CHECKING:  # This constant is True in the IDE and False at runtime, meaning that the IDE but not the runtime will complain when this isn't installed.
+    import nlpaug
 class PerturbWithNLPAug(TextMapper):
     """
     Wraps any object from the NLPaug package. See the possibilities with the following imports:

@@ -6,14 +6,7 @@ from collections import defaultdict, OrderedDict, Counter
 import json
 from tqdm.auto import tqdm
 
-# Core libraries
-from tokenizers import Tokenizer, models, pre_tokenizers, trainers
-import bpe_knockout._lib.sbpe.learn_bpe as sbpe
-import bpeasy
-from ..kudopiece.vocabularisation import KudoPieceVocabulariser, EXOTIC_SCRIPT_PRETOKEN_SEPARATOR
 from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase
-from pickybpe.utils import PathLike
-
 from bpe_knockout.knockout.core import MergeOnDisk
 from bpe_knockout.auxiliary.tokenizer_interface import SennrichTokeniserPath, HuggingFaceTokeniserPath
 from modest.formats.tsv import iterateTsv
@@ -136,8 +129,9 @@ class BPEVocabulariser(Vocabulariser):
         different from the tokeniser's preprocessor, namely that the former does not apply a pseudo-byte mapping nor adds
         boundaries other than spaces.
         """
-        logger("Note: BPEasy has a byte-based implementation. That means you should use a byte-compatible preprocessor, which doesn't add a boundary marker (unless it's a space) and doesn't apply a pseudo-byte mapping.")
+        import bpeasy
         out_folder = self._makeOutputFolder(sentence_iterable.name)
+        logger("Note: BPEasy has a byte-based implementation. That means you should use a byte-compatible preprocessor, which doesn't add a boundary marker (unless it's a space) and doesn't apply a pseudo-byte mapping.")
 
         # Learn vocabulary.
         PRETOKEN_SEPARATOR = "🂠"  # Normally you can use spaces to separate pretokens, but here we need spaces to act as boundary markers, and while all pretokens are separated, not all pretokens have a boundary marker, hence you can't use spaces.
@@ -182,8 +176,9 @@ class BPEVocabulariser(Vocabulariser):
         return vocab
 
     def _withSBPETrainer(self, iterable: Union[NamedIterable[Tuple[str,int]], NamedIterable[str]], words_not_sentences: bool=False) -> Path:
-        out_folder = self._makeOutputFolder(iterable.name)
+        import bpe_knockout._lib.sbpe.learn_bpe as sbpe
 
+        out_folder = self._makeOutputFolder(iterable.name)
         paths = SennrichTokeniserPath(folder=out_folder)
         path_vocab, path_merges = paths.getPaths()
 
@@ -209,6 +204,7 @@ class BPEVocabulariser(Vocabulariser):
         HuggingFace equivalent. For German: starts out extremely slow
         (giving an ETA of 500 000 hours), but finishes in under 2 hours.
         """
+        from tokenizers import Tokenizer, models, pre_tokenizers, trainers
         out_folder = self._makeOutputFolder(sentence_iterable.name)
 
         # Model: no normaliser (because RobBERT doesn't have one) and no decoder (because training is back-end-only).
@@ -250,6 +246,7 @@ class BPEVocabulariser(Vocabulariser):
             - For 3M space-concatenated sentences and max token length 16, it takes about 30 minutes to train.
             - For 5M exotic-concatenated sentences and max token length 32, it takes at least 769 GiB of RAM and over 8 hours to train.
         """
+        from ..kudopiece.vocabularisation import KudoPieceVocabulariser, EXOTIC_SCRIPT_PRETOKEN_SEPARATOR
         output_prefix = self._makeOutputFolder(word_or_sentence_iterable.name) / "spm"
 
         if words_not_sentences:
@@ -296,6 +293,7 @@ class BPEVocabulariser(Vocabulariser):
         return output_prefix.parent
 
     def _standardiseSpmVocab(self, spm_vocab: Path, required_chars: Iterable[str]) -> Dict[str,int]:
+        from ..kudopiece.vocabularisation import EXOTIC_SCRIPT_PRETOKEN_SEPARATOR
         required_chars = list(required_chars)
 
         # First, parse the resulting .vocab file and turn it into a str -> int dictionary.

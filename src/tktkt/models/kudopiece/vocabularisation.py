@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Iterable, Tuple
 from dataclasses import dataclass
 
-import sentencepiece as spm
 from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
@@ -112,6 +111,7 @@ class KudoPieceVocabulariser(Vocabulariser):
             --split_by_whitespace (use a white space to split sentence pieces)  type: bool default: true
             --split_digits (split all digits (0-9) into separate pieces)  type: bool default: false
         """
+        import sentencepiece  # assert
         super().__init__(name="kudopiece", preprocessor=preprocessor)
 
         self._marker = preprocessor.getBoundaryMarker()
@@ -184,6 +184,7 @@ class KudoPieceVocabulariser(Vocabulariser):
         Calls the SentencePieceTrainer.Train function by passing the given kwargs to it and imputing a bunch of
         standard arguments.
         """
+        import sentencepiece as spm
         spm.SentencePieceTrainer.Train(
             **remaining_arguments,
 

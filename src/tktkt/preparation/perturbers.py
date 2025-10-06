@@ -198,7 +198,6 @@ class Substitute(CharacterPerturber):
                 range(0, len(text))))
 
 
-import clavier
 class SubstituteKeyboardTypo(CharacterPerturber):
     """
     Uses QWERTY keyboard layout to perturb characters in the word. Characters closer on the keyboard have a higher probability.
@@ -220,7 +219,8 @@ class SubstituteKeyboardTypo(CharacterPerturber):
         """
         super().__init__(p, sampler)
 
-        self.keyboard = clavier.load_qwerty()
+        import clavier_lib
+        self.keyboard = clavier_lib.load_qwerty()
         self.supported_keys = {k for k in self.keyboard.keys() if k.isalpha()}
         self.probability_mass_cache: Dict[str, SubstituteKeyboardTypo.PMF] = dict()
         self.temperature = temperature
