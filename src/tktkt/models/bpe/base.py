@@ -33,7 +33,9 @@ class SimplifiedBTEInterface(BTE):
             if backwards_compatible:
                 config.reify = ReifyMode.FIX_AND_LINK
             else:
-                config.reify = ReifyMode.FIX_AND_LINK_AND_MAKE
+                config.reify  = ReifyMode.FIX_AND_LINK_AND_MAKE
+                config.anneal = RefMode.MORPHEMIC
+                config.when_to_anneal = AnnealingTime.BEFORE
 
         super().__init__(
             # Init

@@ -23,7 +23,7 @@ from ..interfaces.tokeniser import Tokeniser
 from ..util.dicts import optionalDataclassToDict
 from ..util.iterables import dunion
 from ..util.types import NamedIterable, Tokens, HoldoutState
-from ..util.strings import indent
+from ..util.strings import indent, underscoreIfNotEmpty
 
 Received = TypeVar("Received")
 Sent     = TypeVar("Sent")
@@ -97,10 +97,15 @@ class AppendToListObserver(Observer[Any]):
 class DataclassCollectorObserver(Observer[Any]):
     """
     Observer meant to be put at various points in the hierarchy, to collect dictionaries/dataclasses that are
-    supposed to be saved together as one row in a CSV file. The user is then responsible for separating rows.
+    supposed to be saved together as one row in a CSV file.
+
+    The user decides when a new row is started.
     """
 
     class DataclassSuffixer(Observer[Any]):
+        """
+        Shim put in front of a DataclassCollectorObserver which adds a suffix to each key / field name that is received.
+        """
 
         def __init__(self, master: "DataclassCollectorObserver", suffix: str):
             self._master = master
@@ -127,6 +132,7 @@ class DataclassCollectorObserver(Observer[Any]):
         self._fence_on_assemble = fence_on_assemble
 
     def addMetadata(self, metadata: dict):
+        """Add metadata to the current row."""
         self._receive(metadata, 1)
 
     def fence(self):
@@ -296,13 +302,27 @@ class Observable(ObservableMeta[Sent]):
 class ObservableRoot(Observable[Sent]):
     """Observable with a method that opens a constant stream of samples."""
 
+    def __init__(self, cache_disambiguator: str):
+        """
+        :param cache_disambiguator: disambiguates runs whose root instances are otherwise identical.
+                                    TODO: A smarter way to do this would be to instead have nodes in the tree
+                                          add on to the name of the root. Because indeed, the only thing that CAN
+                                          change in the experiment if the root node is the same but the cache is not,
+                                          is any node between the two, e.g. the tokeniser, which the user is now asked to identify in the disambiguator manually.
+        """
+        self._cache_disambiguator = cache_disambiguator
+
     @abstractmethod
     def _stream(self) -> Iterator[Tuple[Sent,float]]:
         pass
 
-    @abstractmethod
     def _globalRunIdentifier(self) -> str:
-        """Method used to inform observers which of their caches to use."""
+        """Informs observers which of their caches to use."""
+        return self._nodeIdentifier() + underscoreIfNotEmpty(self._cache_disambiguator)
+
+    @abstractmethod
+    def _nodeIdentifier(self) -> str:
+        """Disambiguates instances of this root."""
         pass
 
     def run(self):
@@ -334,12 +354,12 @@ class ObservableIterable(ObservableRoot[Sent]):
     Equivalently, a reverse iterable, which rather than client code iterating over it, iterates over client code.
     """
 
-    def __init__(self, iterable: Union[NamedIterable[Sent], NamedIterable[Tuple[Sent,float]]], already_contains_weights: bool=False, observers: List[Observer[Sent]]=None):
-        super().__init__(observers=observers)
+    def __init__(self, experiment_id: str, iterable: Union[NamedIterable[Sent], NamedIterable[Tuple[Sent,float]]], already_contains_weights: bool=False, observers: List[Observer[Sent]]=None):
+        super().__init__(cache_disambiguator=experiment_id, observers=observers)
         self.iterable = iterable
         self._is_tuple_with_weight = already_contains_weights
 
-    def _globalRunIdentifier(self) -> str:
+    def _nodeIdentifier(self) -> str:
         return self.iterable.name
 
     def _stream(self):
@@ -535,7 +555,7 @@ class FinallyObservableObserver(ObservableObserver[Received, Sent]):
         pass
 
     def _cacheIdentifier(self) -> str:
-        return self._stored_global_run_identifier + ("_" + self._disambiguation_identifier if self._disambiguation_identifier else "")
+        return self._stored_global_run_identifier + underscoreIfNotEmpty(self._disambiguation_identifier)
 
     @abstractmethod
     def _cachePath(self, unambiguous_cache_identifier: str) -> Path:  # Can be a folder or a file.

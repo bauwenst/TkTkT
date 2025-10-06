@@ -4,6 +4,13 @@ import numpy as np
 from .iterables import intercalate, cumsum
 
 
+def underscoreIfNotEmpty(s: str) -> str:
+    if s:
+        return "_" + s
+    else:
+        return s
+
+
 def findLongestCommonPrefix(strings: Iterable[str]) -> str:
     ref = None
     for string in strings:

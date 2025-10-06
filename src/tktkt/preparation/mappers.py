@@ -244,10 +244,13 @@ class InvertibleMapperSequence(InvertibleTextMapper, _PreprocessorComponentSeque
             yield from iter(mapper)
 
 
-class IdentityMapper(InvertibleMapperSequence):
+class IdentityMapper(InvertibleTextMapper):  # Not equivalent to InvertibleMapperSequence([]) because the latter doesn't return itself during __iter__ (which could be seen as a bug).
 
-    def __init__(self):
-        super().__init__([])
+    def convert(self, text: str) -> str:
+        return text
+
+    def invert(self, text: str) -> str:
+        return text
 
 
 class AppendSpace(InvertibleTextMapper):
@@ -352,7 +355,7 @@ class PseudoByteMapping(ByteMapping):
 
     @staticmethod
     def bytes_to_unicode_documented() -> Dict[int, str]:
-        """
+        r"""
         An implementation of `transformers.models.gpt2.tokenization_gpt2.bytes_to_unicode` that's actually readable.
         Has been tested for equivalence.
 

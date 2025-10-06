@@ -31,7 +31,8 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
-                 language: Union[Language, str], iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False, unk_type: str=None):
+                 language: Union[Language, str],
+                 iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False, unk_type: str=None):
         # Impute language
         if isinstance(language, str):
             language = langstringToLanguage(language)

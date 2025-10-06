@@ -231,12 +231,12 @@ class ConfusionMatrices:
 
 class MorphologyIterable(ObservableRoot[Tuple[str,M]]):
 
-    def __init__(self, dataset: ModestDataset[M], word_weights: Dict[str,float]=None, observers: List[Observer[Tuple[str,M]]]=None):
-        super().__init__(observers=observers)
+    def __init__(self, experiment_id: str, dataset: ModestDataset[M], word_weights: Dict[str,float]=None, observers: List[Observer[Tuple[str,M]]]=None):
+        super().__init__(cache_disambiguator=experiment_id, observers=observers)
         self._dataset = dataset
         self._weights = word_weights or dict()
 
-    def _globalRunIdentifier(self) -> str:
+    def _nodeIdentifier(self) -> str:
         return self._dataset.identifier()
 
     def _stream(self) -> Iterator[Tuple[Tuple[str,M],float]]:

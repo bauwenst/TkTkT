@@ -40,6 +40,9 @@ class NamedIterable(Iterable[T]):  # This T is so that type signatures like Name
         if hasattr(iterable, "__next__"):
             raise TypeError("The given iteraBLE is an iteraTOR, and hence may not be re-iterable.")
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + "(" + self.name + ")"
+
     def __iter__(self):
         from .iterables import streamProgress
         return self._iterable.__iter__() if not self._tqdm else streamProgress(self._iterable).__iter__()

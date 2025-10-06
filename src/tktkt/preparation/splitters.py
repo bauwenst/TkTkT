@@ -457,7 +457,34 @@ class IsolateConnectingHyphens(RegexSeparator):
         return new_pretokens
 
 
-class EnglishApostrophes(RegexSeparator):
+class PolariseApostrophes(Pretokeniser):
+    """
+    Generalised version of the EnglishContractions pretokeniser.
+
+    Splits on apostrophes and concatenates them to their shortest neighbour.
+    Thus, "pa'que" will be split "pa' que" but "they'll" will be split "they 'll".
+    Additionally, two consecutive apostrophes will always be separated.
+    """
+
+    def __init__(self, tiebreak_left: bool):
+        self._left = tiebreak_left
+
+    def split(self, text: str) -> List[str]:
+        pretokens = text.split("'")
+        lengths = [len(pretoken) for pretoken in pretokens]
+        for i in range(len(lengths)-1):
+            if lengths[i+1] == 0 or (lengths[i] != 0 and (lengths[i] < lengths[i+1] or (self._left and lengths[i] == lengths[i+1]))):  # This condition has the nice property that it never concatenates two apostrophes together and always sticks them to characters where available. E.g.: if you were to write I'''m, it would become I' ' 'm. Also, just 'm stays 'm.
+                pretokens[i] += "'"
+            else:
+                pretokens[i+1] = "'" + pretokens[i+1]
+
+        return [pretoken for pretoken in pretokens if pretoken]
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:  # You can't really know whether an apostrophe was already split off before this, and thus whether it should stay split off after.
+        return pretokens
+
+
+class EnglishContractions(RegexSeparator):
     """
     Splits English contractions ('ve, 'll, 'd, 's, 're, ...) off the rest of the word.
     """
@@ -468,6 +495,8 @@ class EnglishApostrophes(RegexSeparator):
         else:  # This is the GPT-2 standard (except GPT-2 doesn't ignore case).
             pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|'t)(?=\s|$|\p{P})""", re.IGNORECASE)
         super().__init__(pattern, destructive=False)
+
+EnglishApostrophes = EnglishContractions
 
 
 class JapaneseWords(Pretokeniser):

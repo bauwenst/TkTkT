@@ -6,12 +6,13 @@ from ..evaluation.morphological import *
 from ..evaluation.entropy import *
 
 
-def evaluateTokeniser(corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
+def evaluateTokeniser(experiment_id: str, corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
     """
     Functional shorthand for one specific instance of the general object-oriented Observable/Observer approach,
     for cases where you want to tokenise strings in a corpus and compute metrics over the tokeniser's token outputs.
     """
     ObservableIterable(
+        experiment_id=experiment_id,
         iterable=corpus,
         observers=[
             ObservableTokeniser(
@@ -22,11 +23,12 @@ def evaluateTokeniser(corpus: NamedIterable[str], tokeniser: Tokeniser, token_co
     ).run()
 
 
-def evaluateTokeniserOnWords(corpus: NamedIterable[str], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
+def evaluateTokeniserOnWords(experiment_id: str, corpus: NamedIterable[str], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
     """
     Same as evaluateTokeniser except now you split the strings into "words" beforehand.
     """
     ObservableIterable(
+        experiment_id=experiment_id,
         iterable=corpus,
         observers=[
             ObservablePreprocessor(
@@ -42,18 +44,20 @@ def evaluateTokeniserOnWords(corpus: NamedIterable[str], word_preprocessor: Prep
     ).run()
 
 
-def evaluateTokeniserOnMorphology(dataset: ModestDataset, tokeniser: Tokeniser, has_freemorphsplit: bool=False):
+def evaluateTokeniserOnMorphology(experiment_id: str, dataset: ModestDataset, tokeniser: Tokeniser, has_freemorphsplit: bool=False, output: DataclassCollectorObserver=None):
     """
     Like evaluateTokeniserOnWords except with words with a morphological segmentation reference.
-    The downstream observers have already been specified for you.
+    Don't forget to fence after this.
 
     :param has_freemorphsplit: Whether the dataset provides a segmentation into non-bound morphemes.
     """
     connection = WirelessObserverConnection()
-    results = DataclassCollectorObserver()
-    results.addMetadata({"corpus": dataset.identifier(), "name": tokeniser.getName()})
+    if output is None:
+        output = DataclassCollectorObserver()
+    output.addMetadata({"corpus": dataset.identifier(), "name": tokeniser.getName()})
 
     MorphologyIterable(
+        experiment_id=experiment_id,
         dataset=dataset,
         observers=[
             WirelessSplittingObserver(  # Retains morphology objects until wireless receiver asks for it back.
@@ -65,8 +69,8 @@ def evaluateTokeniserOnMorphology(dataset: ModestDataset, tokeniser: Tokeniser, 
                             WirelessRecombiningObserver(
                                 connection=connection,  # Asks for morphology object back.
                                 observers=
-                                [MorphologyAsClassification(MorphSplit(),     observers=[results.withSuffix("morph")])] +
-                                [MorphologyAsClassification(FreeMorphSplit(), observers=[results.withSuffix("free" )])]*has_freemorphsplit
+                                [MorphologyAsClassification(MorphSplit(),     observers=[output.withSuffix("morph")])] +
+                                [MorphologyAsClassification(FreeMorphSplit(), observers=[output.withSuffix("free" )])]*has_freemorphsplit
                             )
                         ]
                     )
@@ -74,7 +78,7 @@ def evaluateTokeniserOnMorphology(dataset: ModestDataset, tokeniser: Tokeniser, 
             )
         ]
     ).run()
-    return results.assemble()[0]  # TODO: You should allow the user to put this in a loop as for the other functions. .assemble() is only really appropriate when the user does it.
+    return output
 
 
 class ObserverWithTTRandEntropy(ObservableTokeniser):

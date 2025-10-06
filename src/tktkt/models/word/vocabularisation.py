@@ -157,7 +157,7 @@ class CountWords(Vocabulariser):
                 # Check for overflow
                 current_size = len(total_counter)
                 if current_size > max_size:
-                    logger.warning(f"Exceeded maximum size of {intsep(max_size)} keys. Trimming.")
+                    logger.warning(f"Merged counter exceeded maximum size of {intsep(max_size)} keys. Trimming.")
                     f = 1
                     while len(total_counter) > max_size:
                         logger.info(f"\tTrimming keys with current frequency {f}...")
@@ -169,7 +169,7 @@ class CountWords(Vocabulariser):
                         gc.collect()  # We can't rely on the interpreter to decide when to garbage-collect those del'd items.
                         f += 1
                 elif not warned and current_size > warn_size:
-                    logger.warning(f"Counter exceeds maximum size of {intsep(max_size)} keys.")
+                    logger.warning(f"Merged counter has become bigger than during counting ({intsep(max_size)} keys).")
                     warned = True
 
             logger.info(f"Keys after {pluralise(idx, 'shard')}: {intsep(len(total_counter))}")

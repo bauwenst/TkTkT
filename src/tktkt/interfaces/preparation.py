@@ -27,7 +27,7 @@ class _PreprocessorComponentSequence(_PreprocessorComponent):
 
     def getAlphabet(self) -> Optional["FiniteCharacterSet"]:  # FIXME: Known issue: the marker may not be in this alphabet.
         alphabet = None
-        for component in self:
+        for component in self:  # TODO: Interestingly, because PretokeniserSequence and TextMapperSequence don't yield themselves, the recursive call to getAlphabet happens only in leaves, and the traversing is done by this for statement. But is this good design?
             alphabet = component.getAlphabet() or alphabet
         return alphabet
 
