@@ -4,23 +4,13 @@ from typing import Union
 import warnings
 
 from .base import *
-
+from ...util.types import L, Languish
 
 CONFIGS = {
-    "en": setupEnglish(),
-    "de": setupGerman(),
-    "nl": setupDutch()
+    L("English"): setupEnglish(),
+     L("German"): setupGerman(),
+      L("Dutch"): setupDutch()
 }
-
-
-def langstringToLanguage(language: str) -> Language:
-    try:
-        return langcodes.find(language)  # E.g. "Dutch"
-    except:
-        try:
-            return langcodes.get(language)  # E.g. "nl"
-        except:
-            raise ValueError(f"Language cannot be recognised: {language}")
 
 
 class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
@@ -31,16 +21,14 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
-                 language: Union[Language, str],
+                 language: Languish,
                  iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False, unk_type: str=None):
-        # Impute language
-        if isinstance(language, str):
-            language = langstringToLanguage(language)
+        language = L(language)
 
         # Get morphology config
-        if language.to_tag() not in CONFIGS:
+        if language not in CONFIGS:
             warnings.warn(f"Language {language.display_name()} has no BPE-knockout configuration. Defaulting to English.")
-        config = CONFIGS.get(language.to_tag(), CONFIGS.get("en"))
+        config = CONFIGS.get(language, CONFIGS[L("English")])
 
         # Run knockout in the context of that language
         with KnockoutDataConfiguration(config):

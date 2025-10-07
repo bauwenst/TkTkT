@@ -7,6 +7,7 @@ from abc import abstractmethod
 from datasets import Dataset, IterableDataset
 from functools import partial
 import numpy.random as npr
+from langcodes import Language
 
 # There are four canonical ways to represent the segmentation of a known string:
 #     - A list of token strings;
@@ -218,3 +219,23 @@ class Comparable(Protocol):
         pass
 
 CT = TypeVar("CT", bound=Comparable)  # Defined so it can be used in the signature above.
+
+
+Languish = Union[Language,str]
+
+class L(Language):
+    def __init__(self, name: Languish):
+        if isinstance(name, Language):
+            lang = name
+        elif isinstance(name, str):
+            try:
+                lang = Language.find(name)  # E.g. "Dutch"
+            except:
+                try:
+                    lang = Language.get(name)  # E.g. "nl"
+                except:
+                    raise ValueError(f"Language cannot be recognised: {name}")
+        else:
+            raise TypeError(f"Unrecognised input type: {type(name)}.")
+
+        super().__init__(lang.to_tag())

@@ -240,20 +240,19 @@ class MorphologyIterable(ObservableRoot[Tuple[str,M]]):
         return self._dataset.identifier()
 
     def _stream(self) -> Iterator[Tuple[Tuple[str,M],float]]:
-        for obj in self._dataset.generate():
+        for obj in self._dataset.generate(verbose=True):
             word = obj.word
             yield (word, obj), self._weights.get(word, 1)
 
 
 class MorphologyAsClassification(FinallyObservableObserver[Tuple[Tokens,M],ConfusionMatrices]):
 
-    def __init__(self, visitor: MorphologyVisitor, effective_preprocessor: Preprocessor=None,
-                 holdout: HoldoutState=None, do_log_false_negatives: bool=False,
+    def __init__(self, visitor: MorphologyVisitor, effective_preprocessor: Preprocessor,
+                 do_log_false_negatives: bool=False,
                  observers: List[Observer[ConfusionMatrices]]=None):
         super().__init__(cache_disambiguator=visitor.__class__.__name__, observers=observers)
         self._visitor      = visitor
         self._preprocessor = effective_preprocessor
-        self._holdout      = holdout
         self._do_log_fusions = do_log_false_negatives
 
     def _initialiseAsObserver(self, identifier: str):
@@ -303,3 +302,18 @@ class MorphologyAsClassification(FinallyObservableObserver[Tuple[Tokens,M],Confu
         with open(cache_path, "r", encoding="utf-8") as handle:
             d = json.load(handle)
             return ConfusionMatrices(cm=dictToMatrix(d["unweighted"]), cm_weighted=dictToMatrix(d["weighted"]))
+
+
+class ConfusionMatrixSummary(ImmediatelyObservableObserver[ConfusionMatrices,dict]):
+
+    def _transit(self, sample: ConfusionMatrices, weight: float) -> dict:
+        pr, re, f1       = sample.cm.computePrReF1()
+        pr_w, re_w, f1_w = sample.cm_weighted.computePrReF1()
+        return {
+            "pr": pr,
+            "re": re,
+            "f1": f1,
+            "pr_w": pr_w,
+            "re_w": re_w,
+            "f1_w": f1_w,
+        }

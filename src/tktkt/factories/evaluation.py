@@ -44,13 +44,17 @@ def evaluateTokeniserOnWords(experiment_id: str, corpus: NamedIterable[str], wor
     ).run()
 
 
-def evaluateTokeniserOnMorphology(experiment_id: str, dataset: ModestDataset, tokeniser: Tokeniser, has_freemorphsplit: bool=False, output: DataclassCollectorObserver=None):
+def evaluateTokeniserOnMorphology(experiment_id: str, dataset: ModestDataset, tokeniser: Tokeniser, effective_preprocessor: Preprocessor=None,
+                                  has_freemorphsplit: bool=False, output: DataclassCollectorObserver=None):
     """
     Like evaluateTokeniserOnWords except with words with a morphological segmentation reference.
     Don't forget to fence after this.
 
     :param has_freemorphsplit: Whether the dataset provides a segmentation into non-bound morphemes.
     """
+    if effective_preprocessor is None:
+        effective_preprocessor = tokeniser.preprocessor
+
     connection = WirelessObserverConnection()
     if output is None:
         output = DataclassCollectorObserver()
@@ -68,9 +72,19 @@ def evaluateTokeniserOnMorphology(experiment_id: str, dataset: ModestDataset, to
                         observers=[
                             WirelessRecombiningObserver(
                                 connection=connection,  # Asks for morphology object back.
-                                observers=
-                                [MorphologyAsClassification(MorphSplit(),     observers=[output.withSuffix("morph")])] +
-                                [MorphologyAsClassification(FreeMorphSplit(), observers=[output.withSuffix("free" )])]*has_freemorphsplit
+                                observers=[
+                                    MorphologyAsClassification(
+                                        MorphSplit(),
+                                        effective_preprocessor=effective_preprocessor,
+                                        observers=[ConfusionMatrixSummary(observers=[output.withSuffix("morph")])]
+                                    )
+                                ] + has_freemorphsplit*[
+                                    MorphologyAsClassification(
+                                        FreeMorphSplit(),
+                                        effective_preprocessor=effective_preprocessor,
+                                        observers=[ConfusionMatrixSummary(observers=[output.withSuffix("free")])]
+                                    )
+                                ]
                             )
                         ]
                     )

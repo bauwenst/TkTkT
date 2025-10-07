@@ -7,6 +7,7 @@ from functools import lru_cache
 from bpe_knockout import *
 from bpe_knockout.auxiliary.tokenizer_interface import HuggingFaceTokeniserPath
 from bpe_knockout.knockout.core import MergeList
+from bpe_knockout.knockout.config import AnnealingTime
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
@@ -45,7 +46,6 @@ class SimplifiedBTEInterface(BTE):
 
             # Prep
             preprocessor=preprocessor,
-            boundary_marker=preprocessor.getBoundaryMarker(),
 
             # Niche parameters
             autorun_modes=True,
@@ -117,7 +117,6 @@ class ClassicBPE(DeterministicBPETokeniser):
     @classmethod
     def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, for_words: bool=True) -> Self:
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        marker = detectBoundaryMarkerFromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessorForWords(hf_bpe_tokenizer) if for_words else HuggingFacePreprocessor(hf_bpe_tokenizer),
 

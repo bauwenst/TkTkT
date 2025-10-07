@@ -302,7 +302,7 @@ class Observable(ObservableMeta[Sent]):
 class ObservableRoot(Observable[Sent]):
     """Observable with a method that opens a constant stream of samples."""
 
-    def __init__(self, cache_disambiguator: str):
+    def __init__(self, cache_disambiguator: str, observers: List[Observer[Sent]]):
         """
         :param cache_disambiguator: disambiguates runs whose root instances are otherwise identical.
                                     TODO: A smarter way to do this would be to instead have nodes in the tree
@@ -310,6 +310,7 @@ class ObservableRoot(Observable[Sent]):
                                           change in the experiment if the root node is the same but the cache is not,
                                           is any node between the two, e.g. the tokeniser, which the user is now asked to identify in the disambiguator manually.
         """
+        super().__init__(observers=observers)
         self._cache_disambiguator = cache_disambiguator
 
     @abstractmethod
@@ -326,6 +327,8 @@ class ObservableRoot(Observable[Sent]):
         pass
 
     def run(self):
+        print(formatExit(f"Running {self._globalRunIdentifier()}..."))
+
         # Initialise
         skip_everything = False
         try:
