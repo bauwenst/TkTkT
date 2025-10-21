@@ -7,7 +7,6 @@ from functools import lru_cache
 from bpe_knockout import *
 from bpe_knockout.auxiliary.tokenizer_interface import HuggingFaceTokeniserPath
 from bpe_knockout.knockout.core import MergeList
-from bpe_knockout.knockout.config import AnnealingTime
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
@@ -27,16 +26,15 @@ class SimplifiedBTEInterface(BTE):
         """
         :param backwards_compatible: Whether to stay within the same initial vocab or not. Knockout always does, reification doesn't.
         """
-        config = BteInitConfig(iterations=iterations)
+        config = BTEConfig(iterations=iterations)
         if do_morphemic_knockout:
-            config.knockout = RefMode.MORPHEMIC
+            config.knockout = KnockoutConfig(reference=ReferenceMode.MORPHEMIC)
         if do_reification:
             if backwards_compatible:
                 config.reify = ReifyMode.FIX_AND_LINK
             else:
                 config.reify  = ReifyMode.FIX_AND_LINK_AND_MAKE
-                config.anneal = RefMode.MORPHEMIC
-                config.when_to_anneal = AnnealingTime.BEFORE
+                config.anneal = AnnealingConfig(reference=ReferenceMode.MORPHEMIC, when=AnnealingTime.BEFORE)
 
         super().__init__(
             # Init
@@ -48,7 +46,7 @@ class SimplifiedBTEInterface(BTE):
             preprocessor=preprocessor,
 
             # Niche parameters
-            autorun_modes=True,
+            execution_policy=ExecutionPolicy.IMMEDIATE,
             holdout=None,
             quiet=True
         )

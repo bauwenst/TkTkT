@@ -77,7 +77,8 @@ def keepFirst(iterable: Iterable[T], key: Callable[[T],T2]=None) -> Iterator[T]:
 def mapExtend(f: Callable[[T],Iterable[T2]], iterable: Iterable[T]) -> Iterator[T2]:
     """
     Same as map() except the per-element function produces iterables, which are yielded in turn as if they all belong
-    to one long sequence.
+    to one long sequence. For example, when you have a list of pretokens, a tokeniser converts each element of that
+    list into a list of tokens, and the end result is just one long list of tokens.
     """
     for element in iterable:
         for piece in f(element):
@@ -85,7 +86,7 @@ def mapExtend(f: Callable[[T],Iterable[T2]], iterable: Iterable[T]) -> Iterator[
 
 
 def cat(iterable: Iterable[Iterable[T]]) -> Iterator[T]:
-    return mapExtend(lambda x: x, iterable)
+    return mapExtend(lambda x: x, iterable)  # The function is supposed to produce iterables, and since the source already contains iterables, x -> x suffices as a mapping.
 
 
 IterableOrT = Union[T, Iterable['IterableOrT[T]']]

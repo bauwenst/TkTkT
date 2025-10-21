@@ -223,19 +223,16 @@ CT = TypeVar("CT", bound=Comparable)  # Defined so it can be used in the signatu
 
 Languish = Union[Language,str]
 
-class L(Language):
-    def __init__(self, name: Languish):
-        if isinstance(name, Language):
-            lang = name
-        elif isinstance(name, str):
+def L(name: Languish) -> Language:
+    if isinstance(name, Language):
+        return name
+    elif isinstance(name, str):
+        try:
+            return Language.find(name)  # E.g. "Dutch"
+        except:
             try:
-                lang = Language.find(name)  # E.g. "Dutch"
+                return Language.get(name)  # E.g. "nl"
             except:
-                try:
-                    lang = Language.get(name)  # E.g. "nl"
-                except:
-                    raise ValueError(f"Language cannot be recognised: {name}")
-        else:
-            raise TypeError(f"Unrecognised input type: {type(name)}.")
-
-        super().__init__(lang.to_tag())
+                raise ValueError(f"Language cannot be recognised: {name}")
+    else:
+        raise TypeError(f"Unrecognised input type: {type(name)}.")

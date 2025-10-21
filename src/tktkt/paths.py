@@ -97,7 +97,7 @@ class PathManager:
         except AttributeError:  # Python < 3.12
             import os
             _, _, filenames = next(os.walk(base_path))
-        return [base_path / filename for filename in filenames]
+        return [base_path / filename for filename in sorted(filenames)]
 
     @staticmethod
     def folders(base_path: Path) -> List[Path]:
@@ -106,7 +106,7 @@ class PathManager:
         except AttributeError:  # Python < 3.12
             import os
             _, subfolders, _ = next(os.walk(base_path))
-        return [base_path / folder for folder in subfolders]
+        return [base_path / folder for folder in sorted(subfolders)]
 
     # Define typical paths in any ML context:
 

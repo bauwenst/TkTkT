@@ -240,7 +240,7 @@ class MorphologyIterable(ObservableRoot[Tuple[str,M]]):
         return self._dataset.identifier()
 
     def _stream(self) -> Iterator[Tuple[Tuple[str,M],float]]:
-        for obj in self._dataset.generate(verbose=True):
+        for obj in self._dataset.generate():
             word = obj.word
             yield (word, obj), self._weights.get(word, 1)
 

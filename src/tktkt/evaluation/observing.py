@@ -102,34 +102,27 @@ class DataclassCollectorObserver(Observer[Any]):
     The user decides when a new row is started.
     """
 
-    class DataclassSuffixer(Observer[Any]):
-        """
-        Shim put in front of a DataclassCollectorObserver which adds a suffix to each key / field name that is received.
-        """
-
-        def __init__(self, master: "DataclassCollectorObserver", suffix: str):
-            self._master = master
-            self._suffix = suffix
-
-        def _initialise(self, global_run_identifier: str):
-            pass
-
-        def _receive(self, sample: Any, _):
-            self._master._receive({f"{k}_{self._suffix}": v for k,v in optionalDataclassToDict(sample).items()}, _)
-
-        def _finish(self):
-            pass
-
-    def withSuffix(self, suffix: str) -> DataclassSuffixer:
-        """Add a suffix to the end of the fields of the received dataclasses."""
-        return DataclassCollectorObserver.DataclassSuffixer(self, suffix)
-
-    ####################################################################################################################
-
-    def __init__(self, fence_on_assemble: bool=True):
+    def __init__(self, fence_on_assemble: bool=True, field_suffix: str=""):
         self._current_list    = []
         self._completed_lists = []
+
         self._fence_on_assemble = fence_on_assemble
+        self._suffix = field_suffix
+        self._proxy: DataclassCollectorObserver = None
+
+    def withSuffix(self, suffix: str) -> DataclassCollectorObserver:
+        """
+        Get an object which still funnels received dataclasses to the current object, except with a suffix added to
+        the end of the fields of the received dataclasses.
+        """
+        new_observer = DataclassCollectorObserver(fence_on_assemble=self._fence_on_assemble, field_suffix=suffix)
+        new_observer._setProxy(self)
+        return new_observer
+
+    def _setProxy(self, destination: "DataclassCollectorObserver"):
+        if self._current_list or self._completed_lists:
+            raise RuntimeError("Cannot set proxy for observer that has seen data already.")
+        self._proxy = destination
 
     def addMetadata(self, metadata: dict):
         """Add metadata to the current row."""
@@ -150,7 +143,13 @@ class DataclassCollectorObserver(Observer[Any]):
         pass
 
     def _receive(self, sample: Any, _):
-        self._current_list.append(sample)
+        if self._suffix:
+            sample = {f"{k}_{self._suffix}": v for k, v in optionalDataclassToDict(sample).items()}
+
+        if self._proxy is None:
+            self._current_list.append(sample)
+        else:
+            self._proxy._receive(sample, _)
 
     def _finish(self):
         # Explicitly does nothing, because this method will be called at multiple points in the hierarchy.
