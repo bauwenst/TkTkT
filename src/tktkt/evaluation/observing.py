@@ -94,7 +94,7 @@ class AppendToListObserver(Observer[Any]):
         pass
 
 
-class DataclassCollectorObserver(Observer[Any]):
+class DataclassObserver(Observer[Any]):
     """
     Observer meant to be put at various points in the hierarchy, to collect dictionaries/dataclasses that are
     supposed to be saved together as one row in a CSV file.
@@ -108,21 +108,21 @@ class DataclassCollectorObserver(Observer[Any]):
 
         self._fence_on_assemble = fence_on_assemble
         self._suffix = field_suffix
-        self._proxy: DataclassCollectorObserver = None
+        self._is_proxy_for: DataclassObserver = None
 
-    def withSuffix(self, suffix: str) -> DataclassCollectorObserver:
+    def withSuffix(self, suffix: str) -> "DataclassObserver":
         """
         Get an object which still funnels received dataclasses to the current object, except with a suffix added to
         the end of the fields of the received dataclasses.
         """
-        new_observer = DataclassCollectorObserver(fence_on_assemble=self._fence_on_assemble, field_suffix=suffix)
-        new_observer._setProxy(self)
+        new_observer = DataclassObserver(fence_on_assemble=self._fence_on_assemble, field_suffix=suffix)
+        new_observer._makeProxyFor(self)
         return new_observer
 
-    def _setProxy(self, destination: "DataclassCollectorObserver"):
+    def _makeProxyFor(self, destination: "DataclassObserver"):
         if self._current_list or self._completed_lists:
-            raise RuntimeError("Cannot set proxy for observer that has seen data already.")
-        self._proxy = destination
+            raise RuntimeError("Cannot make proxy out of observer that has seen data already.")
+        self._is_proxy_for = destination
 
     def addMetadata(self, metadata: dict):
         """Add metadata to the current row."""
@@ -130,11 +130,15 @@ class DataclassCollectorObserver(Observer[Any]):
 
     def fence(self):
         """Finish the current collection and start a new collection."""
+        if self._is_proxy_for is not None:
+            raise RuntimeError(f"Cannot fence proxy. You can only fence the original observer, {self._is_proxy_for}.")
         self._completed_lists.append(self._current_list)
         self._current_list = []
 
     def assemble(self) -> List[dict]:
         """For each collection that has been fenced, pool together all the dataclasses/dictionaries."""
+        if self._is_proxy_for is not None:
+            raise RuntimeError(f"Cannot assemble proxy. You can only assemble the original observer, {self._is_proxy_for}.")
         if self._fence_on_assemble and self._current_list:
             self.fence()
         return [dunion(map(optionalDataclassToDict, dicts)) for dicts in self._completed_lists]
@@ -146,10 +150,10 @@ class DataclassCollectorObserver(Observer[Any]):
         if self._suffix:
             sample = {f"{k}_{self._suffix}": v for k, v in optionalDataclassToDict(sample).items()}
 
-        if self._proxy is None:
+        if self._is_proxy_for is None:
             self._current_list.append(sample)
         else:
-            self._proxy._receive(sample, _)
+            self._is_proxy_for._receive(sample, _)
 
     def _finish(self):
         # Explicitly does nothing, because this method will be called at multiple points in the hierarchy.

@@ -45,7 +45,7 @@ def evaluateTokeniserOnWords(experiment_id: str, corpus: NamedIterable[str], wor
 
 
 def evaluateTokeniserOnMorphology(experiment_id: str, dataset: ModestDataset, tokeniser: Tokeniser, effective_preprocessor: Preprocessor=None,
-                                  has_freemorphsplit: bool=False, output: DataclassCollectorObserver=None):
+                                  has_freemorphsplit: bool=False, output: DataclassObserver=None):
     """
     Like evaluateTokeniserOnWords except with words with a morphological segmentation reference.
     Don't forget to fence after this.
@@ -57,7 +57,7 @@ def evaluateTokeniserOnMorphology(experiment_id: str, dataset: ModestDataset, to
 
     connection = WirelessObserverConnection()
     if output is None:
-        output = DataclassCollectorObserver()
+        output = DataclassObserver()
     output.addMetadata({"corpus": dataset.identifier(), "name": tokeniser.getName()})
 
     MorphologyIterable(
