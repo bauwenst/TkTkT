@@ -1,5 +1,10 @@
 """
 Pretokenisation, i.e. splitting text into the units that will be tokenised separately.
+Most of the class names use a prefix to indicate what they do:
+    - "On" means you're looking for substrings to remove and split whenever you do.
+    - "Into" means every string you produce is conceptually the same.
+    - "Isolate" means you look for strings to separate from their left and right context, but keep intact.
+    - "Group" means you isolate despite your neighbouring context looking similar.
 """
 from typing import List, Optional, Union
 from enum import Enum
@@ -108,7 +113,7 @@ class HyphenMode(Enum):
     INCLUDED = 3
 
 
-class PunctuationPretokeniser(Pretokeniser):
+class IsolatePunctuation(Pretokeniser):
     """
     Split on punctuation and conserve it.
 
@@ -125,7 +130,7 @@ class PunctuationPretokeniser(Pretokeniser):
 
     def __init__(self, hyphen_mode: HyphenMode=HyphenMode.INCLUDED, protect_apostrophes_without_spaces: bool=True,
                  group_adjacent_spaces_with_punctuation: Optional[BoundaryMarkerLocation]=None):
-        punctuation = PunctuationPretokeniser.buildPunctuationString(hyphen_mode)
+        punctuation = IsolatePunctuation.buildPunctuationString(hyphen_mode)
         punctuation_escaped = punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-")
         punctuation_escaped_no_accent = punctuation_escaped.replace("'", "")
 
@@ -185,14 +190,19 @@ class PunctuationPretokeniser(Pretokeniser):
         return pretokens
 
 
-class DistinctPunctuation(Pretokeniser):
+class GroupDistinctPunctuation(Pretokeniser):
     """
+    Make groups of equal punctuation out of full-punctuation tokens.
     Punctuation splitters group all successive punctuation together, but you likely don't want to mix punctuation marks
-    together into one token. So make groups of equal punctuation out of full-punctuation tokens.
+    together into one token. For example:
+
+        "This sentence ends in a lot of punctuation (that is different)...!"
+
+    has a punctuation string ")...!" at the end, which should be split into ")" and "..." and "!".
     """
 
     def __init__(self):
-        self.punctuation = PunctuationPretokeniser.buildPunctuationString(HyphenMode.INCLUDED)
+        self.punctuation = IsolatePunctuation.buildPunctuationString(HyphenMode.INCLUDED)
         self.punctuation_group = re.compile(" ?[" + self.punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-") + "]+ ?")
 
     def split(self, text: str) -> List[str]:
@@ -213,7 +223,7 @@ class DistinctPunctuation(Pretokeniser):
         return pretokens
 
 
-class WhitespaceAndMarkerPretokeniser(Pretokeniser):
+class OnWhitespaceAndAddMarker(Pretokeniser):
     """
     Splits on (and DESTROYS) consecutive whitespace, replacing it by a marker.
 
@@ -266,7 +276,7 @@ class WhitespaceAndMarkerPretokeniser(Pretokeniser):
         return [self.invertToken(p) for p in pretokens]
 
 
-class RegexSeparator(Pretokeniser):
+class OnRegex(Pretokeniser):
     """
     Uses the given regular expression to identify a separator to split on.
     """
@@ -290,7 +300,7 @@ class RegexSeparator(Pretokeniser):
         return pretokens
 
 
-class RegexPretokens(Pretokeniser):
+class IntoRegexGroups(Pretokeniser):
     """
     Uses the given regular expression to identify pretokens. Everything that doesn't match is discarded.
     """
@@ -304,7 +314,7 @@ class RegexPretokens(Pretokeniser):
         return pretokens
 
 
-class WhitespacePretokeniser(RegexSeparator):
+class OnWhitespace(OnRegex):
     """
     Isolates whitespace and (optionally) destroys it.
 
@@ -325,19 +335,23 @@ class WhitespacePretokeniser(RegexSeparator):
         else:
             return list(intercalate(pretokens, " "))
 
+WhitespacePretokeniser = OnWhitespace
 
-class SplitNextToWhitespace(RegexPretokens):
+
+class IntoWhitespacePrefixed(IntoRegexGroups):
     """
-    Rather than isolating whitespace, this pretokeniser finds whitespace and splits right before or right after it,
+    Rather than isolating/deleting whitespace, this pretokeniser finds whitespace and splits right before or right after it,
     including the whitespace in the resulting tokens with non-whitespace characters.
+
+    The start/end of a string counts as whitespace.
     """
 
-    def __init__(self, before_not_after: bool=True):
-        if before_not_after:
+    def __init__(self, prefix_not_suffix: bool=True):
+        if prefix_not_suffix:
             pattern = re.compile(r"(?:^|\s|​)[^\s​]*")
         else:
             pattern = re.compile(r"[^\s​]+(?:$|\s|​)")  # The + is intentional, although I can't really explain why it works.
-        self._before_not_after = before_not_after
+        self._before_not_after = prefix_not_suffix
         super().__init__(pretoken_pattern=pattern)
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
@@ -363,7 +377,22 @@ class SplitNextToWhitespace(RegexPretokens):
         return new_pretokens
 
 
-class IsolateNumbers(RegexSeparator):
+class IntoSentences(Pretokeniser):
+
+    def __init__(self, cuda: bool=True):
+        from wtpsplit import SaT
+        self._backend = SaT("sat-3l-sm")
+        if cuda:
+            self._backend.half().to("cuda")
+
+    def split(self, text: str) -> List[str]:
+        return self._backend.split(text)
+
+    def invertTokens(self, pretokens: List[str]) -> List[str]:
+        return ["".join(pretokens)]  # We're assuming this is basically the first thing being run.
+
+
+class IsolateNumbers(OnRegex):
     r"""
     Explanation of the regex:
     (?:             The following group, without capturing it.
@@ -377,7 +406,7 @@ class IsolateNumbers(RegexSeparator):
         super().__init__(separator_pattern=regex.compile(r"(?:\p{N}|[.,](?=\p{N}))+"), destructive=False)
 
 
-class IsolateDigits(RegexSeparator):
+class IsolateDigits(OnRegex):
     """
     Isolate all digits into single-character tokens. If you don't know why we need this, read
     https://www.beren.io/2023-02-04-Integer-tokenization-is-insane/
@@ -423,7 +452,7 @@ class GroupDigits(Pretokeniser):
         return pretokens
 
 
-class IsolateConnectingHyphens(RegexSeparator):
+class IsolateConnectingHyphens(OnRegex):
     """
     Isolates hyphens that are surrounded by non-space on both sides.
     """
@@ -484,7 +513,7 @@ class PolariseApostrophes(Pretokeniser):
         return pretokens
 
 
-class EnglishContractions(RegexSeparator):
+class IsolateEnglishContractions(OnRegex):
     """
     Splits English contractions ('ve, 'll, 'd, 's, 're, ...) off the rest of the word.
     """
@@ -496,10 +525,10 @@ class EnglishContractions(RegexSeparator):
             pattern = regex.compile(r"""('s|'re|'ve|'m|'ll|'d|'t)(?=\s|$|\p{P})""", re.IGNORECASE)
         super().__init__(pattern, destructive=False)
 
-EnglishApostrophes = EnglishContractions
+EnglishApostrophes = IsolateEnglishContractions
 
 
-class JapaneseWords(Pretokeniser):
+class IntoJapaneseWords(Pretokeniser):
 
     def __init__(self):
         from fugashi import GenericTagger as MecabWrapper
@@ -514,7 +543,7 @@ class JapaneseWords(Pretokeniser):
         return pretokens
 
 
-class ThaiWords(Pretokeniser):
+class IntoThaiWords(Pretokeniser):
 
     def __init__(self):
         from pythainlp.tokenize import Tokenizer as ThaiWordTokenizer
@@ -644,7 +673,7 @@ class AddCapitalMarker(Pretokeniser):
 
 
 from ..models.predictive.viterbi import CharacterClassifier
-class SplitWithBoundaryClassifier(Pretokeniser):
+class OnBoundaryClassifier(Pretokeniser):
 
     def __init__(self, classifier: CharacterClassifier, threshold: float=0.5):
         """

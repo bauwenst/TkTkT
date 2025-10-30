@@ -54,7 +54,7 @@ class BoundaryMarker:
         else:
             return root
 
-    def intoCharacters(self, pretoken: str) -> Tuple[str,...]:
+    def atomise(self, pretoken: str) -> Tuple[str,...]:
         """
         Method for algorithms like BPE that require a word to start out as being split into characters.
 

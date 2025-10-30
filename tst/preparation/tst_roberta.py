@@ -25,14 +25,14 @@ def robbertsucks():
 
 
 def punctuation():
-    splitter = PunctuationPretokeniser(HyphenMode.ONLY)
+    splitter = IsolatePunctuation(HyphenMode.ONLY)
     example = "energie-efficiëntie, dat is cool!"
     print(splitter.split(example))
 
-    splitter = PunctuationPretokeniser(HyphenMode.EXCLUDED)
+    splitter = IsolatePunctuation(HyphenMode.EXCLUDED)
     print(splitter.split(example))
 
-    splitter = PunctuationPretokeniser(HyphenMode.INCLUDED)
+    splitter = IsolatePunctuation(HyphenMode.INCLUDED)
     print(splitter.split(example))
 
 

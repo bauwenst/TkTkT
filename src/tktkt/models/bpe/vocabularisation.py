@@ -437,7 +437,7 @@ class BPEVocabulariser(Vocabulariser):
         know more than the first i-1 merges to simulate a BPE tokeniser with >i merges in its first i-1 inference steps.
         """
         types = list(types)
-        current_type_state = [list(boundary_marker.intoCharacters(t)) for t in types]
+        current_type_state = [list(boundary_marker.atomise(t)) for t in types]
         states_with_type = defaultdict(set)
         for i in range(len(current_type_state)):
             for atom in current_type_state[i]:
@@ -503,7 +503,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
         self._marker = preprocessor.getBoundaryMarker()
 
     def _string_to_atoms(self, word: str) -> Iterable[str]:
-        return self._marker.intoCharacters(word)
+        return self._marker.atomise(word)
 
     def _dump(self, path: Path):
         from pickybpe.vocabularisation import logger

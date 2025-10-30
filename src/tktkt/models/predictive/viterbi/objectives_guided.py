@@ -661,7 +661,7 @@ class BoundaryPrefixAndSuffixLengthExtended(ScoreGeneratorUsingCharacterClassifi
 ########################################################################################################################
 
 from ....preparation.boundaries import BoundaryMarkerLocation
-from ....preparation.splitters import WhitespaceAndMarkerPretokeniser
+from ....preparation.splitters import OnWhitespaceAndAddMarker
 
 class GoldSplits(CharacterClassifier):
     """
@@ -672,7 +672,7 @@ class GoldSplits(CharacterClassifier):
            preprocessor.undo() probably works.
     """
 
-    def __init__(self, pretokeniser: WhitespaceAndMarkerPretokeniser):
+    def __init__(self, pretokeniser: OnWhitespaceAndAddMarker):
         self.pretokeniser = pretokeniser
         self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == BoundaryMarkerLocation.START)
 

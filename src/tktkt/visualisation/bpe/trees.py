@@ -200,7 +200,7 @@ class BpeVisualiser:
         return buffer, all_mergetree_sequences
 
     def tokenise_visualised(self, pretoken: str) -> Tuple[List[str], MergeTrace]:
-        tokens, traces = self._applyMerges_visualised(self.tokeniser._boundary_marker.intoCharacters(pretoken))
+        tokens, traces = self._applyMerges_visualised(self.tokeniser._boundary_marker.atomise(pretoken))
         return tokens, traces[-1]
 
     def prepareAndTokenise_visualised(self, s: str) -> Tuple[List[str], str]:
@@ -216,7 +216,7 @@ class BpeVisualiser:
         return tokens, r"\resizebox{\linewidth}{!}{" + "\n" + self._treesToLatex(trees) + "}"
 
     def tokenise_visualised_animated(self, pretoken: str) -> Tuple[List[str], List[MergeTrace]]:
-        return self._applyMerges_visualised(self.tokeniser._boundary_marker.intoCharacters(pretoken))
+        return self._applyMerges_visualised(self.tokeniser._boundary_marker.atomise(pretoken))
 
     def prepareAndTokenise_visualised_animated(self, s: str) -> Tuple[str, str]:
         """

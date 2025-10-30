@@ -11,7 +11,7 @@ from ..models.bpe.guided import GuidedBPEDropout
 from ..models.huggingface.wrapper import HuggingFaceTokeniser
 from ..models.huggingface.bpe import HuggingFaceBPETokeniser
 from ..models.kudopiece.segmentation import KudoPieceTokeniser
-from ..models.random.pathmarkov import GRaMPa, PowerNormalisation
+from ..models.random.grampa import GRaMPa, PowerNormalisation
 from ..models.ngram.alphabet import UnicodeTokeniser
 from ..wrappers.multiplexing import StochasticTokeniserSwitch, MultiplexedPreprocessor
 

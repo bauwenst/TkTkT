@@ -30,7 +30,7 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
         self._marker = preprocessor.getBoundaryMarker()
 
     def _string_to_atoms(self, word: str) -> Iterable[str]:
-        return self._marker.intoCharacters(word)
+        return self._marker.atomise(word)
 
     def _scrutinize_parent_after_merge(self, parent: Token, child: Token, pair_frequency: int, pairs: PairCounts):
         _, next_pair_frequency = pairs.get_argmax()

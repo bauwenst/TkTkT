@@ -255,6 +255,11 @@ class IdentityMapper(InvertibleTextMapper):  # Not equivalent to InvertibleMappe
         return text
 
 
+class RegisterASCII(FiniteCharacterSet, IdentityMapper):
+    def getCharacters(self) -> List[str]:  # TODO: This alphabet system should really allow adding to the alphabet incrementally, rather than one component determining the alphabet.
+        return [chr(i) for i in range(33,123)]
+
+
 class AppendSpace(InvertibleTextMapper):
 
     def __init__(self, front_not_back: bool):

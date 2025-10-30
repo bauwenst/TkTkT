@@ -7,8 +7,8 @@ from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import *
 
 phoneme_pretokeniser = PretokeniserSequence([
-    WhitespacePretokeniser(),
-    PunctuationPretokeniser(
+    OnWhitespace(),
+    IsolatePunctuation(
         hyphen_mode=HyphenMode.INCLUDED,
         protect_apostrophes_without_spaces=True
     )

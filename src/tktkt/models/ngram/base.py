@@ -18,7 +18,7 @@ from bpe_knockout.auxiliary.bytemapping import BYTE_ALPHABET
 
 from ...interfaces.tokeniser import Tokeniser
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
-from ...factories.preprocessing import Preprocessor, IdentityMapper, PseudoByteMapping, PunctuationPretokeniser, WhitespacePretokeniser, IsolatedSpaceMarker, PretokeniserSequence, AddWordBoundary, MapperAsPretokeniser, HyphenMode
+from ...factories.preprocessing import Preprocessor, IdentityMapper, PseudoByteMapping, IsolatePunctuation, OnWhitespace, IsolatedSpaceMarker, PretokeniserSequence, AddWordBoundary, MapperAsPretokeniser, HyphenMode
 
 
 LETTERS = {chr(i) for i in range(97,123)} | {chr(i) for i in range(65,91)} \
@@ -55,11 +55,11 @@ class NgramTokeniser(Tokeniser):
             IdentityMapper(),
             IdentityMapper(),
             PretokeniserSequence([
-                WhitespacePretokeniser(destructive=True),
-                PunctuationPretokeniser(HyphenMode.EXCLUDED),
+                OnWhitespace(destructive=True),
+                IsolatePunctuation(HyphenMode.EXCLUDED),
                 MapperAsPretokeniser((self.bytemap if NgramByteBasedMode.BYTE_NGRAMS else IdentityMapper())),
                 AddWordBoundary(self.marker),
-                PunctuationPretokeniser(HyphenMode.ONLY)
+                IsolatePunctuation(HyphenMode.ONLY)
             ])
         )
 

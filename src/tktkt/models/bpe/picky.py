@@ -35,7 +35,7 @@ class _ChizhovBackend_PickyBPE_SmallFormat(_PickyBPETrainerBase):
         self._marker = preprocessor.getBoundaryMarker()
 
     def _string_to_atoms(self, word: str) -> Iterable[str]:
-        return self._marker.intoCharacters(word)
+        return self._marker.atomise(word)
 
     def _dump(self, file: Union[Path, str]):
         folder = Path(file).resolve()

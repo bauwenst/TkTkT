@@ -2,7 +2,7 @@ from typing import List, Callable
 from dataclasses import dataclass
 
 from ....interfaces.tokeniser import TokeniserWithVocabDict, Vocab
-from ....preparation.splitters import WhitespaceAndMarkerPretokeniser, BoundaryMarker
+from ....preparation.splitters import OnWhitespaceAndAddMarker, BoundaryMarker
 
 
 class ViterbiNode:
@@ -43,7 +43,7 @@ class UnguidedViterbi(TokeniserWithVocabDict):
     """
 
     def __init__(self, pretrained_vocabulary: Vocab, space_marker: BoundaryMarker):
-        super().__init__(preprocessor=WhitespaceAndMarkerPretokeniser(space_marker))
+        super().__init__(preprocessor=OnWhitespaceAndAddMarker(space_marker))
         self.vocab = pretrained_vocabulary
 
         self.updater = ViterbiLossUpdater(

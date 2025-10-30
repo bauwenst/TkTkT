@@ -35,12 +35,12 @@ class BoundariesFromSpacesPretokeniser(PretokeniserSequence):
     """
     def __init__(self, marker: BoundaryMarker, byte_based: bool):
         super().__init__([
-            WhitespacePretokeniser(destructive=True),
+            OnWhitespace(destructive=True),
             AddWordBoundary(BoundaryMarker(" ", detached=True, location=marker.location)),
-            PunctuationPretokeniser(HyphenMode.INCLUDED, group_adjacent_spaces_with_punctuation=marker.location),
+            IsolatePunctuation(HyphenMode.INCLUDED, group_adjacent_spaces_with_punctuation=marker.location),
             (MapperAsPretokeniser(PseudoByteMapping()) if byte_based else MapperAsPretokeniser(Replace(" ", "Ġ"))),
             MapperAsPretokeniser(Replace("Ġ", " ")),
-            WhitespaceAndMarkerPretokeniser(marker)
+            OnWhitespaceAndAddMarker(marker)
         ])
 
 # There is only one difference between the original Roberta pretokeniser and this one, which is that multiple spaces are (surprisingly) conserved in the original.
@@ -64,8 +64,8 @@ class TruncateAndNormalise(MapperSequence):
 
 
 TraditionalPretokeniser = PretokeniserSequence([
-    WhitespacePretokeniser(destructive=True),
-    PunctuationPretokeniser(HyphenMode.EXCLUDED)
+    OnWhitespace(destructive=True),
+    IsolatePunctuation(HyphenMode.EXCLUDED)
 ])
 
 class TraditionalPreprocessor(Preprocessor):
@@ -87,8 +87,8 @@ class ModernEnglishPretokeniser(PretokeniserSequence):
     """
     def __init__(self, marker: BoundaryMarker, do_pseudobytes: bool=True, do_split_after_placing_boundaries: bool=True):
         whitespace_and_punctuation = [
-            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
-            WhitespacePretokeniser(destructive=True),
+            IsolatePunctuation(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+            OnWhitespace(destructive=True),
             EnglishApostrophes(do_nt=True)
         ]
         pseudos = [
@@ -99,7 +99,7 @@ class ModernEnglishPretokeniser(PretokeniserSequence):
         ]
         post_boundaries = [  # These split into pretokens that should NOT all have a word boundary. E.g.: for the string "2024 10 04", you do not want the pretokens ["2024", "10", "04"] to become ["_2", "_0", "_2", "_4", "_1", "_0", "_0", "_4"].
             IsolateDigits(),  # Also splits the word boundary off of the first digit.
-            PunctuationPretokeniser(HyphenMode.ONLY)
+            IsolatePunctuation(HyphenMode.ONLY)
         ]
         super().__init__(whitespace_and_punctuation + pseudos*do_pseudobytes + boundaries + post_boundaries*do_split_after_placing_boundaries)
 
@@ -113,7 +113,7 @@ class ModernEnglishPreprocessor(Preprocessor):
         )
 
 CommonsensePreprocessor = ModernEnglishPreprocessor  # Backwards-compatibility
-
+Prefab1 = ModernEnglishPreprocessor
 
 class ModernEnglishPretokeniser_ByteCompatible(ModernEnglishPretokeniser):
     """
@@ -282,15 +282,15 @@ class ModernEnglishPretokeniser_SentencePieceCompatible(PretokeniserSequence):
         kudo_marker  = BoundaryMarker(substitute=KudoSpaceMarker.substitute, detached=True, location=marker_location)
         super().__init__([
             # Generate pretokens that need a boundary
-            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
-            WhitespacePretokeniser(destructive=True),  # Remove all spaces
-            EnglishApostrophes(do_nt=True),
+            IsolatePunctuation(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+            OnWhitespace(destructive=True),  # Remove all spaces
+            IsolateEnglishContractions(do_nt=True),
 
             # Add a space boundary, because we know what it becomes under the byte mapping.
             AddWordBoundary(space_marker),
 
             # Generate sub-pretokens
-            PunctuationPretokeniser(HyphenMode.ONLY),
+            IsolatePunctuation(HyphenMode.ONLY),
             IsolateDigits(),
 
             # Mapping
@@ -323,3 +323,30 @@ class ModernEnglishPreprocessor_SentencePieceCompatible(Preprocessor):
 
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return self.splitter.getBoundaryMarker()
+
+
+class Prefab2(Preprocessor):
+    """
+    Improvement upon Prefab1 in several regards:
+        1. No more byte mapping, because it is quite useless in language modelling (who cares that you can represent
+           a script you've never seen if you don't know what the representation in UTF-8 actually means).
+        2. Capitals are no longer part of tokens, but handled by an extra [CAP] special.
+        3. Support for non-English contractions.
+        4. Limit on the amount of digits per token.
+    """
+    def __init__(self, marker: BoundaryMarker, truncate_text_after_chars: int=1_000_000):
+        super().__init__(
+            uninvertible_mapping=TruncateAndNormalise(truncate_text_after_chars),
+            invertible_mapping=RegisterASCII(),
+            splitter=PretokeniserSequence([
+                IsolatePunctuation(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+                WhitespacePretokeniser(destructive=True),
+                IsolateEnglishContractions(do_nt=True),
+                PolariseApostrophes(tiebreak_left=True),
+                # MapperAsPretokeniser(PseudoByteMapping())
+                AddWordBoundary(marker),
+                GroupDigits(n=3),
+                IsolateConnectingHyphens(),
+                AddCapitalMarker(ignore_marker=marker)
+            ])
+        )

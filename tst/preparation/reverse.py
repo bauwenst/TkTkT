@@ -10,8 +10,8 @@ class ModernEnglishPreprocessorWithReverse(PretokeniserSequence):
     def __init__(self, marker: BoundaryMarker, do_reverse: bool):
         super().__init__(
             [
-                PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
-                WhitespacePretokeniser(destructive=True)
+                IsolatePunctuation(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+                OnWhitespace(destructive=True)
             ] +\
             do_reverse * [
                 InsertReverse(),  # Insert the reverse BEFORE byte mapping and BEFORE the word boundary, because the reverse of byte mappings doesn't exist and there are no types in the vocab with the word boundary on the opposite end.
@@ -21,7 +21,7 @@ class ModernEnglishPreprocessorWithReverse(PretokeniserSequence):
                 EnglishApostrophes(do_nt=True),
                 AddWordBoundary(marker),
                 IsolateDigits(),
-                PunctuationPretokeniser(HyphenMode.ONLY),
+                IsolatePunctuation(HyphenMode.ONLY),
             ]
         )
 

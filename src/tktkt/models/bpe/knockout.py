@@ -1,6 +1,3 @@
-import langcodes
-from langcodes import Language
-from typing import Union
 import warnings
 
 from .base import *
@@ -49,7 +46,7 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
 class BPEKnockout(DeterministicBPETokeniserWithLanguage):
 
     def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList, language: Union[Language, str], unk_type: str=None):
+                 vocab: Vocab, merges: MergeList, language: Languish, unk_type: str=None):
         super().__init__(
             preprocessor=preprocessor,
 
@@ -65,7 +62,7 @@ class BPEKnockout(DeterministicBPETokeniserWithLanguage):
         )
 
     @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str]) -> Self:
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Languish) -> Self:
         """
         Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
         (rather than wrapping it), and *also* apply knockout using the given language.
@@ -86,7 +83,7 @@ class ReBPE(DeterministicBPETokeniserWithLanguage):
 
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
-                 language: Union[Language, str], iterations: int, backwards_compatible: bool=False, unk_type: str=None):
+                 language: Languish, iterations: int, backwards_compatible: bool=False, unk_type: str=None):
         super().__init__(
             preprocessor=preprocessor,
 
@@ -103,7 +100,7 @@ class ReBPE(DeterministicBPETokeniserWithLanguage):
         )
 
     @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Union[Language, str], iterations: int, backwards_compatible: bool) -> Self:
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Languish, iterations: int, backwards_compatible: bool) -> Self:
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),

@@ -68,23 +68,25 @@ TkTkT has a rich set of text mappings and pretokenisers that preprocess text bef
 support for stochastic perturbation. Unlike other libraries, preprocessors are objects, not regular expressions.
 This allows much more powerful processing than regex, whilst being more easy to read. See if you can understand 
 this arguably complicated transformation:
+
 ```python
 from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import PseudoByteMapping
 from tktkt.factories.preprocessing import RobertaSpaceMarker
 
+
 class ExamplePretokeniser(PretokeniserSequence):
     def __init__(self):
         super().__init__([
-            PunctuationPretokeniser(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
-            WhitespacePretokeniser(destructive=True),
-            EnglishApostrophes(do_nt=True),
-            
+            IsolatePunctuation(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+            OnWhitespace(destructive=True),
+            IsolateEnglishContractions(do_nt=True),
+
             MapperAsPretokeniser(PseudoByteMapping()),
             AddWordBoundary(RobertaSpaceMarker),
-            
+
             IsolateDigits(),
-            PunctuationPretokeniser(HyphenMode.ONLY)
+            IsolatePunctuation(HyphenMode.ONLY)
         ])
 ```
 
@@ -260,17 +262,16 @@ print(tokeniser.prepareAndTokenise("Hello there, my good friend!"))
 TkTkT preprocesses text into pretokens _not_ with a regular expression, but with a sequence of Python objects that can
 perform any operation they want on the current pretokens. It is hence strictly more expressive than regex-based pretokenisation.
 For example:
+
 ```python
-from tktkt.factories.preprocessing import Preprocessor, KudoSpaceMarker, \
-    Lowercaser, Replace, \
-    PretokeniserSequence, WhitespacePretokeniser, PunctuationPretokeniser, AddWordBoundary
+from tktkt.factories.preprocessing import *
 
 toy_preprocessor = Preprocessor(
     Lowercaser(),
     Replace("!", "."),
     PretokeniserSequence([
-        WhitespacePretokeniser(),
-        PunctuationPretokeniser(),
+        OnWhitespace(),
+        IsolatePunctuation(),
         AddWordBoundary(KudoSpaceMarker)
     ])
 )

@@ -27,14 +27,21 @@ dependencies = [
     "datasets",
     "evaluate",
 
-    "regex",
-    "bpeasy",
+    # Official tokenisers
+    "bpeasy",  # (discontinued; use PickyBPE)
     "sentencepiece",
-    "nlpaug",
+
+    # Preprocessing
+    "regex",
     "fugashi",
     "ipadic",
     "pythainlp",
+    "nlpaug",
+    "wtpsplit",
+
+    # Misc
     "dacite",
+    "langcodes",
     "clavier_lib"
 ]
 

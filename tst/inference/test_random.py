@@ -38,7 +38,7 @@ def test_markov_forwardbackward_equivalence():
     from transformers import AutoTokenizer
 
     from tktkt.factories.preprocessing import ModernEnglishPreprocessor, RobertaSpaceMarker
-    from tktkt.models.random.pathmarkov import RandomVocabSegmentation_GreedyMarkov, PowerNormalisation
+    from tktkt.models.random.grampa import RandomVocabSegmentation_GreedyMarkov, PowerNormalisation
 
     vocab = AutoTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base").get_vocab()
 
