@@ -1,4 +1,4 @@
-from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator, Tuple
+from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator, Tuple, Any
 from typing_extensions import Self
 from collections import OrderedDict, Counter
 from pathlib import Path
@@ -15,6 +15,14 @@ from .types import Number
 
 K = TypeVar("K")
 V = TypeVar("V")
+
+
+def subtract_dicts(d1: dict[K,V], d2: Union[dict[K,Any],set[K]]) -> dict[K,V]:
+    return {k: v for k,v in d1.items() if k not in d2}
+
+
+def intersect_dicts(d1: dict[K,V], d2: Union[dict[K,Any],set[K]]) -> dict[K,V]:
+    return {k: v for k,v in d1.items() if k in d2}
 
 
 def invertdict(d: Dict[K,V], noninjective_ok=True) -> Dict[V,K]:

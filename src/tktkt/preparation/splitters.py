@@ -378,6 +378,10 @@ class IntoWhitespacePrefixed(IntoRegexGroups):
 
 
 class IntoSentences(Pretokeniser):
+    """
+    Uses the 3-layer XLM-R model from "Segment any Text (SaT)" to find sentence boundaries.
+    https://arxiv.org/abs/2406.16678
+    """
 
     def __init__(self, cuda: bool=True):
         from wtpsplit import SaT
@@ -389,7 +393,7 @@ class IntoSentences(Pretokeniser):
         return self._backend.split(text)
 
     def invertTokens(self, pretokens: List[str]) -> List[str]:
-        return ["".join(pretokens)]  # We're assuming this is basically the first thing being run.
+        return ["".join(pretokens)]  # We're assuming this is basically the first thing being run. Note that spaces are included in SaT.
 
 
 class IsolateNumbers(OnRegex):

@@ -10,10 +10,11 @@ from math import inf
 
 from ...interfaces import Preprocessor
 from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
+from ...util.dicts import intersect_dicts
 from ...util.types import Tokens
 
 
-class RA_Greedy(TokeniserWithVocabDict):
+class LongestFirst(TokeniserWithVocabDict):
     """
     Find longest subword through the whole word.
     """
@@ -31,38 +32,48 @@ class RA_Greedy(TokeniserWithVocabDict):
 
         raise RuntimeError("Cannot tokenise string '", pretoken, "' because no substrings are in the vocab.")
 
+RA_Greedy = LongestFirst
+FLOTA     = LongestFirst
 
-FLOTA = RA_Greedy
 
-
-from bpe_knockout.knockout.core import MergeGraph
-from ..bpe.base import MergeList
-
-class LastBPETokenFirst(TokeniserWithVocabDict):
+class HighestScoreFirst(TokeniserWithVocabDict):
     """
-    Find youngest BPE subword through the whole word.
+    Generalisation of FLOTA that associates an arbitrary score with each type in the vocabulary,
+    rather than its length specifically.
 
-    TODO: You can speed this up a little bit using a data structure that stores, for each length in the vocabulary,
-          the highest merge priority for that length (max'ed with lower lengths). That is: when you have seen all
-          substrings of length L and your best match is currently of priority P, you know you don't have to go to L-1...1.
+    You can think of this as a greedy implementation of the ULM decoder, although calling it "greedy unigram" would be
+    confusing given the naming used in the following two papers:
+        https://users.ics.aalto.fi/svirpioj/online-papers/varjokallio2013asru.pdf
+        https://aclanthology.org/2020.lrec-1.486.pdf
     """
 
-    def __init__(self, preprocessor: Preprocessor, bpe_vocab: Vocab, bpe_merges: MergeList):
-        super().__init__(preprocessor=preprocessor, vocab=bpe_vocab)
-        self._scores: dict[str,int] = dict()
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, scores: dict[str, float], diminish_atoms: bool=False):
+        """
+        :param diminish_atoms: if True, the score for atoms (~characters) will be
+        """
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
+        self._scores = intersect_dicts(scores, vocab)
+        assert set(self._scores) == set(self.vocab), f"Missing scores for types: {list(set(self.vocab) - set(self._scores))}"
 
-        graph = MergeGraph(bpe_vocab, bpe_merges)
-        for m in sorted(graph.merges, reverse=True):
-            self._scores[m.childType()] = m.priority
+        # Set atoms to an arbitrarily low score
+        atoms = preprocessor.getAlphabet()
+        if atoms and diminish_atoms:
+            least_desirable_score = min(self._scores.values()) - 1
+            for atom in atoms.getCharacters():
+                self._scores[atom] = least_desirable_score
 
-        assert len(list(self._scores.values())) == len(set(self._scores.values()))
-
-        dummy_score = max(self._scores.values()) + 1
-        for t in graph.vocab:
-            if graph.inAlphabet(t):
-                self._scores[t] = dummy_score
-
-        assert len(self._scores) == len(self.vocab)
+        # Define an accelerator that gives, for each string length, the upper bound of what scores can be expected of
+        # that length or below. The idea is that you consider substrings from big to small and that you can look ahead
+        # at whether smaller lengths could ever give you a better result than you have found so far.
+        self._max_token_length = max(map(len, self.vocab))
+        self._accelerator = [-inf]
+        for length in range(1,self._max_token_length+1):
+            self._accelerator.append(
+                max(
+                    self._accelerator[-1],
+                    max((score for typ, score in self._scores.items() if len(typ) == length), default=-inf)
+                )
+            )
 
     def tokenise(self, pretoken: str) -> List[str]:
         if pretoken == "":
@@ -70,7 +81,7 @@ class LastBPETokenFirst(TokeniserWithVocabDict):
 
         best_match = None
         best_score = -inf
-        for size in range(len(pretoken), 0, -1):
+        for size in range(min(len(pretoken),self._max_token_length), 0, -1):
             for start in range(len(pretoken) - size + 1):
                 subword = pretoken[start:start+size]
                 if self.hasType(subword):
@@ -78,9 +89,36 @@ class LastBPETokenFirst(TokeniserWithVocabDict):
                     if score > best_score:
                         best_score = score
                         best_match = (start,size)
+            if self._accelerator[size-1] < best_score:  # Best you could find at smaller sizes is worse than what you have.
+                break
 
         if best_match is None:
             raise RuntimeError("Cannot tokenise string '", pretoken, "' because no substrings are in the vocab.")
 
         start, size = best_match
         return self.tokenise(pretoken[:start]) + [pretoken[start:start+size]] + self.tokenise(pretoken[start+size:])
+
+
+from bpe_knockout.knockout.core import MergeGraph
+from ..bpe.base import MergeList
+
+class LastBPETokenFirst(HighestScoreFirst):
+    """
+    Find youngest BPE subword through the whole word.
+    """
+
+    def __init__(self, preprocessor: Preprocessor, bpe_vocab: Vocab, bpe_merges: MergeList):
+        scores = dict()
+
+        graph = MergeGraph(bpe_vocab, bpe_merges)
+        for m in sorted(graph.merges, reverse=True):
+            scores[m.childType()] = m.priority
+
+        assert len(list(scores.values())) == len(set(scores.values()))
+
+        dummy_score = -1
+        for t in graph.vocab:
+            if graph.inAlphabet(t):
+                scores[t] = dummy_score
+
+        super().__init__(preprocessor=preprocessor, vocab=bpe_vocab, scores=scores, diminish_atoms=False)

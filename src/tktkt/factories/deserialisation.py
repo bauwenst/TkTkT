@@ -32,6 +32,8 @@ from ..util.trie import PrefixTrie, SuffixTrie
 from ..paths import relativeToCwd, TkTkTPaths
 from .preprocessing import *
 
+__all__ = ["BPE40k_Oscar30M_en", "BPE32ki_SlimPajama3M", "KudoPiece30k_BooksWiki_en", "KudoPiece32ki_SlimPajama3M"]
+
 
 def getEnglishBpeFiles() -> BpeTokeniserPath:
     """
@@ -184,7 +186,7 @@ class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser):
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.model"))
 
     def loadLikelihoods(self) -> Dict[str, float]:
-        return {t: l for t,l in iterateTsv(self.getVocabFile())}
+        return {t: float(l) for t,l in iterateTsv(self.getVocabFile())}
 
     def preprocessorNative(self) -> Preprocessor:
         return SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=True)  # E.g. say our preprocessor could produce a string "New York", will be sent to the tokeniser as "New York", which will turn it into " New York" and turn that into "_New_York".
