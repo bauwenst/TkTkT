@@ -297,14 +297,14 @@ class TokeniserSequence(Tokeniser):
     The preprocessors of the tokenisers in the tail are NOT used, nor are their _initialTokens() methods!
     """
 
-    def __init__(self, head: Tokeniser, tail: List[SuccessionalTokeniser]):
+    def __init__(self, global_preprocessor: Preprocessor, head: Tokeniser, tail: List[SuccessionalTokeniser]):
         assert tail
-        super().__init__(preprocessor=head.preprocessor)
+        super().__init__(preprocessor=global_preprocessor)
         self._head = head
         self._tail = tail
 
     def tokenise(self, pretoken: str) -> Tokens:
-        tokens = self._head.tokenise(pretoken)
+        tokens = self._head.prepareAndTokenise(pretoken)
         for t in self._tail:
             tokens = t._finalTokens(tokens)
         return tokens
