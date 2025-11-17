@@ -79,19 +79,46 @@ class Observer(ABC, Generic[Received]):
         pass
 
 
-class AppendToListObserver(Observer[Any]):
+class FutureObserver(Observer[Received]):
+    """
+    Gives access to the most recently received value.
+    """
+    def __init__(self):
+        self._value = None
 
+    def _initialise(self, global_run_identifier: str):
+        self._value = None
+
+    def _receive(self, sample: Received, _):
+        self._value = sample
+
+    def _finish(self):
+        pass
+
+    def resolve(self) -> Received:
+        if self._value is None:
+            raise RuntimeError("Attempted to resolve Future before the run that sets its value (or no such run exists).")
+        return self._value
+
+
+class AppendToListObserver(Observer[Received]):
+    """
+    Gives access to the entire history of received values as one flat chronological list.
+    """
     def __init__(self, list_to_append_to: list):
         self._list_reference = list_to_append_to
 
     def _initialise(self, global_run_identifier: str):
         pass
 
-    def _receive(self, sample: Any, _):
+    def _receive(self, sample: Received, _):
         self._list_reference.append(sample)
 
     def _finish(self):
         pass
+
+    def listcopy(self) -> list[Received]:
+        return list(self._list_reference)
 
 
 class DataclassObserver(Observer[Any]):
@@ -99,7 +126,7 @@ class DataclassObserver(Observer[Any]):
     Observer meant to be put at various points in the hierarchy, to collect dictionaries/dataclasses that are
     supposed to be saved together as one row in a CSV file.
 
-    The user decides when a new row is started.
+    The user decides when a new row is started by calling .fence() on the observer.
     """
 
     def __init__(self, fence_on_assemble: bool=True, field_suffix: str=""):

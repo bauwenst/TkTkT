@@ -214,6 +214,38 @@ class RenyiEntropy(ImmediatelyObservableObserver[Counter[str],ReturnRenyiEntropy
 
 
 @dataclass
+class ReturnRenyiEfficiencyWithBounds:
+    alpha: float
+    entropy: float
+    efficiency_lower: float
+    efficiency_middle: float
+    efficiency_upper: float
+
+
+class RenyiEfficiencyWithBounds(ImmediatelyObservableObserver[Counter[str],ReturnRenyiEfficiencyWithBounds]):
+
+    def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: List[Observer[ReturnRenyiEfficiencyWithBounds]]=None):
+        super().__init__(observers)
+        self.alpha = alpha
+        self.theoretical_vocab_size = vocab_size_in_denominator
+
+    def _transit(self, sample: Counter[str], weight: float) -> ReturnRenyiEfficiencyWithBounds:
+        n_nonzero_counts = sum(map(lambda x: x != 0, sample.values()))
+        low, mid, high = renyiEfficiency(
+            sample.values(), alpha=self.alpha,
+            domain_size=self.theoretical_vocab_size or n_nonzero_counts,
+            sample_size=sample.total()
+        )
+        return ReturnRenyiEfficiencyWithBounds(
+            alpha=self.alpha,
+            entropy=renyiEntropy(sample.values(), alpha=self.alpha),
+            efficiency_lower=low,
+            efficiency_middle=mid,
+            efficiency_upper=high,
+        )
+
+
+@dataclass
 class ReturnMATTR:
     mattr: float
     window_size: int
