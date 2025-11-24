@@ -4,7 +4,7 @@ Interface for tokenisers that want to be compatible with the HuggingFace suite.
 Indeed, this has nothing to do with having a tokeniser that runs on HuggingFace internally, because that would be just
 another member of tktkt.models. Rather, this is about needs to be implemented in order to become a HuggingFace tokeniser.
 """
-from typing import List, Optional, Tuple, Mapping, Iterable
+from typing import List, Optional, Tuple, Mapping, Iterable, Callable
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -13,6 +13,7 @@ import json
 from transformers import PreTrainedTokenizer, SpecialTokensMixin
 
 from .tokeniser import TokeniserWithFiniteTypeDomain
+from .identifiers import Specials
 
 
 class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
@@ -92,7 +93,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
         self.backend = backend
 
         if specials_from is None:
-            specials_from = detectSpecials(self.backend.types())
+            specials_from = AutoSpecials.fromStrings(self.backend.types())
 
         # TODO: Since this constructor is given the specials that we want, you can actually quite safely add them to
         #       the vocab if it's a dictionary. You don't let HF do it because HF can't be trusted with making new IDs, but we can.
@@ -158,61 +159,116 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
             return [self.bos_token_id] + token_ids_0 + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
 
 
-def detectSpecials(types: Iterable[str]) -> SpecialTokensMixin:
+class AutoSpecials:
     """
-    Attempt to find all the special types in the given domain (e.g. [CLS], [SEP], etc...).
-    Delimiters cannot be mixed (e.g. not both [CLS] and </s>, or [UNK] and <mask>, etc...).
+    Turns arguments into HuggingFace SpecialTokensMixin objects.
     """
-    DELIMITERS = {0: ("[", "]"), 1: ("<", ">")}
 
-    def warnIfAlreadyAssigned(should_be_none, value) -> bool:
-        if should_be_none is None:
-            return True
-        else:
-            warnings.warn(f"Value '{value}' was not assigned to a variable since it already contained the value '{should_be_none}'.")
-            return False
+    @staticmethod
+    def fromStrings(types: Iterable[str]) -> SpecialTokensMixin:
+        """
+        Attempt to find all the special types in the given domain (e.g. [CLS], [SEP], etc...).
+        Delimiters cannot be mixed (e.g. not both [CLS] and </s>, or [UNK] and <mask>, etc...).
+        """
+        DELIMITERS = {0: ("[", "]"), 1: ("<", ">")}
 
-    special_families = {i: [] for i in DELIMITERS}
-    for t in types:
-        for i, (left, right) in DELIMITERS.items():
-            if t[0] == left and t[-1] == right:
-                special_families[i].append(t)
+        def warnIfAlreadyAssigned(should_be_none, value) -> bool:
+            if should_be_none is None:
+                return True
+            else:
+                warnings.warn(f"Value '{value}' was not assigned to a variable since it already contained the value '{should_be_none}'.")
+                return False
 
-    i, found_types = sorted(special_families.items(), key=lambda t: len(t[1]), reverse=True)[0]
-    mixin = SpecialTokensMixin()
-    for t in found_types:
-        t_lower = t.lower()
-        if "bos" in t_lower:
-            if warnIfAlreadyAssigned(mixin.bos_token, t):
-                mixin.bos_token = t
-        elif "eos" in t_lower:
-            if warnIfAlreadyAssigned(mixin.eos_token, t):
-                mixin.eos_token = t
-        elif "cls" in t_lower:
-            if warnIfAlreadyAssigned(mixin.cls_token, t):
-                mixin.cls_token = t
-        elif "sep" in t_lower:
-            if warnIfAlreadyAssigned(mixin.sep_token, t):
-                mixin.sep_token = t
-        elif "pad" in t_lower:
-            if warnIfAlreadyAssigned(mixin.pad_token, t):
-                mixin.pad_token = t
-        elif "unk" in t_lower:
-            if warnIfAlreadyAssigned(mixin.unk_token, t):
-                mixin.unk_token = t
-        elif "msk" in t_lower or "mask" in t_lower:
-            if warnIfAlreadyAssigned(mixin.mask_token, t):
-                mixin.mask_token = t
-        elif "/s" in t_lower:
-            if warnIfAlreadyAssigned(mixin.eos_token, t):
-                mixin.eos_token = t
-        elif "s" in t_lower:
-            if warnIfAlreadyAssigned(mixin.bos_token, t):
-                mixin.bos_token = t
-        elif "<|endoftext|>" in t_lower:
-            if warnIfAlreadyAssigned(mixin.eos_token, t):
-                mixin.eos_token = t
-        else:
-            warnings.warn(f"Found special-seeming but unrecognisable type: {t}")
+        special_families = {i: [] for i in DELIMITERS}
+        for t in types:
+            for i, (left, right) in DELIMITERS.items():
+                if t[0] == left and t[-1] == right:
+                    special_families[i].append(t)
 
-    return mixin
+        i, found_types = sorted(special_families.items(), key=lambda t: len(t[1]), reverse=True)[0]
+        mixin = SpecialTokensMixin()
+        for t in found_types:
+            t_lower = t.lower()
+            if "bos" in t_lower:
+                if warnIfAlreadyAssigned(mixin.bos_token, t):
+                    mixin.bos_token = t
+            elif "eos" in t_lower:
+                if warnIfAlreadyAssigned(mixin.eos_token, t):
+                    mixin.eos_token = t
+            elif "cls" in t_lower:
+                if warnIfAlreadyAssigned(mixin.cls_token, t):
+                    mixin.cls_token = t
+            elif "sep" in t_lower:
+                if warnIfAlreadyAssigned(mixin.sep_token, t):
+                    mixin.sep_token = t
+            elif "pad" in t_lower:
+                if warnIfAlreadyAssigned(mixin.pad_token, t):
+                    mixin.pad_token = t
+            elif "unk" in t_lower:
+                if warnIfAlreadyAssigned(mixin.unk_token, t):
+                    mixin.unk_token = t
+            elif "msk" in t_lower or "mask" in t_lower:
+                if warnIfAlreadyAssigned(mixin.mask_token, t):
+                    mixin.mask_token = t
+            elif "/s" in t_lower:
+                if warnIfAlreadyAssigned(mixin.eos_token, t):
+                    mixin.eos_token = t
+            elif "s" in t_lower:
+                if warnIfAlreadyAssigned(mixin.bos_token, t):
+                    mixin.bos_token = t
+            elif "<|endoftext|>" in t_lower:
+                if warnIfAlreadyAssigned(mixin.eos_token, t):
+                    mixin.eos_token = t
+            else:
+                warnings.warn(f"Found special-seeming but unrecognisable type: {t}")
+
+        return mixin
+
+    @staticmethod
+    def fromTktkt(specials: Specials, specials_formatter: Callable[[str], str]=None) -> SpecialTokensMixin:
+        """
+        Tries to automatically map the given TkTkT specials to a HuggingFace mixin.
+
+        Of course, you could (and should) do this manually if you know the subclass the Specials object belongs to.
+        """
+        if specials_formatter is None:
+            specials_formatter = lambda s: "[" + s + "]"
+
+        def warnIfAlreadyAssigned(should_be_none, value) -> bool:
+            if should_be_none is None:
+                return True
+            else:
+                warnings.warn(f"Value '{value}' was not assigned to a variable since it already contained the value '{should_be_none}'.")
+                return False
+
+        mixin = SpecialTokensMixin()
+
+        for field_name in specials.__iter_keys__():
+            special = field_name[field_name.rfind(".") + 1:]
+            special_lower = special.lower()
+            special = specials_formatter(special)
+            # id = getattr_recursive(specials, special)  # As it turns out, HF's SpecialTokensMixin does NOT store identifiers. It stores strings that are passed to the token-to-id convertor method. Horrific.
+
+            if "bos" in special_lower:
+                if warnIfAlreadyAssigned(mixin.bos_token, special):
+                    mixin.bos_token = special
+            elif "eos" in special_lower or "endoftext" in special_lower:
+                if warnIfAlreadyAssigned(mixin.eos_token, special):
+                    mixin.eos_token = special
+            elif "cls" in special_lower:
+                if warnIfAlreadyAssigned(mixin.cls_token, special):
+                    mixin.cls_token = special
+            elif "sep" in special_lower:
+                if warnIfAlreadyAssigned(mixin.sep_token, special):
+                    mixin.sep_token = special
+            elif "pad" in special_lower:
+                if warnIfAlreadyAssigned(mixin.pad_token, special):
+                    mixin.pad_token = special
+            elif "unk" in special_lower:
+                if warnIfAlreadyAssigned(mixin.unk_token, special):
+                    mixin.unk_token = special
+            elif "msk" in special_lower or "mask" in special_lower:
+                if warnIfAlreadyAssigned(mixin.mask_token, special):
+                    mixin.mask_token = special
+
+        return mixin

@@ -7,10 +7,8 @@ from transformers import PreTrainedTokenizerBase
 class ProhibitDeclaringConstructor(type):
     def __init__(cls, name, bases, namespace):
         super().__init__(name, bases, namespace)
-        if namespace.get("__init__",
-                         None) is not None:  # namespace is basically what is written in code, but as a dictionary.
-            raise AssertionError(
-                "Specials should have no __init__ constructor. They should be constructed through the @dataclass decorator.")
+        if namespace.get("__init__", None) is not None:  # namespace is basically what is written in code, but as a dictionary.
+            raise AssertionError("Specials should have no __init__ constructor. They should be constructed through the @dataclass decorator.")
 
 
 class Specials(metaclass=ProhibitDeclaringConstructor):  # This metaclass prevents the user from writing 'def __init__(self)' which means they are more or less forced to use a dataclass.
@@ -22,9 +20,8 @@ class Specials(metaclass=ProhibitDeclaringConstructor):  # This metaclass preven
                 value = getattr(self, field.name)
                 if isinstance(value, bool) or not isinstance(value, int):  # You can't just ask "not isinstance(value, int)" because bools are ints lmao
                     raise TypeError(f"Special {field.name} was assigned a value of non-int type {type(value)}.")
-                if value not in {-1, +1}:
-                    raise ValueError(
-                        f"Special {field.name} should be initialised with a value of -1 or +1 (got {value}).")
+                # if value not in {-1, +1}:
+                #     raise ValueError(f"Special {field.name} should be initialised with a value of -1 or +1 (got {value}).")
             elif issubclass(field.type, Specials):
                 pass
             else:

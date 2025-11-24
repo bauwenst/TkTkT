@@ -1,15 +1,15 @@
-from tktkt.factories.deserialisation import getEnglishBpeFiles
 from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
-from tktkt.preparation.huggingface import HuggingFacePreprocessorForWords
 from tktkt.util.strings import indicesToTokens
+
+from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
 
 s = "accumulatively"
 
-english_bpe = getEnglishBpeFiles()
-preprocessor = HuggingFacePreprocessorForWords(english_bpe.toFastBPE())
+english_bpe = BPE32ki_SlimPajama3M()
+preprocessor = english_bpe.preprocessorEffective()
 
 s = preprocessor.do(s)[0]
-all_segmentations = generateSegmentationIndices_fixedSpace(s, english_bpe.loadVocabulary())
+all_segmentations = generateSegmentationIndices_fixedSpace(s, english_bpe.buildVocabulary())
 
 print("Enumerating...")
 print(

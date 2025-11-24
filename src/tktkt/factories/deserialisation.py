@@ -35,19 +35,6 @@ from .preprocessing import *
 __all__ = ["BPE40k_Oscar30M_en", "BPE32ki_SlimPajama3M", "KudoPiece30k_BooksWiki_en", "KudoPiece32ki_SlimPajama3M"]
 
 
-def getEnglishBpeFiles() -> BpeTokeniserPath:
-    """
-    Accessing BPE this way ensures that when you do knockout or you strip the HuggingFace tokeniser's pretokeniser,
-    other constructors are unaffected.
-    """
-    with KnockoutDataConfiguration(setupEnglish()):
-        return defaultTokeniserFiles()
-
-
-def getEnglishKudo() -> AlbertTokenizerFast:
-    return AutoTokenizer.from_pretrained("albert/albert-base-v2")
-
-
 def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
     # TODO: Eventually, this should become a HF checkpoint.
     PATH_CANINE_FOR_MBR_EN = relativeToCwd(TkTkTPaths.pathToCheckpoints() / "CANINE-C_MBR-en_2024-02-12_19-35-28")
@@ -67,7 +54,12 @@ class BPE_Deserialiser(Deserialiser):
 class BPE40k_Oscar30M_en(BPE_Deserialiser):
     """
     Trained with the HuggingFace BPE trainer.
+
+    FIXME: This was never uploaded!
     """
+    def getFolder(self) -> Path:
+        raise NotImplementedError()
+
     def _buildVocabulary(self) -> Vocab:
         files = getEnglishBpeFiles()
         assert isinstance(files, SennrichTokeniserPath)

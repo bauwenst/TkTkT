@@ -24,7 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.random as npr
 
-from ..interfaces.huggingface import detectSpecials
+from ..interfaces.huggingface import AutoSpecials
 from ..interfaces.tokeniser import Tokeniser, Preprocessor, TokeniserWithFiniteTypeDomain, Tokens
 
 
@@ -179,7 +179,7 @@ class TokeniserMultiplexer_DifferentDomains_Stateful(TokeniserMultiplexer):
         if assert_matching_specials:
             specials = None
             for subtokeniser in subtokenisers:
-                specials_dict = {t: subtokeniser.typeToId(t) for t in detectSpecials(subtokeniser.types()).all_special_tokens}
+                specials_dict = {t: subtokeniser.typeToId(t) for t in AutoSpecials.fromStrings(subtokeniser.types()).all_special_tokens}
                 if specials is None:
                     specials = specials_dict
                 else:

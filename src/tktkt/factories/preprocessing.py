@@ -339,13 +339,13 @@ class Prefab2(Preprocessor):
             uninvertible_mapping=TruncateAndNormalise(truncate_text_after_chars),
             invertible_mapping=RegisterASCII(),
             splitter=PretokeniserSequence([
-                IsolatePunctuation(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),
+                IsolatePunctuation(HyphenMode.EXCLUDED, protect_apostrophes_without_spaces=True),  # TODO: This cannot discern "the number 123.567 is big" from "the number 123. 567 is big." so you need a rule that doesn't isolate punctuation when it is surrounded by digits.
                 WhitespacePretokeniser(destructive=True),
                 IsolateEnglishContractions(do_nt=True),
                 PolariseApostrophes(tiebreak_left=True),
                 # MapperAsPretokeniser(PseudoByteMapping())
                 AddWordBoundary(marker),
-                GroupDigits(n=3),
+                GroupDigits(n=3),  # TODO: This cannot handle Arabizi. So, a run of digits is not a number if it has a letter to its left or right, and should not be split up.
                 IsolateConnectingHyphens(),
                 AddCapitalMarker(ignore_marker=marker)
             ])

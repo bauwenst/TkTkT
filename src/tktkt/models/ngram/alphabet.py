@@ -1,4 +1,4 @@
-from typing import List, Mapping
+from typing import List, Mapping, Iterable
 
 from ...interfaces.tokeniser import TokeniserWithFiniteIdRange
 
@@ -25,6 +25,12 @@ class OrdMapping(Mapping):
 
 class UnicodeTokeniser(TokeniserWithFiniteIdRange):
 
+    def ids(self) -> Iterable[int]:
+        return range(UNICODE_VALUES)
+
+    def hasId(self, i: int) -> bool:
+        return i in self.ids()
+
     def tokenise(self, word: str) -> List[str]:
         return list(word)
 
@@ -33,9 +39,6 @@ class UnicodeTokeniser(TokeniserWithFiniteIdRange):
 
     def idToType(self, i: int) -> str:
         return chr(i)
-
-    def getVocabMapping(self, ) -> Mapping[str,int]:
-        return OrdMapping()
 
     def getVocabSize(self) -> int:
         """

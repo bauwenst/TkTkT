@@ -1,11 +1,10 @@
-from tktkt.factories.deserialisation import getEnglishBpeFiles
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor, RobertaSpaceMarker
+from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
 from tktkt.models.bpe.base import ClassicBPE
 
 
 def test_preprocessAlreadySegmented():
-    files = getEnglishBpeFiles()
-    bpe = ClassicBPE(ModernEnglishPreprocessor(RobertaSpaceMarker), boundary_marker=RobertaSpaceMarker, vocab=files.loadVocabulary(), merges=files.loadMerges())
+    files = BPE32ki_SlimPajama3M()
+    bpe = ClassicBPE(files.preprocessorEffective(), vocab=files.buildVocabulary(), merges=files.buildMerges())
 
     input_string = "ab err ant"
     output_string = bpe._preprocessAlreadySegmentedString("ab err ant")

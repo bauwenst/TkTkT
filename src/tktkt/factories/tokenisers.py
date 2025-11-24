@@ -1,9 +1,7 @@
 """
 Evaluate any tokeniser on English morphology.
 """
-from ..interfaces.factories import TokeniserFactory
-from ..factories.deserialisation import *
-from ..factories.preprocessing import *
+from ..interfaces import TokeniserFactory, Deserialiser
 from ..models.predictive.viterbi.instances import *
 from ..models.bpe.base import ClassicBPE
 from ..models.bpe.knockout import BPEKnockout, ReBPE
@@ -14,13 +12,16 @@ from ..models.kudopiece.segmentation import KudoPieceTokeniser
 from ..models.random.grampa import GRaMPa, PowerNormalisation
 from ..models.ngram.alphabet import UnicodeTokeniser
 from ..wrappers.multiplexing import StochasticTokeniserSwitch, MultiplexedPreprocessor
+from .preprocessing import *
+from .deserialisation import *
+from .deserialisation import BPE_Deserialiser, KudoPiece_Deserialiser, detectBoundaryMarkerFromVocabulary, getEnglishCANINE
 
 
 ########################################################################################################################
 
 
 class Factory_BPE(TokeniserFactory[HuggingFaceTokeniser]):
-    def __init__(self, preprocessor: Preprocessor=None, dropout: float=0.0, files: BPE_Deserialiser=BPE40k_Oscar30M_en()):
+    def __init__(self, preprocessor: Preprocessor=None, dropout: float=0.0, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._dropout = dropout
         self._files = files
@@ -35,7 +36,7 @@ class Factory_BPE(TokeniserFactory[HuggingFaceTokeniser]):
 
 
 class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE40k_Oscar30M_en()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._files = files
 
@@ -46,13 +47,12 @@ class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE]):
         return ClassicBPE(
             preprocessor=self._prep,
             vocab=self._files.buildVocabulary(),
-            merges=self._files.buildMerges(),
-            boundary_marker=self._prep.getBoundaryMarker()
+            merges=self._files.buildMerges()
         )
 
 
 class Factory_BPEKnockout(TokeniserFactory[BPEKnockout]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE40k_Oscar30M_en()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._files = files
 
@@ -61,13 +61,12 @@ class Factory_BPEKnockout(TokeniserFactory[BPEKnockout]):
             preprocessor=self._prep,
             vocab=self._files.buildVocabulary(),
             merges=self._files.buildMerges(),
-            language="English",
-            boundary_marker=self._prep.getBoundaryMarker()
+            language="English"
         )
 
 
 class Factory_ReBPE(TokeniserFactory[ReBPE]):
-    def __init__(self, iterations: int, reduced: bool=False, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE40k_Oscar30M_en()):
+    def __init__(self, iterations: int, reduced: bool=False, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._files = files
         self.its = iterations
@@ -82,7 +81,6 @@ class Factory_ReBPE(TokeniserFactory[ReBPE]):
             vocab=self._files.buildVocabulary(),
             merges=self._files.buildMerges(),
             language="English",
-            boundary_marker=self._prep.getBoundaryMarker(),
 
             iterations=self.its,
             backwards_compatible=self.bc
@@ -114,28 +112,31 @@ class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser]):
         )
 
 
-class Factory_LeastToken_BPE(TokeniserFactory[LeastTokenViterbi]):
+class Factory_LeastToken(TokeniserFactory[LeastTokenViterbi]):
+    def __init__(self, preprocessor: Preprocessor=None, files: Deserialiser=BPE32ki_SlimPajama3M()):
+        self._files = files
+        self._prep = preprocessor or files.preprocessorEffective()
+
     def buildTokeniser(self):
-        english_bpe = getEnglishBpeFiles().toFastBPE()
         return LeastTokenViterbi(
-            preprocessor=HuggingFacePreprocessorForWords(english_bpe),
-            vocab=english_bpe.get_vocab(),
+            preprocessor=self._prep,
+            vocab=self._files.buildVocabulary(),
             max_step=20
         )
 
 
 class Factory_LeastToken_BPEKnockout(TokeniserFactory[LeastTokenViterbi]):
-    def buildTokeniser(self):
-        # Get starting BPE vocabulary
-        files = getEnglishBpeFiles()
+    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
+        self._files = files
+        self._prep = preprocessor or files.preprocessorEffective()
 
+    def buildTokeniser(self):
         # Prune the vocabulary with BPE-knockout
         only_for_vocabulary = BPEKnockout(
             preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),
-            vocab=files.loadVocabulary(),
-            merges=files.loadMerges(),
-            language="English",
-            boundary_marker=RobertaSpaceMarker
+            vocab=self._files.buildVocabulary(),
+            merges=self._files.buildMerges(),
+            language="English"
         )
 
         # Use this new vocabulary
@@ -146,32 +147,7 @@ class Factory_LeastToken_BPEKnockout(TokeniserFactory[LeastTokenViterbi]):
         )
 
 
-class Factory_LeastToken_ULM(TokeniserFactory[LeastTokenViterbi]):
-    def buildTokeniser(self):
-        hf_english_ulm = getEnglishKudo()
-        return LeastTokenViterbi(
-            HuggingFacePreprocessorForWords(hf_english_ulm),
-            vocab=hf_english_ulm.get_vocab(),
-            max_step=20
-        )
-
-
-class Factory_BoMMaSum_BPE(TokeniserFactory[BoMMa_Sum]):
-    def buildTokeniser(self):
-        english_bpe        = getEnglishBpeFiles().toFastBPE()
-        english_canine_mbr = getEnglishCANINE()
-        return BoMMa_Sum(
-            preprocessor=HuggingFacePreprocessorForWords(english_bpe),
-            max_step=20,
-
-            score_generator=BoundaryScoresChosen(LinearPT(-1, +1, negate_as_complement=True)),
-
-            vocab=english_bpe.get_vocab(),
-            vocabulary_constraint_class=VocabularyConstraintExact,
-        ).from_object(english_canine_mbr)
-
-
-class Factory_BoMMaSum_ULM(TokeniserFactory[BoMMa_Sum]):
+class Factory_BoMMaSum(TokeniserFactory[BoMMa_Sum]):
     """
     Build a Viterbi tokeniser with an underlying CANINE boundary probability model while choosing:
         - The grid generator that uses these probabilities;
@@ -179,34 +155,40 @@ class Factory_BoMMaSum_ULM(TokeniserFactory[BoMMa_Sum]):
         - The constraint put on steps afterwards, using the ULM vocabulary.
     """
 
-    def __init__(self, generator: ScoreGeneratorUsingCharacterClassifier, constraint: Type[VocabularyConstraint]):
+    def __init__(self,
+                 generator: ScoreGeneratorUsingCharacterClassifier=BoundaryScoresChosen(LinearPT(-1, +1, negate_as_complement=True)),
+                 constraint: Type[VocabularyConstraint]=VocabularyConstraintExact,
+                 preprocessor: Preprocessor=None, files: Deserialiser=KudoPiece32ki_SlimPajama3M()):
+        self._files = files
+        self._prep = preprocessor  # TODO: As we know, BoMMa has a two-preprocessor problem.
+
         self.generator = generator
         self.constraint = constraint
 
     def buildTokeniser(self):
-        english_ulm        = getEnglishKudo()
         english_canine_mbr = getEnglishCANINE()
         return BoMMa_Sum(
-            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            preprocessor=self._prep,
             max_step=20,
 
             score_generator=self.generator,
 
             vocabulary_constraint_class=self.constraint,
-            vocab=english_ulm.get_vocab()
+            vocab=self._files.buildVocabulary()
         ).from_object(english_canine_mbr)
 
 
-class Factory_BoMMaSum_FromTransform_ULM(Factory_BoMMaSum_ULM):
+class Factory_BoMMaSum_FromTransform(Factory_BoMMaSum):
     def __init__(self,
+        files: Deserialiser=KudoPiece32ki_SlimPajama3M(),
         generator: Type[ScoreGeneratorUsingCharacterClassifierForTransform]=BoundaryScoresChosen,
         score_transform: ProbabilityTransform=LinearPT(-1, +1, negate_as_complement=False),
         constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
     ):
-        super().__init__(generator(score_transform), constraint)
+        super().__init__(generator=generator(score_transform), constraint=constraint, files=files)
 
 
-class Factory_BoMMaProduct_ULM(TokeniserFactory[BoMMa_Product]):
+class Factory_BoMMaProduct(TokeniserFactory[BoMMa_Product]):
     """
     Instantiates a BoMMa_Product tokeniser specifically with a BoundaryScoresChosen generator and a multiplicatively
     balanced probability transform (a small subset of all BoMMa_Product tokenisers, technically).
@@ -222,63 +204,66 @@ class Factory_BoMMaProduct_ULM(TokeniserFactory[BoMMa_Product]):
     and so that two perfect splits are better than one perfect split.
     """
 
-    def __init__(self, score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
+    def __init__(self, files: Deserialiser=KudoPiece32ki_SlimPajama3M(), score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
+        self._files = files
         self.balanced_transform = score_transform
 
     def buildTokeniser(self):
-        english_ulm        = getEnglishKudo()
         english_canine_mbr = getEnglishCANINE()
         return BoMMa_Product(
-            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            preprocessor=self._files.preprocessorEffective(),
             max_step=20,
 
             score_generator=BoundaryScoresChosen(self.balanced_transform),
 
             vocabulary_constraint_class=VocabularyConstraintExact,
-            vocab=english_ulm.get_vocab()
+            vocab=self._files.buildVocabulary()
         ).from_object(english_canine_mbr)
 
 
-class Factory_LeastTokenThenProbability_ULM(TokeniserFactory[LeastTokenViterbiWithProbabilityTiebreaker]):
+class Factory_LeastTokenThenProbability(TokeniserFactory[LeastTokenViterbiWithProbabilityTiebreaker]):
+    def __init__(self, files: Deserialiser):
+        self._files = files
+
     def buildTokeniser(self):
-        english_ulm        = getEnglishKudo()
         english_canine_mbr = getEnglishCANINE()
         return LeastTokenViterbiWithProbabilityTiebreaker(
-            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            preprocessor=self._files.preprocessorEffective(),
             max_step=20,
 
-            vocab=english_ulm.get_vocab(),
+            vocab=self._files.buildVocabulary(),
             logprob_classifier=english_canine_mbr
         )
 
 
-class Factory_ProbabilityThenLeastToken_ULM(TokeniserFactory[ProbabilityViterbiWithLeastTokenTiebreaker]):
+class Factory_ProbabilityThenLeastToken(TokeniserFactory[ProbabilityViterbiWithLeastTokenTiebreaker]):
+    def __init__(self, files: Deserialiser):
+        self._files = files
+
     def buildTokeniser(self):
-        english_ulm        = getEnglishKudo()
         english_canine_mbr = getEnglishCANINE()
         return ProbabilityViterbiWithLeastTokenTiebreaker(
-            preprocessor=HuggingFacePreprocessorForWords(english_ulm),
+            preprocessor=self._files.preprocessorEffective(),
             max_step=20,
 
-            vocab=english_ulm.get_vocab(),
+            vocab=self._files.buildVocabulary(),
             logprob_classifier=english_canine_mbr
         )
 
 
 class Factory_CanineBPEdropout(TokeniserFactory[GuidedBPEDropout]):
 
-    def __init__(self, deterministic_threshold: float=None):
+    def __init__(self, files: BPE_Deserialiser=BPE32ki_SlimPajama3M(), deterministic_threshold: float=None):
+        self._files = files
         self.threshold = deterministic_threshold
 
     def buildTokeniser(self):
-        english_bpe_files  = getEnglishBpeFiles()
         english_canine_mbr = getEnglishCANINE()
         return GuidedBPEDropout(
-            preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),  # We know the BPE files uses this marker, so we can manually specify it.
+            preprocessor=self._files.preprocessorEffective(),
 
-            vocab=english_bpe_files.loadVocabulary(),
-            merges=english_bpe_files.loadMerges(),
-            boundary_marker=RobertaSpaceMarker,
+            vocab=self._files.buildVocabulary(),
+            merges=self._files.buildMerges(),
 
             dropout_probability=english_canine_mbr,
             always_dropout_above=self.threshold,
