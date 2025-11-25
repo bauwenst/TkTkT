@@ -309,6 +309,18 @@ def dunion(iterable: Iterable[Dict[T,T2]]) -> Dict[T,T2]:
     return reduce(dict.__or__, iterable, dict())
 
 
+def areUnique(iterable: Iterable[T]) -> bool:
+    iterable = list(iterable)
+    return len(iterable) == len(set(iterable))
+
+
+def arePositive(iterable: Iterable[Number], strict: bool=False) -> bool:
+    if strict:
+        return all(item > 0 for item in iterable)
+    else:
+        return all(item >= 0 for item in iterable)
+
+
 def areEquidistant(iterable: Iterable[Number], distance: Number) -> bool:
     return all(a+distance == b for a,b in zipSelf(iterable, offset=1))
 

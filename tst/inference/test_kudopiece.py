@@ -1,6 +1,7 @@
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
 from tktkt.factories.preprocessing import IdentityMapper, AppendSpace, IdentityPretokeniser, Preprocessor
 from tktkt.paths import TkTkTPaths
+from tktkt.util.iterables import fst
 
 prep = Preprocessor(IdentityMapper(), AppendSpace(front_not_back=True), IdentityPretokeniser())
 tk = KudoPieceTokeniser(prep, TkTkTPaths.pathToModels() / "kudopiece_en" / "kudopiece_en_2024-02-27_16-09-37.model")
@@ -10,10 +11,6 @@ s = " a to of in is I on it as be or at by an we my A To Of In Is On It As Be Or
 s = " ௲"
 print(tk.tokenise(s))
 print(list(tk.vocab.keys()))
-
-
-def fst(tuple):
-    return tuple[0]
 
 
 from transformers import AutoTokenizer

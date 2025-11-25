@@ -9,15 +9,13 @@ from collections import Counter
 from math import ceil
 import numpy as np
 from scipy.stats import entropy as _scipy_entropy
-from tktkt.interfaces.vocabulariser import UnidentifiedVocab
-from tktkt.util.printing import pluralise, percent
 
-from ..interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
+from ..interfaces.tokeniser import Tokeniser
 from ..paths import TkTkTPaths
-from ..util.iterables import streamProgress
+from ..util.iterables import streamProgress, arePositive
 from ..util.combinatorics import getBitKey
 from ..util.dicts import argmax, normaliseCounter, jsonToDict, dictToJson, jsonToDataclass, dataclassToJson
-from ..util.types import NamedIterable, Tokens
+from ..util.types import Tokens
 
 SHANNON_RENYI_ALPHA = 1.0
 DEFAULT_RENYI_ALPHA = 2.5
@@ -179,7 +177,7 @@ class ReturnTTR:
 
 class TTR(ImmediatelyObservableObserver[Counter[str],ReturnTTR]):
     def _transit(self, sample: Counter[str], weight: float) -> ReturnTTR:
-        assert all(map(lambda x: x >= 0, sample.values()))
+        assert arePositive(sample.values())
         return ReturnTTR(
             V=sum(map(lambda x: x != 0, sample.values())),
             CTC=sample.total()

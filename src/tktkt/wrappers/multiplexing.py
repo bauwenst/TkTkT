@@ -26,6 +26,7 @@ import numpy.random as npr
 
 from ..interfaces.huggingface import AutoSpecials
 from ..interfaces.tokeniser import Tokeniser, Preprocessor, TokeniserWithFiniteTypeDomain, Tokens
+from ..util.iterables import arePositive
 
 
 @dataclass
@@ -210,7 +211,7 @@ class StochasticTokeniserMultiplexer(TokeniserMultiplexer):
         if probabilities is None:
             probabilities = [1/len(subtokenisers) for _ in range(len(subtokenisers))]
         else:
-            assert all(p >= 0 for p in probabilities)
+            assert arePositive(probabilities)
 
             if len(probabilities) == len(subtokenisers) - 1:
                 probabilities.append(1 - sum(probabilities))
