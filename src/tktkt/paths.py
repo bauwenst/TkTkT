@@ -110,23 +110,23 @@ class PathManager:
 
     # Define typical paths in any ML context:
 
-    def pathToModels(self) -> Path:
+    def pathToModels(self, *subfolders: str) -> Path:
         """
         For final tokeniser (or other) models.
         """
-        return self._extendOutput(["models"])
+        return self._extendOutput(["models"] + list(subfolders))
 
-    def pathToCheckpoints(self) -> Path:
+    def pathToCheckpoints(self, *subfolders: str) -> Path:
         """
         For checkpoints of models trained with gradient descent.
         """
-        return self._extendOutput(["checkpoints"])
+        return self._extendOutput(["checkpoints"] + list(subfolders))
 
-    def pathToEvaluations(self) -> Path:
+    def pathToEvaluations(self, *subfolders: str) -> Path:
         """
         For numerical results.
         """
-        return self._extendOutput(["evaluations"])
+        return self._extendOutput(["evaluations"] + list(subfolders))
 
     # Methods for automatically providing arguments to append/extend:
 

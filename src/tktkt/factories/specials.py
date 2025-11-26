@@ -4,7 +4,7 @@ from ..interfaces.identifiers import Specials
 
 
 @dataclass
-class CoreBertSpecials(Specials):  # BERT has 994 [unusedXYZ] tokens, but I don't want to pollute this file with them.
+class BertSpecials(Specials):  # BERT actually has 994 [unusedXYZ] tokens, but I don't want to pollute this file with them. So if you really wanted to portray BERT accurately, you'd need an ExtendedBertSpecials or whatever.
     CLS: int
     SEP: int
     PAD: int
@@ -19,8 +19,29 @@ class RobertaSpecials(Specials):  # RoBERTa has "madeupword0000", "madeupword000
     MASK: int
 
 
+@dataclass
 class GptSpecials(Specials):  # GPT actually doesn't even have an UNK.
-    BOS: int
+    BOS: int  # <|endoftext|>
+
+
+@dataclass
+class PersonalIdentifiableInformationSpecials:  # PII anonymisation, which first appeared in the OLMo paper and was copied by ModernBERT.
+    EMAIL: int
+    PHONE: int
+    IP_ADDRESS: int
+
+
+@dataclass
+class OLMoSpecials(Specials):
+    EOS: int   # <|endoftext|>
+    PAD2: int  # <|padding|>
+    anonymisation: PersonalIdentifiableInformationSpecials
+
+
+@dataclass
+class ModernBertSpecials:  # Should be extended with [UNUSED0]...[UNUSED82]
+    bert: BertSpecials
+    olmo: OLMoSpecials
 
 
 @dataclass
