@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, Union, List
 
+from .identifiers import WithSpecials, NoSpecials
 from .preparation import Preprocessor
-from .vocabulariser import Vocab, DEFAULT_FIVE_SPECIALS
+from .vocabulariser import Vocab
 from .tokeniser import Tokeniser
 
 
@@ -18,7 +19,7 @@ class TokeniserFactory(Generic[T], ABC):
         pass
 
 
-class Deserialiser(ABC):
+class Deserialiser(ABC, Generic[WithSpecials]):  # TODO: In a future version, "Artifact" may become the name of this class.
     """
     Loads a specific instance of vocabularisation results stored on disk somewhere (usually remotely).
 
@@ -35,19 +36,29 @@ class Deserialiser(ABC):
         instance. Different results come from different subclasses, not different initialisation.
     """
 
-    def __init__(self, specials: Union[Vocab,List[str]]=DEFAULT_FIVE_SPECIALS.all_special_tokens):
-        self._specials = specials
-        self._vocab_cache: Vocab = None
+    def __init__(self, specials: WithSpecials=NoSpecials()):
+        self._specials: WithSpecials = specials
+        self._vocab_cache: Vocab[WithSpecials] = None
 
-    def buildVocabulary(self) -> Vocab:
+    def buildVocabulary(self) -> Vocab[WithSpecials]:
         if self._vocab_cache is None:
-            self._vocab_cache = self._buildVocabulary()
-            if set(self._specials) - set(self._vocab_cache):
-                raise RuntimeError(f"Error building vocabulary: some of the given specials ({set(self._specials) - set(self._vocab_cache)}) were not included.")
+            vocab = self._buildVocabulary()
+            for s in self._bakedSpecials():
+                if s in vocab:
+                    raise RuntimeError(f"At least one of the baked-in specials was not removed from the vocabulary: {s}")
+            self._vocab_cache = vocab
         return self._vocab_cache
 
     @abstractmethod
-    def _buildVocabulary(self) -> Vocab:
+    def _buildVocabulary(self) -> Vocab[WithSpecials]:
+        pass
+
+    @abstractmethod
+    def _bakedSpecials(self) -> set[str]:
+        """
+        Declares the specials that were baked into this vocabulary by accident.
+        Since specials should be given at construction, these types should be removed before assigning any IDs.
+        """
         pass
 
     @abstractmethod

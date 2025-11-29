@@ -1,10 +1,10 @@
 from typing import List, Any, Tuple, Iterable
 
-from ..interfaces.tokeniser import TokeniserWithVocabDict
+from ..interfaces.tokeniser import *
 from ..util.iterables import foldSpans
 
 
-class TokeniserWithByteFallback(TokeniserWithVocabDict):
+class TokeniserWithByteFallback(TokeniserWithVocabulary[WithSpecials]):
     """
     The idea is that instead of producing an UNK, you still encode the given string losslessly, e.g. by turning it into
     Unicode bytes which are then added to the existing vocabulary.
@@ -13,12 +13,13 @@ class TokeniserWithByteFallback(TokeniserWithVocabDict):
     tokenises and THEN applies a byte-based mapping.
     """
 
-    def __init__(self, tokeniser_with_unks: TokeniserWithVocabDict, crude_fallback: bool=False):
+    def __init__(self, tokeniser_with_unks: TokeniserWithVocabulary[WithSpecials], crude_fallback: bool=False):
         """
         :param crude_fallback: When a word contains an UNK, re-encode the entire thing with the fallback vocabulary,
                                rather than only re-encoding the part of the pretoken that actually produced the UNK.
                                Faster, but more fragile (one character can change the entire segmentation of the word).
         """
+        assert tokeniser_with_unks.vocab.UNK is not None
         self.core = tokeniser_with_unks
         self.crude = crude_fallback
 
@@ -27,14 +28,20 @@ class TokeniserWithByteFallback(TokeniserWithVocabDict):
             if typ in self.core.vocab:
                 raise ValueError(f"Surrogate type already exists in core vocabulary: {typ}")
 
+        self.unk = ""
+
         first_available_id = max(self.core.vocab.values()) + 1
         combined_vocabulary = self.core.vocab | {typ: first_available_id+i for i,typ in enumerate(self.byte_types.values())}
-        super().__init__(preprocessor=self.core.preprocessor, vocab=combined_vocabulary, unk_type=self.core.unk)
+        super().__init__(preprocessor=self.core.preprocessor, vocab=Vocab(
+            sorted(combined_vocabulary.keys(), key=combined_vocabulary.get),
+            specials=self.core.vocab.specials,
+            unk_id=self.core.vocab.UNK
+        ))
 
         # Cache UNK ID (also a sanity check that there is an UNK, otherwise we can't use it to detect when we need fallback and need to do vocab checks ourselves)
         self.unk_id = self.typeToId(self.unk)
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         tokens = self.core.tokenise(pretoken)
 
         # First detect if there are segments that are literally the UNK token, or segments that aren't recognised by the

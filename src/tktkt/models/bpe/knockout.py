@@ -19,7 +19,7 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
                  language: Languish,
-                 iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False, unk_type: str=None):
+                 iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False):
         language = L(language)
 
         # Get morphology config
@@ -31,7 +31,6 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
         with KnockoutDataConfiguration(config):
             super().__init__(
                 preprocessor=preprocessor,
-                unk_type=unk_type,
 
                 vocab=vocab,
                 merges=merges,
@@ -46,13 +45,12 @@ class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
 class BPEKnockout(DeterministicBPETokeniserWithLanguage):
 
     def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList, language: Languish, unk_type: str=None):
+                 vocab: Vocab, merges: MergeList, language: Languish):
         super().__init__(
             preprocessor=preprocessor,
 
             vocab=vocab,
             merges=merges,
-            unk_type=unk_type,
 
             language=language,
 
@@ -70,7 +68,6 @@ class BPEKnockout(DeterministicBPETokeniserWithLanguage):
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
-            unk_type=hf_bpe_tokenizer.unk_token,
 
             vocab=vocab_and_merges.loadVocabulary(),
             merges=vocab_and_merges.loadMerges(),
@@ -83,13 +80,12 @@ class ReBPE(DeterministicBPETokeniserWithLanguage):
 
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
-                 language: Languish, iterations: int, backwards_compatible: bool=False, unk_type: str=None):
+                 language: Languish, iterations: int, backwards_compatible: bool=False):
         super().__init__(
             preprocessor=preprocessor,
 
             vocab=vocab,
             merges=merges,
-            unk_type=unk_type,
 
             language=language,
 
@@ -104,7 +100,6 @@ class ReBPE(DeterministicBPETokeniserWithLanguage):
         vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
-            unk_type=hf_bpe_tokenizer.unk_token,
 
             vocab=vocab_and_merges.loadVocabulary(),
             merges=vocab_and_merges.loadMerges(),

@@ -3,15 +3,14 @@ Tokeniser which imagines BPE merges on the fly by checking if a pair can be merg
 """
 from math import inf, isinf
 
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
+from ...interfaces.tokeniser import *
 from ...wrappers.multiplexing import SuccessionalTokeniser
-from ...util.types import Tokens
 
 
-class MergelessBPE(TokeniserWithVocabDict, SuccessionalTokeniser):
+class MergelessBPE(TokeniserWithVocabulary[WithSpecials], SuccessionalTokeniser):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None):
-        super().__init__(preprocessor, vocab, unk_type)
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials]):
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
         self._boundary = preprocessor.getBoundaryMarker()
 
     def _initialTokens(self, pretoken: str) -> Tokens:

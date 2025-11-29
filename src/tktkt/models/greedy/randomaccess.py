@@ -5,21 +5,18 @@ starting at the first or last character.
 Implementation adapted from my master's thesis (Bauwens, 2023). https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf
 Apparently this was published as "FLOTA" a year prior by Hofmann (2022). https://aclanthology.org/2022.acl-short.43.pdf
 """
-from typing import List
 from math import inf
 
-from ...interfaces import Preprocessor
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
+from ...interfaces.tokeniser import *
 from ...util.dicts import intersect_dicts
-from ...util.types import Tokens
 
 
-class LongestFirst(TokeniserWithVocabDict):
+class LongestFirst(TokeniserWithVocabulary[WithSpecials]):
     """
     Find longest subword through the whole word.
     """
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         if pretoken == "":
             return []
 
@@ -36,7 +33,7 @@ RA_Greedy = LongestFirst
 FLOTA     = LongestFirst
 
 
-class HighestScoreFirst(TokeniserWithVocabDict):
+class HighestScoreFirst(TokeniserWithVocabulary[WithSpecials]):
     """
     Generalisation of FLOTA that associates an arbitrary score with each type in the vocabulary,
     rather than its length specifically.
@@ -49,17 +46,16 @@ class HighestScoreFirst(TokeniserWithVocabDict):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, scores: dict[str, float], diminish_atoms: bool=False):
         """
-        :param diminish_atoms: if True, the score for atoms (~characters) will be
+        :param diminish_atoms: if True, the score for atoms (~characters) will be the lowest possible.
         """
         super().__init__(preprocessor=preprocessor, vocab=vocab)
         self._scores = intersect_dicts(scores, vocab)
         assert set(self._scores) == set(self.vocab), f"Missing scores for types: {list(set(self.vocab) - set(self._scores))}"
 
         # Set atoms to an arbitrarily low score
-        atoms = preprocessor.getAlphabet()
-        if atoms and diminish_atoms:
+        if diminish_atoms:
             least_desirable_score = min(self._scores.values()) - 1
-            for atom in atoms.getCharacters():
+            for atom in preprocessor.getAlphabet():
                 self._scores[atom] = least_desirable_score
 
         # Define an accelerator that gives, for each string length, the upper bound of what scores can be expected of
@@ -75,7 +71,7 @@ class HighestScoreFirst(TokeniserWithVocabDict):
                 )
             )
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         if pretoken == "":
             return []
 

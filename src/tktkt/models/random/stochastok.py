@@ -1,11 +1,10 @@
 import numpy.random as npr
 
-from ...interfaces.tokeniser import TokeniserWithVocabDict
-from ...util.types import Tokens
+from ...interfaces.tokeniser import *
 from ...wrappers.multiplexing import SuccessionalTokeniser
 
 
-class StochastTok(TokeniserWithVocabDict, SuccessionalTokeniser):
+class StochastTok(TokeniserWithVocabulary[WithSpecials], SuccessionalTokeniser):
     """
     Uses a base tokeniser to segment the input, and then randomly breaks down the result further into tokens
     part of the vocabulary.
@@ -24,7 +23,7 @@ class StochastTok(TokeniserWithVocabDict, SuccessionalTokeniser):
     StochasTok by Sims et al. (2025) (https://arxiv.org/abs/2506.01687) uses deterministic stopping and token-by-token
     ordering, with the extra caveat that when a token is sampled and it cannot be split, it still counts.
     """
-    def __init__(self, base: TokeniserWithVocabDict, proportion: float, seed: int=0, accelerate: bool=True):
+    def __init__(self, base: TokeniserWithVocabulary[WithSpecials], proportion: float, seed: int=0, accelerate: bool=True):
         super().__init__(preprocessor=base.preprocessor, vocab=base.vocab)
         self._base = base
         self._rng  = npr.default_rng(seed=seed)

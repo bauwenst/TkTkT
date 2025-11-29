@@ -3,13 +3,19 @@
   - complete token match
   - complete affix token match
   - complete stem token match
-- We have the quite large technical debt of having `Vocab` be a simple dictionary. It should really be an object with:
-  - A name for the vocabulary, because many tokenisers have the vocabularisation algorithm as a hyperparameter. 
-  - Support for special tokens *even if* they alias the subword vocabulary (because special token strings are
-    purely for visualisation; they could all be empty strings... all that matters is that they have their own ID and hence embedding).
-     - One reason you should have separate sets for the subword vocab and the specials is that there are algorithms that
-       rely entirely on the vocabulary strings to create segmentations. BPE uses a merge file and ULM uses a likelihood file,
-       but MaxMatch, GRaMPa, ..., all use just a vocabulary of strings.
+- `Vocab`:
+  - Truncating and padding to a desired size.
+  - Add a name field to `Vocab`, since many tokenisers have the vocabularisation algorithm as a hyperparameter. 
+  - Right now, the knowledge of how to construct/load a `Vocab` lives in both `Vocabulariser._load` as well as `AutoVocab`.
+    In a sense, `AutoVocab` is a lot like `Vocabulariser.load` but for arbitrary HF tokenisers.
+  - The assumption right now is that specials are only added after converting to IDs, agnostic about the content of the strings
+    those IDs represent. But actually, this is not quite right. E.g.: if you use `[SPACE]` tokens to represent word boundaries,
+    or `⇧` to represent capitals, you do not want the user to be able to input those strings yet you need to work in string
+    space to know when to put them. This problem is avoided if you use a universal alphabet and your control/signal/special/... tokens 
+    are represented entirely by characters not in that alphabet, e.g. neither `"⇧"` nor `"▁"` are pseudo-bytes.
+- Nested tokeniser that protects some substrings from being segmented
+  knowing that they exist fully in the vocabulary. Kind of like a pretokeniser except it only passes certain pretokens through
+  (in fact, arguably, this is something that should be done before most pretokenisation) and aware of the tokeniser that follows it (I guess).
 - Acceleration: tokenisation of a dataset can be done in many threads. Would greatly help the slow tokenisers to be practical.
   - Refactor from one of Vilém Zouhar's scripts:
     ```python
@@ -19,6 +25,7 @@
             out = pool.map(self.prepareAndTokenise, streamProgress(corpus))
         return out
     ```
+  - The ReBPE project also had an interesting system, using futures.
 - BPE-breakdown:
   - Rather than randomly selecting the two-token decomposition out of all available ones, choose it
     deterministically like Koehn & Knight 2003 with a frequency product. :eyes:

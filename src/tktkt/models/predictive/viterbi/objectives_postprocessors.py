@@ -1,9 +1,8 @@
-from typing import List
 from abc import ABC, abstractmethod
 
 import numpy as np
 
-from ....interfaces.tokeniser import Vocab
+from ....interfaces.identifiers import SubwordCollection
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, ViterbiStepScoreGeneratorWithTokens, ViterbiStepScoresWithTokens, INFTY
 
 
@@ -90,7 +89,7 @@ class DiscretiseScores(NestedScoreGenerator):
 
 class VocabularyConstraint(NestedScoreGenerator):
 
-    def __init__(self, nested_generator: ViterbiStepScoreGenerator, subword_vocabulary: Vocab, reset_value: float=0.0):
+    def __init__(self, nested_generator: ViterbiStepScoreGenerator, subword_vocabulary: SubwordCollection, reset_value: float=0.0):
         super().__init__(nested_generator)
         self.vocab = subword_vocabulary
         self.default = reset_value
@@ -122,7 +121,7 @@ class VocabularyConstraintAtLeastAll(VocabularyConstraint, ViterbiStepScoreGener
     Gives slightly more freedom than an exact constraint.
     """
 
-    def __init__(self, nested_generator: ViterbiStepScoreGenerator, subword_vocabulary: Vocab, reset_value: float=0.0):
+    def __init__(self, nested_generator: ViterbiStepScoreGenerator, subword_vocabulary: SubwordCollection, reset_value: float=0.0):
         super().__init__(nested_generator, subword_vocabulary, reset_value)  # Will resolve to the first subclass's __init__.
 
         # Compile vocabulary

@@ -11,10 +11,9 @@ There are many ways to solve this, most obviously using pseudobytes (they won't 
 tokeniser doesn't crash), and otherwise by checking beforehand if at least all characters are in the vocab and if
 not you return the characters and let them be [UNK]'ed.
 """
-from typing import List
 import numpy.random as npr
 
-from ...interfaces.tokeniser import Tokeniser, Preprocessor
+from ...interfaces.tokeniser import *
 from ...util.strings import bitstringToTokens
 
 
@@ -31,7 +30,7 @@ class RandomSegmentation(Tokeniser):
         super().__init__(preprocessor)
         self.rng = npr.default_rng(0)
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         n_positions = len(pretoken) - 1
         n_segmentations = 2**n_positions
 

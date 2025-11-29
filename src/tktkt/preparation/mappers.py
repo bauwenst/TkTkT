@@ -1,6 +1,7 @@
 from __future__ import annotations  # To support TYPE_CHECKING
 from typing import List, Iterable, Dict, Union, Set, Optional, TYPE_CHECKING
 from collections import OrderedDict
+from abc import abstractmethod
 
 import re
 import regex
@@ -8,7 +9,7 @@ import requests
 import unicodedata
 
 from .boundaries import BoundaryMarker
-from ..interfaces.preparation import TextMapper, InvertibleTextMapper, Pretokeniser, FiniteCharacterSet, _PreprocessorComponentSequence
+from ..interfaces.preparation import TextMapper, InvertibleTextMapper, Pretokeniser, _PreprocessorComponentSequence
 from ..util.dicts import invertdict, insertKeyAlias
 
 
@@ -171,14 +172,27 @@ class DilatePretokens(TextMapper):
         return " ".join(self.p.split(text))
 
 
-class AsPhonemes(FiniteCharacterSet):
+class _UniversalAlphabet(TextMapper):
+    """
+    Defines a set of characters that is used to encode all Unicode strings.
+    The most popular such set is are the characters used by HuggingFace to represent UTF-8 bytes, which is also lossless.
+    """
+    @abstractmethod
+    def _universalAlphabet(self) -> list[str]:
+        pass
+
+    def _modifyAlphabet(self, known: list[str]) -> list[str]:  # ignore the input
+        return self._universalAlphabet()
+
+
+class AsPhonemes(_UniversalAlphabet):
 
     def __init__(self, dictionary_language: str="eng-us"):
         import text2phonemesequence as TeetwoPiece
         self.model = TeetwoPiece.Text2PhonemeSequence(language="", pretrained_g2p_model='charsiu/g2p_multilingual_byT5_small_100', is_cuda=True)
         self._initialiseLanguageDictionary(language=dictionary_language)
 
-    def getCharacters(self) -> Set[str]:  # FIXME: I actually have no clue where to even find the IPA. Best I can find is https://github.com/rhasspy/gruut-ipa which has _VOWELS and _CONSONANTS, but I don't know if that's enough.
+    def _universalAlphabet(self) -> Set[str]:  # FIXME: I actually have no clue where to even find the IPA. Best I can find is https://github.com/rhasspy/gruut-ipa which has _VOWELS and _CONSONANTS, but I don't know if that's enough.
         raise NotImplementedError
 
     def convert(self, text: str) -> str:
@@ -255,8 +269,17 @@ class IdentityMapper(InvertibleTextMapper):  # Not equivalent to InvertibleMappe
         return text
 
 
-class RegisterASCII(FiniteCharacterSet, IdentityMapper):
-    def getCharacters(self) -> List[str]:  # TODO: This alphabet system should really allow adding to the alphabet incrementally, rather than one component determining the alphabet.
+class _PartialAlphabet(IdentityMapper):
+    @abstractmethod
+    def _partialAlphabet(self) -> list[str]:
+        pass
+
+    def _modifyAlphabet(self, known: list[str]) -> list[str]:
+        return known + self._partialAlphabet()
+
+
+class RegisterASCII(_PartialAlphabet):
+    def _partialAlphabet(self) -> list[str]:
         return [chr(i) for i in range(33,123)]
 
 
@@ -335,7 +358,7 @@ class MorphoChallengeCapitals(InvertibleMapperSequence):
         ])
 
 
-class ByteMapping(InvertibleTextMapper, FiniteCharacterSet):
+class ByteMapping(InvertibleTextMapper, _UniversalAlphabet):
     """
     Converts each character to its UTF-8 encoding's "pseudo-bytes", which are themselves characters that each represent
     a unique byte, even though they in turn don't necessarily have any relationship to that byte.
@@ -418,7 +441,7 @@ class PseudoByteMapping(ByteMapping):
 
         return mappings
 
-    def getCharacters(self) -> List[str]:
+    def _universalAlphabet(self) -> List[str]:
         return list(PseudoByteMapping.bytes_to_unicode_softcoded().values())
 
     BYTE_TO_PSEUDO = bytes_to_unicode_softcoded()
@@ -469,7 +492,7 @@ class LatinPseudoByteMapping(ByteMapping):
 
         return mapping | remaps
 
-    def getCharacters(self) -> List[str]:
+    def _universalAlphabet(self) -> List[str]:
         return list(LatinPseudoByteMapping.bytes_to_unicode().values())
 
     BYTE_TO_PSEUDO = bytes_to_unicode()

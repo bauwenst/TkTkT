@@ -10,7 +10,7 @@ from pickybpe.segmentation import Token, MergeEventIds, SplitEventIds, SplitResu
 
 from ...interfaces import Deserialiser, Preprocessor
 from ...interfaces.vocabulariser import Vocab, UnidentifiedVocab
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Tokens
+from ...interfaces.tokeniser import *
 from .vocabularisation import _VocabulariserWithChizhovBackend
 
 
@@ -27,7 +27,7 @@ class _ChizhovBackend_PickyBPE_SmallFormat(_PickyBPETrainerBase):
         super().__init__(
             vocab_size=vocab_size,
             character_coverage=character_coverage,
-            ensured_vocabulary=preprocessor.getAlphabet().getCharacters() if preprocessor.getAlphabet() else [],
+            ensured_vocabulary=preprocessor.getAlphabet(),
             max_type_length=max_type_length,
             picky_threshold=picky_threshold,
             include_specials=False
@@ -99,7 +99,7 @@ class Event:
 class PickyBPEDeserialiser_SmallFormat(Deserialiser):
 
     @classmethod
-    def _simpleVocabularyFromFile(cls, path: Path) -> Vocab:
+    def _simpleVocabularyFromFile(cls, path: Path) -> dict[str, int]:
         path = Path(path).resolve()
         if path.is_dir():
             path = path / "vocab.json"
@@ -178,9 +178,9 @@ class PickyBPEDeserialiser_SmallFormat(Deserialiser):
         return merge_map, split_map, splits
 
 
-class PickyBPE(TokeniserWithVocabDict):
+class PickyBPE(TokeniserWithVocabulary[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, expanded_vocab: Vocab, events: list[Event]):
+    def __init__(self, preprocessor: Preprocessor, expanded_vocab: Vocab[WithSpecials], events: list[Event]):
         super().__init__(preprocessor=preprocessor, vocab=expanded_vocab)  # TODO: You obviously want to reduce the vocabulary to the .present tokens. Right now, this is wasteful.
 
         # Convert to more complex internal data structures

@@ -1,15 +1,16 @@
-from typing import List, Iterable
+from typing import Iterable
 from copy import deepcopy
 
 from transformers import PreTrainedTokenizerFast
 import tokenizers.pre_tokenizers as tp
 import tokenizers.normalizers as tn
 
-from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain
+from ...interfaces.tokeniser import *
+from ...interfaces.identifiers import AutoVocab, AutoVocabSpecs
 from ...factories.preprocessing import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
 
 
-class HuggingFaceTokeniser(TokeniserWithFiniteTypeDomain):
+class HuggingFaceTokeniser(TokeniserWithVocabulary[WithSpecials]):
     """
     Takes a HuggingFace tokeniser and splits it into its pretokeniser and core tokeniser.
     This way, the user can choose whether to apply the pretokeniser or not.
@@ -20,12 +21,12 @@ class HuggingFaceTokeniser(TokeniserWithFiniteTypeDomain):
     small embeddings based on different hash functions and then those are concatenated together as if it was looked up).
     """
 
-    def __init__(self, wrapped_tokeniser: PreTrainedTokenizerFast, for_single_words: bool=False):
+    def __init__(self, wrapped_tokeniser: PreTrainedTokenizerFast, specials_specification: AutoVocabSpecs[WithSpecials], for_single_words: bool=False):
         if not for_single_words:  # Copy whatever pretokeniser hangs onto the wrapped model.
             preprocessor = HuggingFacePreprocessor(wrapped_tokeniser)
         else:  # Do that, but add additional components that ensure that all input is interpreted as a word, regardless of spacing.
             preprocessor = HuggingFacePreprocessorForWords(wrapped_tokeniser)
-        super().__init__(preprocessor)
+        super().__init__(preprocessor=preprocessor, vocab=AutoVocab.fromTokenizer(wrapped_tokeniser, specials_specification))
 
         # Disable the wrapped tokeniser's preprocessing steps. This means that calling .tokenize() now ignores the pretokeniser.
         wrapped_tokeniser = deepcopy(wrapped_tokeniser)
@@ -33,7 +34,7 @@ class HuggingFaceTokeniser(TokeniserWithFiniteTypeDomain):
         wrapped_tokeniser.backend_tokenizer.pre_tokenizer = tp.Sequence([])
         self.backend = wrapped_tokeniser
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         """
         Tokenises without pretokenisation.
 
@@ -43,8 +44,9 @@ class HuggingFaceTokeniser(TokeniserWithFiniteTypeDomain):
         """
         return self.backend.tokenize(pretoken)
 
-    def getVocabSize(self) -> int:
-        return self.backend.vocab_size
+    # TODO: All the below are probably bad approximations of the methods they override,
+    #       which use Vocab's separation of types and specials, and we get that Vocab
+    #       from AutoVocab which knows how to deal with HF's unk_token.
 
     def typeToId(self, t: str) -> int:
         return self.backend._convert_token_to_id_with_added_voc(t)
@@ -53,7 +55,7 @@ class HuggingFaceTokeniser(TokeniserWithFiniteTypeDomain):
         return self.backend.get_vocab().keys()
 
     def hasType(self, t: str) -> bool:
-        return self.backend.unk_token_id != self.typeToId(t) or t == self.backend.unk_token
+        return t in self.vocab
 
     def idToType(self, i: int) -> str:
         return self.backend._convert_id_to_token(i)

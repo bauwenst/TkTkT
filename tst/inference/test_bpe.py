@@ -15,7 +15,6 @@ def test_classicbpe():
     roberta_hf = AutoTokenizer.from_pretrained("roberta-base")
     roberta_tktkt = ClassicBPE.fromHuggingFace(roberta_hf)  # Note: this is NOT a wrapper. It extracts vocab/merges and uses a custom BPE algorithm.
 
-    from tktkt.evaluation.morphological import morphologyGenerator
     for obj in morphologyGenerator():
         word = obj.word
         tokens1 = roberta_hf.tokenize(word)
@@ -31,7 +30,7 @@ def test_guidedbpe():
     base = ClassicBPE.fromHuggingFace(AutoTokenizer.from_pretrained("roberta-base"))
     guided_bpe = GuidedBPEDropout(
         base.preprocessor, base.merge_graph.vocab, [" ".join(m.parts) for m in base.merge_graph.merges], base.boundary_marker,
-        dropout_probability=ConstantCharacterClassifier(p=0.0), always_dropout_above=None, unk_type=base.unk
+        dropout_probability=ConstantCharacterClassifier(p=0.0), always_dropout_above=None
     )
 
     for obj in morphologyGenerator():
@@ -81,7 +80,6 @@ def test_shuffledbpe():
     shuffled = ShuffledBPE(
         preprocessor=classic.preprocessor,
         boundary_marker=classic.boundary_marker,
-        unk_type=classic.unk,
 
         vocab=classic.vocab,
         merges=classic.merge_graph.getRawMerges(),

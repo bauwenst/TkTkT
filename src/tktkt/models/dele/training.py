@@ -6,7 +6,7 @@ from typing import Iterable, Type
 from pathlib import Path
 
 from .segmentation import Derivator
-from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain
+from ...interfaces.tokeniser import TokeniserWithVocabulary
 from ...util.timing import datetimeDashed
 from ...paths import TkTkTPaths
 
@@ -26,7 +26,7 @@ class DelTrainer:
                         to any of the words in a given corpus are valid stems.
     """
 
-    def __init__(self, derivator_class: Type[Derivator], base_tokeniser: TokeniserWithFiniteTypeDomain):
+    def __init__(self, derivator_class: Type[Derivator], base_tokeniser: TokeniserWithVocabulary):
         self.model_class = derivator_class
         self.tokeniser = base_tokeniser
 

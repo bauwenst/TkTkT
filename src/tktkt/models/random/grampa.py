@@ -2,20 +2,20 @@ from typing import List, Tuple
 import numpy as np
 import numpy.random as npr
 
-from .generationbased import TokeniserWithVocabDict, Preprocessor, Vocab
+from ...interfaces.tokeniser import *
 from ...util.arrays import *
 from ...util.strings import indicesToTokens
 from ...util.printing import sgnprint
 
 
-class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
+class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabulary[WithSpecials]):
     """
     First computes the graph of possible token paths through the given string, then samples a random path
     by starting at the end of the string, choosing one random incoming token with probability proportional to how
     many paths it causes to arrive at the current node, following that token back and repeating this process.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials],
                  probabilities_to_probabilities: BatchNormalisation=IdentityBatchNormalisation(), minimal_token_length: int=1, decode_backwards: bool=False):
         """
         :param probabilities_to_probabilities: Transformation to apply to the Markov graph's probabilities, which by default
@@ -29,13 +29,13 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabDict):
                                  that for any probability transformation that isn't an identity, this encourages longer
                                  tokens at the end vs. at the start.
         """
-        super().__init__(preprocessor, vocab, unk_type)
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
         self.rng = npr.default_rng(0)
         self.renormalisation = probabilities_to_probabilities
         self.min_len = minimal_token_length
         self.decode_backwards = decode_backwards
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         if self.decode_backwards:
             edges, weights = self.constructMarkovGraphForwards(pretoken)
 

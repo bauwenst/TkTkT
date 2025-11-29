@@ -2,6 +2,7 @@ from typing import List, Optional, Iterator, Set
 from abc import abstractmethod, ABC
 
 from ..preparation.boundaries import BoundaryMarker
+from ..util.iterables import deduplicate
 
 
 class _PreprocessorComponent(ABC):
@@ -11,8 +12,15 @@ class _PreprocessorComponent(ABC):
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return None
 
-    def getAlphabet(self) -> Optional["FiniteCharacterSet"]:
-        return None
+    def getAlphabet(self) -> list[str]:
+        """
+        Returns the characters which this component knows should be mandatory in the vocabulary.
+        (Not quite the same as the alphabet formally, but what matters is that these types land in the vocabulary.)
+        """
+        return list(deduplicate(self._modifyAlphabet(known=[])))
+
+    def _modifyAlphabet(self, known: list[str]) -> list[str]:
+        return known
 
     @abstractmethod
     def __iter__(self) -> Iterator["_PreprocessorComponent"]:
@@ -25,11 +33,10 @@ class _PreprocessorComponentSequence(_PreprocessorComponent):
     which is the case for sequence classes.
     """
 
-    def getAlphabet(self) -> Optional["FiniteCharacterSet"]:  # FIXME: Known issue: the marker may not be in this alphabet.
-        alphabet = None
-        for component in self:  # TODO: Interestingly, because PretokeniserSequence and TextMapperSequence don't yield themselves, the recursive call to getAlphabet happens only in leaves, and the traversing is done by this for statement. But is this good design?
-            alphabet = component.getAlphabet() or alphabet
-        return alphabet
+    def _modifyAlphabet(self, known: list[str]) -> list[str]:
+        for component in self:  # Note: Recursion can be implemented in two ways: either you iterate `for node in self.childNodes(): node.recurse()` or, what we do here, you iterate `for leaf in self.leafNodes(): leaf.method()`. What's good about the latter is that a nested sequence is iterated as if it is flat. The only downside is that you only run the composite method once, which means that nested composite nodes cannot contribute anything to the result.
+            known = component._modifyAlphabet(known)
+        return known
 
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         marker = None
@@ -57,19 +64,6 @@ class InvertibleTextMapper(TextMapper):
     @abstractmethod
     def invert(self, text: str) -> str:
         pass
-
-
-class FiniteCharacterSet(TextMapper):
-    """
-    Defines a set of characters that is used to encode any Unicode string.
-    The most popular such set is are the characters used by HuggingFace to represent UTF-8 bytes, which is also lossless.
-    """
-    @abstractmethod
-    def getCharacters(self) -> List[str]:
-        pass
-
-    def getAlphabet(self) -> Optional["FiniteCharacterSet"]:
-        return self
 
 
 class Pretokeniser(_PreprocessorComponent):

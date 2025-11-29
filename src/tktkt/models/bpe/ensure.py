@@ -10,14 +10,14 @@ import warnings
 from typing import Iterable
 
 from .base import *
-from ...util.iterables import keepFirst, mapExtend
+from ...util.iterables import deduplicate, mapExtend
 from ...util.functions import relu
 
 
 class EnsuredBPE(DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList, ensure_strings: Iterable[str], forbid_strings: Iterable[str], forbid_forming: Iterable[str], unk_type: str=None,
+                 vocab: Vocab, merges: MergeList, ensure_strings: Iterable[str], forbid_strings: Iterable[str], forbid_forming: Iterable[str],
                  do_preprocess_these: bool=False, do_expand_vocabulary: bool=False, do_binary_merges: bool=True):
         """
         :param ensure_strings: The (sub)words for which there must be a single token in the BPE vocabulary (that can be
@@ -36,13 +36,12 @@ class EnsuredBPE(DeterministicBPETokeniser):
             preprocessor=preprocessor,
 
             vocab=vocab,
-            merges=merges,
-            unk_type=unk_type
+            merges=merges
         )
 
-        self.ensured   = list(keepFirst(mapExtend(self.preprocessor.do, ensure_strings) if do_preprocess_these else ensure_strings))
-        self.forbidden = list(keepFirst(mapExtend(self.preprocessor.do, forbid_strings) if do_preprocess_these else forbid_strings))
-        self.special   = list(keepFirst(mapExtend(self.preprocessor.do, forbid_forming) if do_preprocess_these else forbid_forming))
+        self.ensured   = list(deduplicate(mapExtend(self.preprocessor.do, ensure_strings) if do_preprocess_these else ensure_strings))
+        self.forbidden = list(deduplicate(mapExtend(self.preprocessor.do, forbid_strings) if do_preprocess_these else forbid_strings))
+        self.special   = list(deduplicate(mapExtend(self.preprocessor.do, forbid_forming) if do_preprocess_these else forbid_forming))
 
         self._binary     = do_binary_merges
         self._fixed_size = not do_expand_vocabulary

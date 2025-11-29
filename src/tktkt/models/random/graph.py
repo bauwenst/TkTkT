@@ -9,8 +9,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import numpy.random as npr
 
-from ...interfaces import Preprocessor, Vocab
-from ...interfaces.tokeniser import TokeniserWithVocabDict
+from ...interfaces.tokeniser import *
 from ...util.strings import indicesToTokens
 from ...util.arrays import *
 
@@ -153,9 +152,9 @@ class BackwardGraphSampler(SegmentationGraphSampler):
         return totals[0]
 
 
-class GraphTokeniser(TokeniserWithVocabDict):
+class GraphTokeniser(TokeniserWithVocabulary[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, sampler: SegmentationGraphSampler):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], sampler: SegmentationGraphSampler):
         super().__init__(preprocessor=preprocessor, vocab=vocab)
         self.sampler = sampler
 
@@ -163,7 +162,7 @@ class GraphTokeniser(TokeniserWithVocabDict):
     def generateGraph(self, pretoken: str) -> SegmentationGraph:  # You could cache this.
         pass
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         graph = self.generateGraph(pretoken)
         indices = self.sampler.samplePath(graph)
         return indicesToTokens(pretoken, starts_of_tokens=indices)

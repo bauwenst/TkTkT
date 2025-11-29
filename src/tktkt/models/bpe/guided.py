@@ -30,7 +30,7 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
     """
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
-                 dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None, unk_type: str=None):
+                 dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None):
         """
         TODO: To improve non-deterministic performance, you might want to apply companding
               (e.g. p^{1/a} or (1-e^{-bx})/(1-e^{-b}) or log(1+cx)/log(1+c) or a sigmoid, see https://www.desmos.com/calculator/drttocdsqx)
@@ -48,7 +48,6 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
         super().__init__(
             # Init
             vocab=vocab, merges=merges,
-            unk_type=unk_type,
 
             # Prep
             preprocessor=preprocessor
@@ -67,7 +66,6 @@ class GuidedBPEDropout(NonDeterministicBPETokeniser):
             preprocessor=classic_implementation.preprocessor,
             vocab=classic_implementation.vocab,
             merges=classic_implementation.merge_graph.getRawMerges(),
-            unk_type=classic_implementation.unk,
 
             dropout_probability=dropout_probability,
             always_dropout_above=always_dropout_above

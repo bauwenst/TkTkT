@@ -135,8 +135,22 @@ def optionalDataclassToDict(dataclass_or_dict) -> dict:
     else:
         raise TypeError(f"Unsupported type: {type(dataclass_or_dict)}")
 
-K = TypeVar("K")
-V = TypeVar("V")
+
+def getattr_recursive(obj, field_name: str):
+    if "." in field_name:
+        part, field_name = field_name[:field_name.find(".")], field_name[field_name.find(".")+1:]
+        return getattr_recursive(getattr(obj, part), field_name)
+    else:
+        return getattr(obj, field_name)
+
+
+def setattr_recursive(obj, field_name: str, value):
+    if "." in field_name:
+        part, field_name = field_name[:field_name.find(".")], field_name[field_name.find(".")+1:]
+        return setattr_recursive(getattr(obj, part), field_name, value)
+    else:
+        return setattr(obj, field_name, value)
+
 
 class ChainedCounter(Counter[K], Generic[K]):
     """

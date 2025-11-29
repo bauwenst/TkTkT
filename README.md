@@ -101,7 +101,7 @@ The following tokenisation procedures can be visualised:
 The goal of TkTkT is to provide a straightforward Pythonic interface for everything-tokenisation, and to be as 
 object-oriented as possible. The main interfaces are found under `tktkt.interfaces`. 
 
-#### Segmentation
+#### Inference
 Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
 
 - The `Tokeniser` class has two important methods: 
@@ -113,23 +113,22 @@ Fundamentally, all tokenisers are a `Tokeniser` that have a `Preprocessor`.
   2. an invertible text mapping
   3. a pretokeniser that splits strings into smaller strings.
 
-To map tokens (string segments) to identifiers (integers) for indexing into an embedding matrix, three interfaces are
-supported:
-- `TokeniserWithFiniteIdRange`: tokenisers with a finite range of IDs, but an infinite domain of tokens that map into that range.
-  An example is a hashing vocabulary.
-- `TokeniserWithFiniteTypeDomain`: same as above, but only supports mapping a predetermined set of unique tokens (types).
-  No assumption is made about how this mapping happens. HuggingFace's `PreTrainedTokenizer` is an example of these.
-- `TokeniserWithVocabDict`: same as above, but the mapping is made by an explicit dictionary.
+To map tokens (string segments) to identifiers (integers) for indexing into an embedding matrix, this interface is
+extended to the `TokeniserWithVocabulary`. This class makes use of a `Vocab` object which keeps _types used by the tokeniser_ 
+separated from the _specials used by a downstream language model_. This prevents token injection attacks, which 
+HuggingFace `transformers`/`tokenizers` is vulnerable to (see the bottom of this README).
 
-For ease-of-use, many `Tokeniser` classes have a `TokeniserFactory` defined for them that simplify the instantiation process.
-
-#### Vocabularisation
+#### Training
 To learn the parameters of a `Tokeniser` (e.g. BPE merges), there is the `Vocabulariser` class.
 It can learn from word-count files or from corpora of sentences. It takes a `Preprocessor` exactly like `Tokeniser`,
 except `Vocabulariser` is for training the tokeniser (vocabularisation) and `Tokeniser` is for inference (segmentation).
 
+#### Loading
 To make it easier to load the results of a vocabularisation run from storage back into Python, there are `Deserialiser`s
-to do this for you. Often, a `TokeniserFactory` will take a `Deserialiser` to provide it any files.
+to do this for you. 
+
+For ease-of-use, many `Tokeniser` classes have a `TokeniserFactory` defined for them that simplify the instantiation process.
+Often, a `TokeniserFactory` will take a `Deserialiser` to provide it any files.
 
 ### Submodules
 The packages is divided into the following submodules:
@@ -280,11 +279,16 @@ print(toy_preprocessor.do("This example will be preprocessed (even without a tok
 ```
 This can then be used to instantiate any TkTkT tokeniser, whose functionality is decoupled from the preprocessor. For example:
 ```python
-from tktkt.models.greedy.directional import L2R_Greedy
+from tktkt.models.greedy.directional import L2R_Greedy, Vocab
+from tktkt.factories.specials import NoSpecials
 
 tokeniser = L2R_Greedy(
     preprocessor=toy_preprocessor,
-    vocab={"a": 0, "b": 1, "c": 2, "d": 3, "ab": 4, "ba": 5, ".": 6, ",": 7, "▁": 8}
+    vocab=Vocab(
+        ["a", "b", "c", "d", "ab", "ba", ".", ",", "▁"],
+        specials=NoSpecials(),
+        unk_id=0
+    )
 )
 
 print(tokeniser.prepareAndTokenise("A bad cab, ABBA!"))
@@ -299,10 +303,17 @@ There are wrapper classes for tokenisers under `tktkt.models.huggingface` and fo
 `tktkt.preparation.huggingface`.
 
 Here's a non-exhaustive list of reasons:
-1. The HuggingFace `tokenizers` library has horrifically un(der)documented Python interfaces. Some classes even accept 
+1. The HuggingFace `tokenizers` package has horrifically un(der)documented Python interfaces. Some classes even accept 
   arguments that aren't in their signature. 
-2. The `tokenizers` library is implemented in Rust and hence there is no possibility of inspecting implementations in any Python IDE. Have fun using your black box.
-3. The `tokenizers` interface does not allow separating preprocessing from the actual tokenisation algorithm.
+2. The `tokenizers` package is implemented in Rust and hence there is no possibility of inspecting implementations in any Python IDE. And given that the implementations are buggy, this is a massive problem.
+3. The `transformers` package forces special tokens (`<|endoftext|>`, `[CLS]`, `[SEP]`, ...) to be treated as if they
+   are user input. That's a security vulnerability.
+   - Special tokens should _never_ be treated like text. They should be seen as IDs without a name. They are purely for
+     adding extra embedding vectors to the input of a downstream language model.
+   - Yet, in the `PreTrainedTokenizerBase` class, specials must be declared using _only a string_ with _no identifier_,
+     and the point at which these strings receive their identifier is when they are run through the _exact same_ method
+     that converts the tokens from user input to identifiers.
+4. The `tokenizers` interface does not allow separating preprocessing from the actual tokenisation algorithm.
    - The `PreTrainedTokenizerBase` class, from which the "slow" (Pythonic) `PreTrainedTokenizer` and "fast" (Rustic) 
       `PreTrainedTokenizerFast` classes both inherit, only declares an end-to-end `.tokenize()` method (equivalent to TkTkT's
       `.prepareAndTokenise()`). The interface for these subclasses is different enough that both lack features of the other: 
@@ -321,7 +332,7 @@ Here's a non-exhaustive list of reasons:
    - Also, the `PreTrainedTokenizerBase` interface is not defined with `@abstractmethod` but with an ever-increasing 
       amount of `raise NotImplementedError` methods. In other words: it's hard to know which methods need to be implemented
       and there's no enforcement mechanism to ensure everything has been implemented.
-4. The `tokenizers.pre_tokenizers` submodule has technical debt that can't be patched. Some examples:
+5. The `tokenizers.pre_tokenizers` submodule has technical debt that can't be patched. Some examples:
       - The mapping from Unicode codepoints to UTF-8 bytes, as first used in GPT-2, is only implemented in the `ByteLevel` 
         pretokeniser. Yet, it is concerned with more than this, since it splits on spaces and punctuation (optionally prefixed 
         by a space) before applying the mapping. This is wrong for at least three reasons: 
@@ -337,13 +348,13 @@ Here's a non-exhaustive list of reasons:
       - There is literally a normaliser class called `Precompiled` which is just one big object stored in base64 in the tokeniser config JSON. No access
         to it in Python, no interface, no description of what it does. A black box. Probably a holdover from adapting the
         `sentencepiece` package to HuggingFace, yet TkTkT doesn't do it that way.
-5. Did you know that their RoBERTa BPE implementation [removes the highest-priority merge from the tokeniser](https://github.com/huggingface/transformers/blob/9b5a6450d481b0f02834684ffd8b3ba4cbbd6fe0/src/transformers/models/roberta/tokenization_roberta.py#L194)
+6. Did you know that their RoBERTa BPE implementation [removes the highest-priority merge from the tokeniser](https://github.com/huggingface/transformers/blob/9b5a6450d481b0f02834684ffd8b3ba4cbbd6fe0/src/transformers/models/roberta/tokenization_roberta.py#L194)
     unless the merge file is preceded by a `#version` tag? This doesn't conform to [the BPE standard](https://github.com/rsennrich/subword-nmt/), and almost cost me a paper.
-6. In the little documentation that does exist (e.g. for WordPiece and KudoPiece), there are so many 
+7. In the little documentation that does exist (e.g. for WordPiece and KudoPiece), there are so many 
     theoretical inaccuracies that we shouldn't even have confidence in anything that isn't a BPE tokeniser implemented by them. 
     Their [explanation for KudoPiece](https://huggingface.co/learn/nlp-course/chapter6/7), an algorithm which itself was 
     already poorly explained originally, is mathematically absurd.
-7. They offer very few core models (basically only BPE and KudoPiece, which [`sentencepiece`](github.com/google/sentencepiece) already offers
+8. They offer very few core models (basically only BPE and KudoPiece, which [`sentencepiece`](github.com/google/sentencepiece) already offers
     and keeps much more updated)
     whilst there exist many more in the literature, and the likelihood that someone who knows the literature comes along to
     implement all of them in C++ is rather low.

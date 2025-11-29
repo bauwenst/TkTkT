@@ -8,7 +8,6 @@ TODO:
       - It's possible that a true N-gram tokeniser needs padding characters so that all tokens are exactly N long rather
         than allowing the tail to be 1...N characters.
 """
-from typing import List
 from enum import Enum
 
 from copy import copy
@@ -16,7 +15,7 @@ from copy import copy
 from bpe_knockout.datahandlers.hf_corpora import punctuation
 from bpe_knockout.auxiliary.bytemapping import BYTE_ALPHABET
 
-from ...interfaces.tokeniser import Tokeniser
+from ...interfaces.tokeniser import *
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...factories.preprocessing import Preprocessor, IdentityMapper, PseudoByteMapping, IsolatePunctuation, OnWhitespace, IsolatedSpaceMarker, PretokeniserSequence, AddWordBoundary, MapperAsPretokeniser, HyphenMode
 
@@ -68,9 +67,9 @@ class NgramTokeniser(Tokeniser):
         else:
             self.alphabet = (LETTERS, set(punctuation))
 
-        super().__init__(preprocessor)
+        super().__init__(preprocessor=preprocessor)
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         pretoken, marker = self.marker.isolate(pretoken)
         if not pretoken:
             return [marker]

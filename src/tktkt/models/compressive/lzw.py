@@ -41,14 +41,10 @@ class LzwVocabulariser(Vocabulariser):
         tokens_of_pretokens = list(sentence_iterable.tqdm().flatmap(self.preprocessor.do).map(tuple))
 
         # Initialise with characters that should be recognised.
-        alphabet = self.preprocessor.getAlphabet()
-        if alphabet is None:
-            alphabet = set()
-            for pretoken in tokens_of_pretokens:
-                for token in pretoken:
-                    alphabet.update(token)
-        else:
-            alphabet = set(alphabet.getCharacters())
+        alphabet = set(self.preprocessor.getAlphabet())
+        for pretoken in tokens_of_pretokens:
+            for token in pretoken:
+                alphabet.update(token)
 
         marker = self.preprocessor.getBoundaryMarker()
         if marker is not None:

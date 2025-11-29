@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Union, List, Tuple, Optional, Type, Iterable
 from abc import ABC, abstractmethod
 
-from ...interfaces.preparation import Preprocessor
-from ...interfaces.tokeniser import Tokeniser
+from ...interfaces.tokeniser import *
 from ...util.iterables import streamLines
 
 DEL_DATA = Path(__file__).resolve().parent / "data"
@@ -213,7 +212,7 @@ class DeL(Tokeniser):
         self.derivator = derivator
         self.prefix_sep = prefix_separator
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         # TODO: Split off any SoW/EoW from the pretoken, because otherwise this doesn't work.
         prefices, root, suffices = self.derivator.invertDerivation(pretoken)
 

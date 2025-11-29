@@ -10,14 +10,14 @@ import json
 from math import log2
 from dacite import from_dict
 
-from ..evaluation.observing import Sent
 from ..paths import TkTkTPaths
 from ..util.types import Tokens
 from ..util.dicts import jsonToDataclass, dataclassToJson
-from ..interfaces.tokeniser import Vocab, Preprocessor
+from ..interfaces.tokeniser import Preprocessor
+from ..interfaces.identifiers import SubwordCollection
 
 
-def countValidSegmentations(pretoken: str, vocab: Union[Vocab, Set[str]]) -> int:
+def countValidSegmentations(pretoken: str, vocab: SubwordCollection) -> int:
     """
     Computes how many possible segmentations a vocabulary allows for a given string. Note: no preprocessor is applied here!
     Forward Viterbi algorithm, which is O(n^2) instead of O(2^n) even though there are O(2^n) segmentations.
@@ -31,7 +31,7 @@ def countValidSegmentations(pretoken: str, vocab: Union[Vocab, Set[str]]) -> int
     return options_to_get_before_char[-1]
 
 
-def prepareAndCountValidSegmentations(word: str, preprocessor: Preprocessor, vocab: Union[Vocab, Set[str]]) -> Tuple[int, int, int]:
+def prepareAndCountValidSegmentations(word: str, preprocessor: Preprocessor, vocab: SubwordCollection) -> Tuple[int, int, int]:
     """
     Note that the vocabulary exists in the output space of a preprocessor. This has two implications for counting segmentations:
         1. You should make sure that the given preprocessor is the full, effective preprocessor used before segmenting
@@ -115,7 +115,7 @@ class PossibleSegmentations(FinallyObservableObserver[Union[str,Tuple[str,int]],
 
     def __init__(
         self,
-        vocab: Vocab, 
+        vocab: SubwordCollection,
         effective_preprocessor: Preprocessor,
 
         track_unique_words: bool=True,

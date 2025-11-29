@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from ..interfaces.identifiers import Specials
+from ..interfaces.identifiers import Specials, NoSpecials
 
 
 @dataclass

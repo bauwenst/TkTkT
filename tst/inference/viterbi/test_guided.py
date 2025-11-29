@@ -2,14 +2,18 @@ from typing import Optional
 
 from tktkt.models.predictive.viterbi import *
 from tktkt.factories.preprocessing import RobertaPreprocessor, IdentityPreprocessor
-from tktkt.factories.tokenisers import Factory_BoMMaSum_BPE, getEnglishBpeFiles
-from tktkt.interfaces.tokeniser import Vocab, Preprocessor
+from tktkt.factories.tokenisers import Factory_BoMMaSum
+from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
+from tktkt.interfaces.tokeniser import Preprocessor
+from tktkt.interfaces.identifiers import SubwordCollection
 
 
-canine_viterbi = Factory_BoMMaSum_BPE().buildTokeniser()
+canine_viterbi = Factory_BoMMaSum().buildTokeniser()
 classifier: CharacterClassifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
-vocab = getEnglishBpeFiles().loadVocabulary()  # Determines how you should format the below example.
+def getVocab():
+    return BPE32ki_SlimPajama3M().buildVocabulary()
+vocab = getVocab()  # Determines how you should format the below example.
 word = "Ġhorseshoe"
 # word = "Ġsupercalifragilistic"
 
@@ -20,7 +24,7 @@ class PrototypingViterbi(ViterbiTokeniser):
     to check several score grids and vocab constraints.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int]):
+    def __init__(self, preprocessor: Preprocessor, vocab: SubwordCollection, max_step: Optional[int]):
         max_step = max_step or max(len(t) for t in vocab)
         generator = BoundaryPrefixAndSuffixLengthExtended(punishment=0)
         generator.setBackend(classifier)
@@ -44,7 +48,7 @@ class PrototypingViterbi(ViterbiTokeniser):
 
 def tst_verify_scoregrid():
     # Tokenise
-    tk = PrototypingViterbi(IdentityPreprocessor, getEnglishBpeFiles().loadVocabulary(), max_step=None)
+    tk = PrototypingViterbi(IdentityPreprocessor, getVocab(), max_step=None)
     print(tk.prepareAndTokenise(word))
 
     # Show score grid

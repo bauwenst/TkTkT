@@ -2,26 +2,27 @@ from typing import List
 from math import prod
 import numpy.random as npr
 
-from .generationbased import TokeniserWithVocabDict, Vocab, Preprocessor
+from ...interfaces.tokeniser import *
+from ...interfaces.identifiers import SubwordCollection
 from ...util.strings import bitstringToTokens, indicesToTokens
 
 
-class RandomVocabSegmentation_RejectionSampling_BiasedBernoulli(TokeniserWithVocabDict):
+class RandomVocabSegmentation_RejectionSampling_BiasedBernoulli(TokeniserWithVocabulary[WithSpecials]):
     """
     Splits the given string at random positions and checks if all resulting tokens are in the given vocab.
     Retries until the answer is yes.
     Biased towards not segmenting because otherwise you mostly get small-token segmentations.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None):
-        super().__init__(preprocessor, vocab, unk_type)
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab):
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
         self.rng = npr.default_rng(0)
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         return rejectionSamplingBiased(pretoken, self.vocab, self.rng)
 
 
-def rejectionSampling(text: str, vocab: Vocab, rng: npr.Generator):
+def rejectionSampling(text: str, vocab: SubwordCollection, rng: npr.Generator):
     """
     Sample random segmentations until one is valid.
 
@@ -38,7 +39,7 @@ def rejectionSampling(text: str, vocab: Vocab, rng: npr.Generator):
             return segmentation
 
 
-def rejectionSamplingBiased(text: str, vocab: Vocab, rng: npr.Generator,
+def rejectionSamplingBiased(text: str, vocab: SubwordCollection, rng: npr.Generator,
                             max_tries: int=5_000) -> List[str]:
     """
     Sample random segmentations until one is valid, where single-character tokens are disincentivised by having split
@@ -93,7 +94,7 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
                          for node in range(len(pretoken)) ]
         return SegmentationGraph(pointers=forepointers, probabilities=probabilities)
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         # Generate the graph first.
         graph = self.generateGraph(pretoken)
 

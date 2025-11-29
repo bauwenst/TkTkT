@@ -5,7 +5,8 @@ import itertools
 
 from tqdm.auto import tqdm
 
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
+from ...interfaces.tokeniser import *
+from ...interfaces.identifiers import SubwordCollection
 from ...evaluation.fertility import countValidSegmentations
 from ...util.iterables import drop
 from ...util.functions import relu
@@ -13,17 +14,17 @@ from ...util.printing import intsep
 from ...util.strings import indicesToTokens
 
 
-class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabDict):
+class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabulary[WithSpecials]):
     """
     Computes how many segmentations the given string has under the vocabulary constraint, selects a random number
     between 0 and that amount, generates that many segmentations deterministically and then returns the next one.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None):
-        super().__init__(preprocessor, vocab, unk_type)
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials]):
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
         self.rng = npr.default_rng(0)
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         """
         Takes at least O(N²) time, and needs an additional O(2^{max(N-k,0)}/2) on average afterward.
         """
@@ -34,7 +35,7 @@ class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabDict):
 
 SegmentationIndices = List[int]
 
-def generateSegmentationIndices_exponentialSpace(text: str, vocab: Vocab) -> List[SegmentationIndices]:
+def generateSegmentationIndices_exponentialSpace(text: str, vocab: SubwordCollection) -> List[SegmentationIndices]:
     """
     We have a function countValidSegmentations() that gives the AMOUNT of possible segmentations, but not
     what they are. A very similar Viterbi algorithm works here, except the history you store is not an integer but
@@ -60,7 +61,7 @@ def generateSegmentationIndices_exponentialSpace(text: str, vocab: Vocab) -> Lis
     return [seg for seg in unique_segmentations_up_to[-1]]
 
 
-def generateSegmentationIndices_exponentialTime(text: str, vocab: Vocab) -> Iterable[SegmentationIndices]:
+def generateSegmentationIndices_exponentialTime(text: str, vocab: SubwordCollection) -> Iterable[SegmentationIndices]:
     """
     Naive implementation that just checks every possible one of the 2^{N-1} possible segmentations and outputs
     the valid ones. It has guaranteed O(2^n) time complexity, but it also has O(1) space complexity.
@@ -76,7 +77,7 @@ def generateSegmentationIndices_exponentialTime(text: str, vocab: Vocab) -> Iter
                 yield indices
 
 
-def generateSegmentationIndices_fixedSpace(text: str, vocab: Vocab, max_prefix_length: int=22, verbose: bool=False) -> Iterable[SegmentationIndices]:
+def generateSegmentationIndices_fixedSpace(text: str, vocab: SubwordCollection, max_prefix_length: int=22, verbose: bool=False) -> Iterable[SegmentationIndices]:
     """
     Hybrid approach: use Viterbi to reduce a bunch of segmentation possibilities, store the results in lists, and use
     them as starting points for generating segmentations on-the-fly.

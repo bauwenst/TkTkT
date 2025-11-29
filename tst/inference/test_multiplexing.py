@@ -34,9 +34,18 @@ def test_differentVocabulary():
     from tktkt.wrappers.multiplexing import StochasticTokeniserMultiplexer_DifferentDomains, MultiplexedPreprocessor
     from tktkt.models.word.segmentation import IdentityTokeniserWithVocab
     from tktkt.factories.preprocessing import TraditionalPreprocessor, IdentityPreprocessor
+    from tktkt.interfaces.identifiers import Vocab, NoSpecials
 
-    tk1 = IdentityTokeniserWithVocab(IdentityPreprocessor(), {"a": 0, "b": 1, "c": 2, "d": 3, "[UNK]": 4}, unk_type="[UNK]")
-    tk2 = IdentityTokeniserWithVocab(IdentityPreprocessor(), {"a": 0, "e": 1, "f": 2, "[UNK]": 3}, unk_type="[UNK]")
+    tk1 = IdentityTokeniserWithVocab(IdentityPreprocessor(), Vocab(
+        ["a", "b", "c", "d"],
+        specials=NoSpecials(),
+        unk_id=4
+    ))
+    tk2 = IdentityTokeniserWithVocab(IdentityPreprocessor(), Vocab(
+        ["a", "e", "f"],
+        specials=NoSpecials(),
+        unk_id=3
+    ))
     tk = StochasticTokeniserMultiplexer_DifferentDomains(
         MultiplexedPreprocessor(
             TraditionalPreprocessor(),

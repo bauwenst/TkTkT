@@ -56,7 +56,7 @@ def foldSpans(lst: Iterable[T], only_delete_specific_value: Any=_NONE) -> Iterat
         previous = thing
 
 
-def keepFirst(iterable: Iterable[T], key: Callable[[T],T2]=None) -> Iterator[T]:
+def deduplicate(iterable: Iterable[T], key: Callable[[T],T2]=None) -> Iterator[T]:
     """
     Only keeps the first instance of each unique value in the list.
     Currently requires the elements to be hashable to keep the function O(N). Can be made O(N²) by just using == instead.

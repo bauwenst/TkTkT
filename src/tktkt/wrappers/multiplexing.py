@@ -25,7 +25,7 @@ import numpy as np
 import numpy.random as npr
 
 from ..interfaces.huggingface import AutoSpecials
-from ..interfaces.tokeniser import Tokeniser, Preprocessor, TokeniserWithFiniteTypeDomain, Tokens
+from ..interfaces.tokeniser import *
 from ..util.iterables import arePositive
 
 
@@ -47,7 +47,7 @@ class TokeniserMultiplexer(Tokeniser):
     def select(self, pretoken: str) -> int:
         pass
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         subtokeniser = self.subtokenisers[self.select(pretoken)]
         # print(f"\tPretoken <{pretoken}> will be tokenised by {subtokeniser.getName()}")
         if self._use_specific_preprocessors:
@@ -59,15 +59,15 @@ class TokeniserMultiplexer(Tokeniser):
         return "Multiplex(" + " + ".join(sub.getName() for sub in self.subtokenisers) + ")"
 
 
-class TokeniserMultiplexer_SameDomains(TokeniserMultiplexer, TokeniserWithFiniteTypeDomain):
+class TokeniserMultiplexer_SameDomains(TokeniserMultiplexer, TokeniserWithVocabulary):
     """
     Multiplexer where all the multiplexed tokenisers share the same domain-to-range mapping.
     Note: domain and range should be small enough to be enumerated into a set.
 
     Calls the super constructor of TokeniserMultiplexer while keeping its select() method abstract;
-    implements all the abstract methods of TokeniserWithFiniteTypeDomain.
+    implements all the abstract methods of TokeniserWithVocabulary.
     """
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithFiniteTypeDomain]):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary]):
         super().__init__(preprocessor, subtokenisers)
 
         # Check whether the first tokeniser's domain<->range mapping can be used as a stand-in for all others.
@@ -101,27 +101,27 @@ class TokeniserMultiplexer_SameDomains(TokeniserMultiplexer, TokeniserWithFinite
         return self._domain_and_range.types()
 
 
-class TokeniserMultiplexer_DifferentDomains(TokeniserMultiplexer, TokeniserWithFiniteTypeDomain):
+class TokeniserMultiplexer_DifferentDomains(TokeniserMultiplexer, TokeniserWithVocabulary):
     """
     Similar to TokeniserMultiplexer_SameDomains, except now all the subtokenisers have their own domains and IDs are
     obtained by offsetting the IDs of subtokeniser i by the size of the domain of subtokenisers 1 to i-1.
     """
 
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithFiniteTypeDomain]):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary]):
         super().__init__(preprocessor, subtokenisers)
-        self.subtokenisers: List[TokeniserWithFiniteTypeDomain] = self.subtokenisers  # (type casting)
+        self.subtokenisers: List[TokeniserWithVocabulary] = self.subtokenisers  # (type casting)
 
         # Verify that all IDs in the subtokenisers run from 0 to |V_i|-1.
         vocab_sizes = []
         for tokeniser in subtokenisers:
-            V = tokeniser.getVocabSize()
+            V = tokeniser.vocab.size()
             vocab_sizes.append(V)
-            assert set(tokeniser.ids()) == set(range(V))
+            assert set(tokeniser.ids()) | set(tokeniser.vocab.specials) == set(range(V))
 
         # Offsets is all you need.
         self._offsets = np.cumsum([0] + vocab_sizes[:-1]).tolist()
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         idx = self.select(pretoken)
         subtokeniser = self.subtokenisers[idx]
         if self._use_specific_preprocessors:
@@ -163,7 +163,7 @@ class TokeniserMultiplexer_DifferentDomains_Stateful(TokeniserMultiplexer):
     the vocabulary is hence available as input data.
     """
 
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithFiniteTypeDomain], assert_matching_specials: bool=False):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary], assert_matching_specials: bool=False):
         """
         :param assert_matching_specials: Do a check that makes sure all subtokenisers have the same specials with the
                                          same IDs. This is necessary in an application as follows: imagine a system that
@@ -233,7 +233,7 @@ class StochasticTokeniserMultiplexer_SameDomains(StochasticTokeniserMultiplexer,
     Takes its .select() implementation from StochasticTokeniserMultiplexer, and implementations for methods that have to
     do with the token domain from TokeniserMultiplexer_SameDomains.
     """
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithFiniteTypeDomain],
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary],
                  probabilities: List[float]=None, seed: int=0):
         super().__init__(preprocessor, subtokenisers, probabilities, seed)
         TokeniserMultiplexer_SameDomains.__init__(self, preprocessor, subtokenisers)
@@ -244,7 +244,7 @@ class StochasticTokeniserMultiplexer_DifferentDomains(StochasticTokeniserMultipl
     Takes its .select() implementation from StochasticTokeniserMultiplexer, and implementations for methods that have to
     do with the token domain from TokeniserMultiplexer_DifferentDomains.
     """
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithFiniteTypeDomain],
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary],
                  probabilities: List[float]=None, seed: int=0):
         super().__init__(preprocessor, subtokenisers, probabilities, seed)
         TokeniserMultiplexer_DifferentDomains.__init__(self, preprocessor, subtokenisers)
@@ -257,7 +257,7 @@ class StochasticTokeniserSwitch(StochasticTokeniserMultiplexer_SameDomains):
     """
 
     def __init__(self, preprocessor: MultiplexedPreprocessor,
-                 tokeniser1: TokeniserWithFiniteTypeDomain, tokeniser2: TokeniserWithFiniteTypeDomain, p: float=0.5):
+                 tokeniser1: TokeniserWithVocabulary, tokeniser2: TokeniserWithVocabulary, p: float=0.5):
         """
         :param p: Probability of sampling tokeniser 2. This way, the [0,1] interval is a slider that ranges
                   from always tokeniser 1 to always tokeniser 2.

@@ -140,9 +140,7 @@ class KudoPieceVocabulariser(Vocabulariser):
     def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> Path:
         output_folder = self._makeOutputFolder(string_iterable.name)
 
-        alphabet = self.preprocessor.getAlphabet()
-        required_characters = alphabet.getCharacters() if alphabet else []
-
+        required_characters = self.preprocessor.getAlphabet()
         KudoPieceVocabulariser._callSentencePieceTrainer(
             actual_vocab_size=self._size,
             model_type="unigram",
@@ -156,7 +154,7 @@ class KudoPieceVocabulariser(Vocabulariser):
 
             # Alphabet
             required_chars=required_characters,
-            character_coverage=1.0 if required_characters else self._arguments.character_coverage,
+            character_coverage=1.0 if required_characters else self._arguments.character_coverage,  # Potentially bad if the required chars are not all in the corpus.
 
             # Algorithm
             treat_whitespace_as_suffix=self._marker.location == BoundaryMarkerLocation.END,

@@ -2,11 +2,11 @@
 Evaluate any tokeniser on English morphology.
 """
 from ..interfaces import TokeniserFactory, Deserialiser
+from ..interfaces.identifiers import WithSpecials
 from ..models.predictive.viterbi.instances import *
 from ..models.bpe.base import ClassicBPE
 from ..models.bpe.knockout import BPEKnockout, ReBPE
 from ..models.bpe.guided import GuidedBPEDropout
-from ..models.huggingface.wrapper import HuggingFaceTokeniser
 from ..models.huggingface.bpe import HuggingFaceBPETokeniser
 from ..models.kudopiece.segmentation import KudoPieceTokeniser
 from ..models.random.grampa import GRaMPa, PowerNormalisation
@@ -20,7 +20,7 @@ from .deserialisation import BPE_Deserialiser, KudoPiece_Deserialiser, detectBou
 ########################################################################################################################
 
 
-class Factory_BPE(TokeniserFactory[HuggingFaceTokeniser]):
+class Factory_BPE(TokeniserFactory[HuggingFaceBPETokeniser[WithSpecials]]):
     def __init__(self, preprocessor: Preprocessor=None, dropout: float=0.0, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._dropout = dropout
@@ -35,8 +35,8 @@ class Factory_BPE(TokeniserFactory[HuggingFaceTokeniser]):
         # return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
-class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
+class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE[WithSpecials]]):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser[WithSpecials]=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._files = files
 
@@ -87,7 +87,7 @@ class Factory_ReBPE(TokeniserFactory[ReBPE]):
         )
 
 
-class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser]):
+class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser[WithSpecials]]):
     """
     Defaults to the 32k SlimPajama vocab.
     """
@@ -270,9 +270,12 @@ class Factory_CanineBPEdropout(TokeniserFactory[GuidedBPEDropout]):
         )
 
 
-class Factory_Character(TokeniserFactory[UnicodeTokeniser]):
+class Factory_Character(TokeniserFactory[UnicodeTokeniser[WithSpecials]]):
+    def __init__(self, specials: WithSpecials):
+        self._specials = specials
+
     def buildTokeniser(self):
-        return UnicodeTokeniser(preprocessor=IdentityPreprocessor)
+        return UnicodeTokeniser(preprocessor=IdentityPreprocessor, specials=self._specials)
 
 
 class Factory_Switch(TokeniserFactory[StochasticTokeniserSwitch]):
@@ -314,7 +317,6 @@ class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
         return GRaMPa(
             preprocessor=self._prep,
             vocab=self._vocab_file.buildVocabulary(),
-            # unk_type=self._vocab_file._specials,  # TODO: Not really needed because if any character is out-of-vocabulary, GRaMPa breaks anyway.
 
             probabilities_to_probabilities=PowerNormalisation(temperature=self._temp),
             minimal_token_length=self._minlen,

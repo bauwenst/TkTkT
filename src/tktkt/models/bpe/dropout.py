@@ -13,10 +13,9 @@ from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
 class BPEDropout(NonDeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
-                 dropout_probability: float, unk_type: str=None):
+                 dropout_probability: float):
         super().__init__(
             vocab=vocab, merges=merges,
-            unk_type=unk_type,
 
             preprocessor=preprocessor
         )
@@ -30,7 +29,6 @@ class BPEDropout(NonDeterministicBPETokeniser):
             preprocessor=classic_implementation.preprocessor,
             vocab=classic_implementation.vocab,
             merges=classic_implementation.merge_graph.getRawMerges(),
-            unk_type=classic_implementation.unk,
 
             dropout_probability=dropout_probability
         )
@@ -82,11 +80,9 @@ class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
     each is chosen with probability 1/N. (This is equivalent to classic BPE with random merge priorities.)
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
-                 unk_type: str = None):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList):
         super().__init__(
             vocab=vocab, merges=merges,
-            unk_type=unk_type,
 
             preprocessor=preprocessor
         )
@@ -130,10 +126,9 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
     """
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
-                 unk_type: str=None, within_tree: bool=False, breakdown_probability: float=0.33):
+                 within_tree: bool=False, breakdown_probability: float=0.33):
         super().__init__(
             vocab=vocab, merges=merges,
-            unk_type=unk_type,
 
             preprocessor=preprocessor
         )
@@ -180,7 +175,6 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
         classic_implementation = ClassicBPE.fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
         return cls(
             preprocessor=classic_implementation.preprocessor,
-            unk_type=classic_implementation.unk,
 
             vocab=classic_implementation.vocab,
             merges=classic_implementation.merge_graph.getRawMerges(),

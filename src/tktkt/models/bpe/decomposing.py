@@ -15,7 +15,7 @@ from .base import DeterministicBPETokeniser, Preprocessor, Vocab, MergeList, Cla
 from .vocabularisation import BPEVocabulariser
 from ...util.iterables import fst
 from ...interfaces.vocabulariser import Vocabulariser, UnidentifiedVocab
-from ...util.types import NamedIterable
+from ...util.types import NamedIterable, Tokens
 
 
 class RecursivelyDecomposingBPE(DeterministicBPETokeniser):
@@ -38,7 +38,7 @@ class RecursivelyDecomposingBPE(DeterministicBPETokeniser):
         self._disabled = disabled_set & set(expanded_vocab.keys())
 
     @lru_cache(maxsize=1024*1024)
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         # Do BPE
         old_tokens = super().tokenise(pretoken)
 

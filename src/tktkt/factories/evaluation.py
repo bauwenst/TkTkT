@@ -4,6 +4,7 @@ Example evaluation pipelines.
 from ..evaluation.observing import *
 from ..evaluation.morphological import *
 from ..evaluation.entropy import *
+from ..interfaces import TokeniserWithVocabulary
 
 
 def evaluateTokeniser(experiment_id: str, corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
@@ -97,7 +98,7 @@ def evaluateTokeniserOnMorphology(experiment_id: str, dataset: ModestDataset, to
 
 class ObserverWithTTRandEntropy(ObservableTokeniser):
     """Receives text, tokenises it, and runs all of the above metrics on the result. Prints the results."""
-    def __init__(self, tokeniser: TokeniserWithFiniteTypeDomain, renyi_alpha: float, mattr_window_size: int, mattr_stride: int, endpoint: Observer[Any]=PrintingObserver()):
+    def __init__(self, tokeniser: TokeniserWithVocabulary, renyi_alpha: float, mattr_window_size: int, mattr_stride: int, endpoint: Observer[Any]=PrintingObserver()):
         super().__init__(
             tokeniser=tokeniser,
             observers=[
@@ -107,7 +108,7 @@ class ObserverWithTTRandEntropy(ObservableTokeniser):
                         TTR(observers=[endpoint]),
                         RenyiEntropy(
                             alpha=renyi_alpha,
-                            vocab_size_in_denominator=tokeniser.getVocabSize(),
+                            vocab_size_in_denominator=len(tokeniser.vocab),
                             observers=[endpoint]
                         )
                     ]

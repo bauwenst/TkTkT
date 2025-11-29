@@ -239,6 +239,9 @@ class OnWhitespaceAndAddMarker(Pretokeniser):
     def __init__(self, replacement: BoundaryMarker):
         self.marker = replacement
 
+    def _modifyAlphabet(self, known: list[str]) -> list[str]:
+        return known + [self.marker.substitute]
+
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return self.marker
 
@@ -574,6 +577,9 @@ class AddWordBoundary(Pretokeniser):
     def __init__(self, marker: BoundaryMarker):
         self.marker = marker
 
+    def _modifyAlphabet(self, known: list[str]) -> list[str]:
+        return known + [self.marker.substitute]
+
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return self.marker
 
@@ -631,13 +637,17 @@ class AddCapitalMarker(Pretokeniser):
     Note: this class does not work after a byte mapping has been applied.
     """
     # TODO: "delete-space" character
-    # TODO: Just like with boundary markers, you should actually add the symbols to the processor's alphabet.
+    # TODO: It is quite possible that these special characters "⇧" have to be protected somehow so that users themselves
+    #       cannot inject them (this used to be avoided by universal alphabets, but they have fallen into disfavour).
 
     def __init__(self, ignore_marker: BoundaryMarker=None):
         """
         :param ignore_marker: If the incoming text is known to carry a boundary marker, you should ignore it when checking case.
         """
         self.marker = ignore_marker if ignore_marker is not None else BoundaryMarker("", detached=False, location=BoundaryMarkerLocation.START)
+
+    def _modifyAlphabet(self, known: list[str]) -> list[str]:
+        return known + ["⇧", "⇪"]
 
     def split(self, text: str) -> List[str]:
         root, mark = self.marker.isolate(text)

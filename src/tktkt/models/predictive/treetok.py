@@ -7,21 +7,21 @@ https://aclanthology.org/2025.findings-acl.1146.pdf
 from typing import List
 
 from .viterbi import CharacterClassifier
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
+from ...interfaces.tokeniser import *
 from ...util.iterables import maxargmax
 
 
-class TopDownTree(TokeniserWithVocabDict):
+class TopDownTree(TokeniserWithVocabulary[WithSpecials]):
 
     def __init__(self, preprocessor_before_classifier: Preprocessor, preprocessor_after_classifier: Preprocessor,
-                 vocab: Vocab, unk_type: str=None):
-        super().__init__(preprocessor_before_classifier, vocab, unk_type)
+                 vocab: Vocab[WithSpecials]):
+        super().__init__(preprocessor=preprocessor_before_classifier, vocab=vocab)
         self.hard_boundaries = preprocessor_after_classifier
 
     def setClassifier(self, cls: CharacterClassifier):
         self._classifier = cls
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         if pretoken in self.vocab:
             return [pretoken]
 

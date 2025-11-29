@@ -16,15 +16,14 @@ from pathlib import Path
 
 from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
-from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
 import json
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, defaultTokeniserFiles
 from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath, SennrichTokeniserPath
 from modest.formats.tsv import iterateTsv
 
-from ..interfaces.vocabulariser import Vocab
-from ..interfaces.factories import Deserialiser
+from .specials import BertSpecials
+from ..interfaces import Vocab, Deserialiser
+from ..interfaces.identifiers import AutoVocab, NoSpecials, WithSpecials, AutoVocabSpecs
 from ..models.bpe.vocabularisation import BPEVocabulariser, Merges
 from ..models.kudopiece.vocabularisation import KudoPieceVocabulariser
 from ..models.predictive.viterbi import HuggingFaceForBinaryCharacterClassification
@@ -45,13 +44,13 @@ def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
     )
 
 
-class BPE_Deserialiser(Deserialiser):
+class BPE_Deserialiser(Deserialiser[WithSpecials]):
     @abstractmethod
     def buildMerges(self) -> Merges:
         pass
 
 
-class BPE40k_Oscar30M_en(BPE_Deserialiser):
+class BPE40k_Oscar30M_en(BPE_Deserialiser[WithSpecials]):
     """
     Trained with the HuggingFace BPE trainer.
 
@@ -60,13 +59,16 @@ class BPE40k_Oscar30M_en(BPE_Deserialiser):
     def getFolder(self) -> Path:
         raise NotImplementedError()
 
+    def _bakedSpecials(self) -> set[str]:
+        raise NotImplementedError()
+
     def _buildVocabulary(self) -> Vocab:
-        files = getEnglishBpeFiles()
+        files = self.getFolder()
         assert isinstance(files, SennrichTokeniserPath)
-        return BPEVocabulariser.load(file_or_folder=files.getPaths()[0], existing_types=self._specials)
+        return BPEVocabulariser.load(file_or_folder=files.getPaths()[0], specials=self._specials, filtered_types=self._bakedSpecials())
 
     def buildMerges(self) -> Merges:
-        files = getEnglishBpeFiles()
+        files = self.getFolder()
         return [tuple(m.split(" ")) for m in files.loadMerges()]
 
     def preprocessorNative(self) -> Preprocessor:
@@ -78,17 +80,27 @@ class BPE40k_Oscar30M_en(BPE_Deserialiser):
         return self.preprocessorNative()
 
 
-class BPE32ki_SlimPajama3M(BPE_Deserialiser):
+class BPE32ki_SlimPajama3M(BPE_Deserialiser[WithSpecials]):
     """
     Trained with SentencePiece.
+
+    In the original project, RoBERTa specials were used with IDs
+        '<s>': 0
+        '</s>': 1
+        '<unk>': 2
+        '<pad>': 3
+        '<mask>': 4
     """
     def _buildVocabulary(self) -> Vocab:
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="vocab.json"))
-        return BPEVocabulariser.load(file_or_folder=downloaded_vocab, existing_types=self._specials, extras_first=True)
+        return BPEVocabulariser.load(file_or_folder=downloaded_vocab, specials=self._specials)
 
     def buildMerges(self) -> Merges:
         downloaded_merges = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="merges.txt"))
         return BPEVocabulariser.loadMerges(file_or_folder=downloaded_merges)
+
+    def _bakedSpecials(self) -> set[str]:
+        return set()
 
     def preprocessorNative(self) -> Preprocessor:
         """
@@ -102,7 +114,7 @@ class BPE32ki_SlimPajama3M(BPE_Deserialiser):
         return ModernEnglishPreprocessor(marker=RobertaSpaceMarker)
 
 
-class KudoPiece_Deserialiser(Deserialiser):
+class KudoPiece_Deserialiser(Deserialiser[WithSpecials]):
     @abstractmethod
     def getModelFile(self) -> Path:
         pass
@@ -112,7 +124,22 @@ class KudoPiece_Deserialiser(Deserialiser):
         pass
 
 
-class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser):
+class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser[WithSpecials]):
+    """
+    For vocabularies that were not trained with TkTkT and thus have all their IDs predetermined.
+    Uses AutoVocab.
+    """
+
+    def __init__(self):
+        super().__init__(specials=self._specialsTemplate())
+
+    @abstractmethod
+    def _specialsTemplate(self) -> WithSpecials:
+        pass
+    
+    @abstractmethod
+    def _specialsToTypes(self) -> dict[str,str]:
+        pass
 
     @abstractmethod
     def _checkpointName(self) -> str:
@@ -126,9 +153,14 @@ class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser):
     def _jsonFileName(self) -> str:
         pass
 
-    def _buildVocabulary(self) -> Vocab:
-        # self._specials  # TODO: I wonder how to handle custom specials.
-        return AutoTokenizer.from_pretrained(self._checkpointName()).get_vocab()
+    def _bakedSpecials(self) -> set[str]:  # Not used for anything because of AutoVocab, but still implementing it properly.
+        return set(self._specialsToTypes().values())
+
+    def _buildVocabulary(self) -> Vocab[WithSpecials]:
+        return AutoVocab.fromTokenizer(
+            tokenizer=AutoTokenizer.from_pretrained(self._checkpointName()),
+            specials_specification=AutoVocabSpecs(specials_template=self._specialsTemplate(), special_to_string=self._specialsToTypes())
+        )
 
     def loadLikelihoods(self) -> Dict[str, float]:
         tokeniser_path = Path(hf_hub_download(repo_id=self._checkpointName(), filename=self._jsonFileName()))
@@ -156,7 +188,7 @@ class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser):
         return preprocessor
 
 
-class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace):
+class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace[WithSpecials]):
     def _checkpointName(self) -> str:
         return "albert/albert-base-v2"
 
@@ -166,13 +198,30 @@ class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace):
     def _jsonFileName(self) -> str:
         return "tokenizer.json"
 
+    def _specialsTemplate(self) -> WithSpecials:
+        return BertSpecials(CLS=2, SEP=3, PAD=0, MASK=4)
 
-class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser):
+    def _specialsToTypes(self) -> dict[str, str]:
+        return {
+            "CLS": "[CLS]",
+            "SEP": "[SEP]",
+            "PAD": "<pad>",
+            "MASK": "[MASK]"
+        }
+
+
+class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser[WithSpecials]):
+    """
+    From the same project as BPE32ki_SlimPajama3M, where it had the same specials.
+    """
     def getVocabFile(self) -> Path:
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.vocab"))
 
     def _buildVocabulary(self) -> Vocab:
-        return KudoPieceVocabulariser.load(file_or_folder=self.getVocabFile(), existing_types=self._specials, extras_first=True)
+        return KudoPieceVocabulariser.load(file_or_folder=self.getVocabFile(), specials=self._specials, filtered_types=self._bakedSpecials())
+
+    def _bakedSpecials(self) -> set[str]:
+        return {"<s>", "</s>", "<unk>"}
 
     def getModelFile(self) -> Path:
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.model"))

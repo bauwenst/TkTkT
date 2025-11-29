@@ -10,7 +10,7 @@ from collections import Counter
 from math import factorial, comb
 from operator import mul
 
-from .iterables import keepFirst, T
+from .iterables import deduplicate, T
 from .types import TokenLengths
 
 
@@ -19,7 +19,7 @@ def permutations_no_repeat(sequence: Sequence[T]) -> Generator[Sequence[T],None,
     O(n!) way of generating multiset permutations, i.e. the unique permutations of a sequence that can contain duplicate elements,
     because we consider duplicate elements to be identical and hence swapping them is meaningless.
     """
-    yield from keepFirst(permutations(sequence))
+    yield from deduplicate(permutations(sequence))
 
 
 def compositions(n: int) -> Generator[TokenLengths,None,None]:

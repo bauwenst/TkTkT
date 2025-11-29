@@ -2,7 +2,7 @@ from typing import Dict, List, Union
 
 from fiject import StreamingMultiHistogram, StreamingVariableGranularityHistogram, BinSpec, VariableGranularityHistogram, FIJECT_DEFAULTS, HistoBars, CacheMode
 
-from ...interfaces.tokeniser import TokeniserWithFiniteTypeDomain, Tokeniser
+from ...interfaces.tokeniser import Tokeniser, TokeniserWithVocabulary
 from ...interfaces.factories import Deserialiser
 from ...util.timing import timeit
 from ...util.iterables import streamProgress, allEqual
@@ -13,7 +13,7 @@ from ...util.strings import tokensToBitstring
 
 @timeit
 def visualiseCharsVersusTokensRelationships(
-    tokenisers: List[TokeniserWithFiniteTypeDomain],
+    tokenisers: List[TokeniserWithVocabulary],
     raw_words: NamedIterable[str], counts: Dict[str, float]=None,
     n_samples_per_word: int=1, do_progressbar: bool=False,
     do_measure_original_word_length: bool=False, exclude_words_over_length: int=100
@@ -135,7 +135,7 @@ def visualiseCharsVersusTokensRelationships(
     return histo_segmentality.getSummaries(), histo_chars_across_tokens.getSummaries().popitem()[1]
 
 
-def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithFiniteTypeDomain, Deserialiser]], names: List[str]=None):
+def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithVocabulary, Deserialiser]], names: List[str]=None):
     """
     Visualises the amount of characters in types of one or more subword vocabularies.
     """

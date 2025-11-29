@@ -12,7 +12,7 @@ import warnings
 import json
 from transformers import PreTrainedTokenizer, SpecialTokensMixin
 
-from .tokeniser import TokeniserWithFiniteTypeDomain
+from .tokeniser import TokeniserWithVocabulary, WithSpecials
 from .identifiers import Specials
 
 
@@ -89,7 +89,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     which we want to avoid (the entire raison d'être of TkTkT...).
     """
 
-    def __init__(self, backend: TokeniserWithFiniteTypeDomain, specials_from: SpecialTokensMixin=None, **kwargs):
+    def __init__(self, backend: TokeniserWithVocabulary[WithSpecials], specials_from: SpecialTokensMixin=None, **kwargs):
         self.backend = backend
 
         if specials_from is None:
@@ -114,10 +114,10 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
 
     @property
     def vocab_size(self) -> int:
-        return self.backend.getVocabSize()
+        return self.backend.vocab.size()
 
     def get_vocab(self) -> Mapping[str,int]:
-        return {t: self.backend.typeToId(t) for t in self.backend.types()}
+        return self.backend.vocab.unsafe()
 
     def _convert_token_to_id(self, token: str) -> int:
         try:  # try-except is the fastest method to check+return a key in use cases where most lookups are valid (https://stackoverflow.com/a/28860508/9352077). Additionally, you don't pre-evaluate the unk ID, which otherwise causes an infinite loop since self.unk_token_id is actually a method call that itself calls _convert_token_to_id to get the ID of UNK (and assumes that this exists). Hence, you should only evaluate self.unk_token_id when you actually need it, not just any call.
@@ -152,6 +152,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
 
             return (file_path.as_posix(),)
 
+    # TODO: Now that we have Specials, this can be as custom as you want!
     def build_inputs_with_special_tokens(self, token_ids_0: List[int], token_ids_1: Optional[List[int]]=None) -> List[int]:
         if token_ids_1 is None:
             return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
@@ -243,8 +244,7 @@ class AutoSpecials:
 
         mixin = SpecialTokensMixin()
 
-        for field_name in specials.__iter_keys__():
-            special = field_name[field_name.rfind(".") + 1:]
+        for special, _ in specials.__iter_keys__():
             special_lower = special.lower()
             special = specials_formatter(special)
             # id = getattr_recursive(specials, special)  # As it turns out, HF's SpecialTokensMixin does NOT store identifiers. It stores strings that are passed to the token-to-id convertor method. Horrific.

@@ -1,10 +1,15 @@
 from tktkt.wrappers.fallbackvocab import TokeniserWithByteFallback
 from tktkt.factories.preprocessing import IdentityPreprocessor
-from tktkt.models.greedy.directional import L2R_Greedy
+from tktkt.models.greedy.directional import L2R_Greedy, Vocab
+from tktkt.interfaces.identifiers import NoSpecials
 
 
 def test_bytefallback():
-    tk = L2R_Greedy(preprocessor=IdentityPreprocessor, vocab={"[UNK]": -1, "a": 0, "b": 1, "c": 2, "L": 3, "n": 4}, unk_type="[UNK]")
+    tk = L2R_Greedy(preprocessor=IdentityPreprocessor, vocab=Vocab(
+        ["a", "b", "c", "L", "n"],
+        specials=NoSpecials(),
+        unk_id=0
+    ))
 
     without_unk = "abc"
     with_unk = "abdefghijklm"

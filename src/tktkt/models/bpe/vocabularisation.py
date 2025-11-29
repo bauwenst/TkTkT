@@ -14,9 +14,9 @@ from modest.formats.tsv import iterateTsv
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
 from ...factories.preprocessing import KudoSpaceMarker
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab, DEFAULT_FIVE_SPECIALS
+from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab
 from ...util.dicts import substituteKey, argmax
-from ...util.iterables import streamProgress
+from ...util.iterables import streamProgress, deduplicate
 from ...util.printing import logger, pluralise
 
 
@@ -194,8 +194,7 @@ class BPEVocabulariser(Vocabulariser):
                            preprocessor=self.preprocessor, marker=self._marker)
 
         # Deduce vocab
-        alphabet = self.preprocessor.getAlphabet()
-        vocab = BPEVocabulariser.deduceVocabFromMerges(path_merges, alphabet.getCharacters() if alphabet else [])
+        vocab = BPEVocabulariser.deduceVocabFromMerges(path_merges, partial_alphabet=self.preprocessor.getAlphabet())
         self._storeVocab(vocab, out_folder)
         return out_folder
 
@@ -217,12 +216,11 @@ class BPEVocabulariser(Vocabulariser):
         # tokeniser.decoder       = decoders.Metaspace(replacement=self.marker.substitute)
 
         # Trainer interface according to https://huggingface.co/docs/tokenizers/api/trainers (ignore the type hints that complain):
-        alphabet = self.preprocessor.getAlphabet()
         trainer = trainers.BpeTrainer(
             vocab_size=self._size,
             show_progress=True,
-            special_tokens=DEFAULT_FIVE_SPECIALS.all_special_tokens,
-            initial_alphabet=alphabet.getCharacters() if alphabet else [],  # after https://huggingface.co/docs/tokenizers/training_from_memory
+            special_tokens=[],
+            initial_alphabet=self.preprocessor.getAlphabet(),  # after https://huggingface.co/docs/tokenizers/training_from_memory
             max_token_length=self._max_token_length
         )
         tokeniser.train_from_iterator(sentence_iterable, trainer=trainer)
@@ -255,9 +253,6 @@ class BPEVocabulariser(Vocabulariser):
             word_or_sentence_iterable = self._preprocessSentencesToSentences(word_or_sentence_iterable, sep=EXOTIC_SCRIPT_PRETOKEN_SEPARATOR)
 
         # print(repr(next(iter(iterable))))
-        alphabet = self.preprocessor.getAlphabet()
-        required_characters = alphabet.getCharacters() if alphabet else []
-
         KudoPieceVocabulariser._callSentencePieceTrainer(
             actual_vocab_size=self._size,
             model_type="bpe",
@@ -283,7 +278,7 @@ class BPEVocabulariser(Vocabulariser):
         )
 
         # Get vocab
-        vocab = self._standardiseSpmVocab(output_prefix.with_suffix(".vocab"), required_characters)
+        vocab = self._standardiseSpmVocab(output_prefix.with_suffix(".vocab"), required_chars=self.preprocessor.getAlphabet())
         self._storeVocab(vocab, output_prefix.parent)
 
         # Deduce merges
@@ -398,7 +393,7 @@ class BPEVocabulariser(Vocabulariser):
                     if line.strip("\r\n") and not line.startswith("#version")]
 
     @staticmethod
-    def deduceVocabFromMerges(mergefile: Path, alphabet: List[str]=None) -> Dict[str, int]:
+    def deduceVocabFromMerges(mergefile: Path, partial_alphabet: List[str]=None) -> Dict[str, int]:
         # Summarise merges
         with open(mergefile, "r", encoding="utf-8") as in_handle:
             merges = [line.strip() for line in in_handle if line != "#version: 0.2\n"]
@@ -411,13 +406,13 @@ class BPEVocabulariser(Vocabulariser):
             produced_types.add("".join(parts))
 
         # Get alphabet
-        if not alphabet:
-            alphabet = used_types - produced_types
+        if not partial_alphabet:
+            partial_alphabet = []
+        partial_alphabet = list(deduplicate(partial_alphabet + sorted(used_types - produced_types)))
 
         # Combine everything
         vocab = {c: i for i, c in enumerate(
-            DEFAULT_FIVE_SPECIALS.all_special_tokens +
-            sorted(alphabet) +
+            partial_alphabet +
             list(produced_types)
         )}
 
@@ -496,7 +491,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
         super().__init__(
             vocab_size=vocab_size,
             character_coverage=character_coverage,
-            ensured_vocabulary=preprocessor.getAlphabet().getCharacters() if preprocessor.getAlphabet() else [],
+            ensured_vocabulary=preprocessor.getAlphabet(),
             max_type_length=max_type_length,
             include_specials=False
         )

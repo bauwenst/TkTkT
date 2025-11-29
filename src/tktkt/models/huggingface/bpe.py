@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Union
 
 from transformers import PreTrainedTokenizerFast
 from tokenizers import Tokenizer
@@ -7,16 +7,17 @@ from tokenizers.models import BPE
 from .wrapper import HuggingFaceTokeniser
 from ..bpe.vocabularisation import Merges
 from ...interfaces import Preprocessor, Vocab
+from ...interfaces.identifiers import WithSpecials
 
 
-class HuggingFaceBPETokeniser(HuggingFaceTokeniser):
+class HuggingFaceBPETokeniser(HuggingFaceTokeniser[WithSpecials]):
     """
     Constructs a BPE tokeniser with Rust backend.
     https://huggingface.co/docs/tokenizers/api/models#tokenizers.models.BPE
     """
 
-    def __init__(self, vocab: Vocab, merges: Merges, dropout: float=0.0, preprocessor: Optional[Preprocessor]=None):
-        backend_of_backend_of_backend = BPE(vocab=vocab, merges=merges, dropout=dropout if 0.0 < dropout <= 1.0 else None)
+    def __init__(self, vocab: Union[Vocab[WithSpecials], dict[str,int]], merges: Merges, dropout: float=0.0, preprocessor: Optional[Preprocessor]=None):
+        backend_of_backend_of_backend = BPE(vocab=dict(vocab), merges=merges, dropout=dropout if 0.0 < dropout <= 1.0 else None)
         backend_of_backend            = Tokenizer(model=backend_of_backend_of_backend)
         backend                       = PreTrainedTokenizerFast(tokenizer_object=backend_of_backend)
         super().__init__(backend)

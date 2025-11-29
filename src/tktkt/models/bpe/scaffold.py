@@ -22,7 +22,7 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
         super().__init__(
             vocab_size=vocab_size,
             character_coverage=character_coverage,
-            ensured_vocabulary=preprocessor.getAlphabet().getCharacters() if preprocessor.getAlphabet() else [],
+            ensured_vocabulary=preprocessor.getAlphabet(),
             max_type_length=max_type_length,
             include_specials=False
         )

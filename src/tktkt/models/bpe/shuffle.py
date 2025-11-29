@@ -10,12 +10,11 @@ RNG = npr.default_rng(0)
 class ShuffledBPE(DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList, unk_type: str=None,
+                 vocab: Vocab, merges: MergeList,
 
                  constrained: bool=True):
         super().__init__(
             preprocessor=preprocessor,
-            unk_type=unk_type,
 
             vocab=vocab,
             merges=merges

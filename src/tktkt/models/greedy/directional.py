@@ -12,12 +12,10 @@ from typing import List
 
 from math import inf
 
-from ...interfaces import Preprocessor
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Vocab
-from ...util.types import Tokens
+from ...interfaces.tokeniser import *
 
 
-class L2R_Greedy(TokeniserWithVocabDict):
+class L2R_Greedy(TokeniserWithVocabulary[WithSpecials]):
     """
     Note that you can write a left-to-right tokeniser in two ways:
         - Lempel-Ziv-style, where you select progressively larger subwords and stop the moment you encounter a subword
@@ -48,7 +46,7 @@ class L2R_Greedy(TokeniserWithVocabDict):
 MaxMatch = L2R_Greedy
 
 
-class L2R_Lazy(TokeniserWithVocabDict):
+class L2R_Lazy(TokeniserWithVocabulary[WithSpecials]):
     """
     "Lazy" like a lazy regex operator: matches as few characters as possible in order to have a match, i.e. find a string
     unknown to the vocabulary, at which point the token so far will be grouped.
@@ -80,7 +78,7 @@ class L2R_Lazy(TokeniserWithVocabDict):
         return tokens
 
 
-class R2L_Greedy(TokeniserWithVocabDict):
+class R2L_Greedy(TokeniserWithVocabulary[WithSpecials]):
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
@@ -99,7 +97,7 @@ class R2L_Greedy(TokeniserWithVocabDict):
         return tokens
 
 
-class R2L_Lazy(TokeniserWithVocabDict):
+class R2L_Lazy(TokeniserWithVocabulary[WithSpecials]):
 
     def tokenise(self, word: str) -> List[str]:
         tokens = []
@@ -121,11 +119,11 @@ class R2L_Lazy(TokeniserWithVocabDict):
         return tokens
 
 
-class L2R_R2L_Alternating(TokeniserWithVocabDict):
+class L2R_R2L_Alternating(TokeniserWithVocabulary[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab,
                  start_left: bool=True):
-        super().__init__(preprocessor=preprocessor, vocab=vocab, unk_type=unk_type)
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
         self._start_left = start_left
 
     def tokenise(self, pretoken: str) -> Tokens:
@@ -161,11 +159,11 @@ class L2R_R2L_Alternating(TokeniserWithVocabDict):
         return left_tokens + right_tokens
 
 
-class L2R2L_Greedy(TokeniserWithVocabDict):
+class L2R2L_Greedy(TokeniserWithVocabulary[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab,
                  prefer_left: bool=True):
-        super().__init__(preprocessor=preprocessor, vocab=vocab, unk_type=unk_type)
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
         self._prefer_left = prefer_left
 
     def tokenise(self, pretoken: str) -> Tokens:
@@ -213,7 +211,7 @@ class L2R2L_Greedy(TokeniserWithVocabDict):
         return left_tokens + right_tokens
 
 
-class Xu(TokeniserWithVocabDict):
+class Xu(TokeniserWithVocabulary[WithSpecials]):
     """
     Models the inference method described in the VOLT paper (Xu 2021). It might just be an incorrect description of
     BPE, but it's worth actually attempting this weird algorithm:

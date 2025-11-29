@@ -1,13 +1,19 @@
-import warnings
+from typing import Iterable, Generic
 from abc import ABC, abstractmethod
-from typing import List, Iterable
 
-from .vocabulariser import Vocab
+from .identifiers import Vocab, WithSpecials
 from .preparation import Preprocessor
+from ..util.exceptions import MissingUnkError
 from ..util.types import Tokens
 
 
+__all__ = ["Preprocessor", "Tokeniser", "TokeniserWithVocabulary", "Vocab", "WithSpecials", "Tokens"]
+
+
 class Tokeniser(ABC):
+    """
+    Subword tokeniser, i.e. an algorithm that turns a string into a list of one or more strings.
+    """
 
     def __init__(self, preprocessor: Preprocessor):
         self.preprocessor = preprocessor
@@ -16,7 +22,7 @@ class Tokeniser(ABC):
     def tokenise(self, pretoken: str) -> Tokens:
         pass
 
-    def prepareAndTokenise(self, text: str) -> Tokens:
+    def prepareAndTokenise(self, text: str) -> Tokens:  # TODO: Should rename this to preprocessThenTokenise() or tokeniseAfterPreprocessing(), but I will keep this for a 2026 version.
         tokens = []
         for pretoken in self.preprocessor.do(text):
             tokens.extend(self.tokenise(pretoken))
@@ -29,68 +35,66 @@ class Tokeniser(ABC):
         return self.getName()
 
 
-class TokeniserWithFiniteIdRange(Tokeniser):
+class TokeniserWithVocabulary(Tokeniser, Generic[WithSpecials]):
+    """
+    Subword tokeniser which additionally contains a bijection from strings it produces to integer identifiers
+    (except for a default UNK identifier which many strings can map to, namely all that don't have a unique integer identifier).
 
-    @abstractmethod
-    def typeToId(self, t: str) -> int:
-        pass
+    By default, a tokeniser of this class is also able to enumerate the types that belong to its identifiers.
+    """
+    # Implementation note:
+    #     Tokenisers that are not injective (i.e. many tokens can map to the same ID) can still be modelled as a bijective
+    #     tokeniser, but with an extra mapping between their output space and the vocabulary's input space. In that case, the
+    #     vocabulary contains surrogate keys that have no surface-level meaning (e.g. V = {"token1": 1, "token2": 2, ...}
+    #     and M = {"cat": "token1", "dog": "token1", "giraffe": "token1", "house": "token2", ...}) and the implementer can
+    #     choose which strings to expose instead.
 
-    @abstractmethod
-    def ids(self) -> Iterable[int]:
-        pass
-
-    def hasId(self, i: int) -> bool:
-        return i in self.ids()
-
-    def getVocabSize(self) -> int:
-        return len(set(self.ids()))
-
-
-class TokeniserWithFiniteTypeDomain(TokeniserWithFiniteIdRange):
-
-    @abstractmethod
-    def idToType(self, i: int) -> str:
-        pass
-
-    @abstractmethod
-    def types(self) -> Iterable[str]:
-        pass
-
-    def hasType(self, t: str) -> bool:
-        return t in self.types()
-
-
-class TokeniserWithVocabDict(TokeniserWithFiniteTypeDomain):
-
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, unk_type: str=None):
-        super().__init__(preprocessor)
-        self.vocab         = vocab
-        self.reverse_vocab = {v:k for k,v in vocab.items()}
-        self.unk = unk_type
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials]):
+        super().__init__(preprocessor=preprocessor)
+        self.vocab          = vocab
+        self._reverse_vocab = {v:k for k,v in vocab.items()}
+        assert len(self.vocab) == len(self._reverse_vocab)
 
         self._accept_all_types = False  # if True, overrides hasType() by always returning True.
 
-        if self.unk is not None and not self.hasType(self.unk):
-            raise ValueError(f"The given vocabulary does not have an ID defined for the given UNK type '{unk_type}'.")
-        if len(self.vocab) != len(self.reverse_vocab):
-            warnings.warn("Tokeniser with non-injective vocabulary instantiated. This means some types will never result from decoding their ID, since another type has the same ID.")
+    # Iteration:
 
-    ########################################################
+    def types(self) -> Iterable[str]:
+        """The strings that can be produced as tokens by this tokeniser. Does not include specials because they aren't strings."""
+        return self.vocab.keys()
+
+    def ids(self) -> Iterable[int]:
+        """The IDs belonging to the tokens produced by .types() (not necessarily in the right order)."""
+        return self.vocab.values()
+
+    # Conversion:
 
     def typeToId(self, t: str) -> int:
+        """Convert the given type/token to an ID. Note: explicitly NOT meant for specials. Use .vocab.specials for this."""
         try:  # try-except is the fastest method to check+return a key in use cases where most lookups are valid (https://stackoverflow.com/a/28860508/9352077).
             return self.vocab[t]
         except:
-            if self.unk is not None:
-                return self.vocab[self.unk]
+            if self.vocab.UNK is not None:
+                return self.vocab.UNK
             else:
-                raise RuntimeError(f"Unknown vocabulary type '{t}' cannot be converted to ID, and no UNK is defined.")
+                raise MissingUnkError(f"Token '{t}' has no ID, and the Vocab defines no UNK ID.")
 
-    def types(self) -> Iterable[str]:
-        return self.vocab.keys()
+    def idToType(self, i: int) -> str:
+        try:
+            return self._reverse_vocab[i]
+        except:
+            if i in self.vocab.specials:
+                return ""
+            else:
+                raise RuntimeError(f"Unknown ID {i} cannot be decoded to a string type nor a special.")
+
+    # Membership:
 
     def hasType(self, t: str) -> bool:
         return self._accept_all_types or t in self.vocab
+
+    def hasId(self, i: int) -> bool:
+        return i in self._reverse_vocab
 
     def enableInfiniteDomain(self, enable: bool):
         """
@@ -98,31 +102,12 @@ class TokeniserWithVocabDict(TokeniserWithFiniteTypeDomain):
         but .hasType() will always return True.
 
         This is technically incorrect, but has its uses. In particular, use this if you want to test the behaviour of a
-        TokeniserWithVocabDict when its output isn't constrained.
+        TokeniserWithVocabulary when its output isn't constrained.
         """
         self._accept_all_types = enable
 
-    ########################################################
 
-    def idToType(self, i: int) -> str:
-        try:
-            return self.reverse_vocab[i]
-        except:
-            raise RuntimeError(f"Unknown ID {i} cannot be decoded to a string type.")
-
-    def ids(self) -> Iterable[int]:
-        return self.vocab.values()
-
-    def hasId(self, i: int) -> bool:
-        return i in self.reverse_vocab
-
-    ########################################################
-
-    def getVocabSize(self) -> int:
-        return len(self.reverse_vocab)
-
-
-def prepare_tokenise_decode(string: str, tokeniser: Tokeniser, preprocessor: Preprocessor) -> List[str]:
+def prepare_tokenise_decode(string: str, tokeniser: Tokeniser, preprocessor: Preprocessor) -> list[str]:
     """
     Tokenise, but afterwards, run each produced token back through the (inverse of) the pretokeniser + (invertible) mappings.
 

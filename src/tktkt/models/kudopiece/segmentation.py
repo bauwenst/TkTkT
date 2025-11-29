@@ -1,16 +1,16 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from sentencepiece import SentencePieceProcessor
 
-from ...interfaces.tokeniser import TokeniserWithVocabDict, Preprocessor, Vocab
+from ...interfaces.tokeniser import *
 from .vocabularisation import KudoPieceVocabulariser
 
 
-class KudoPieceTokeniser(TokeniserWithVocabDict):
+class KudoPieceTokeniser(TokeniserWithVocabulary[WithSpecials]):
 
     def __init__(self, preprocessor: Preprocessor, model_file: Path, kbest: int=1, smoothing_power: float=1,
-                 vocab: Optional[Vocab]=None, special_tokens: Optional[List[str]]=None):
+                 vocab: Optional[Vocab[WithSpecials]]=None, special_tokens: Optional[WithSpecials]=None):
         """
         :param kbest: KudoPiece finds the k segmentations s with the highest joint token probabilities P(s)...
         :param smoothing_power: ...and samples across those k proportionally to P(s)^smoothing_power.
@@ -24,10 +24,10 @@ class KudoPieceTokeniser(TokeniserWithVocabDict):
         self.core = SentencePieceProcessor()
         self.core.Init(model_file.as_posix())
         if vocab is None:
-            vocab = KudoPieceVocabulariser.load(model_file.with_suffix(".vocab"), existing_types=special_tokens)
-        super().__init__(preprocessor, vocab=vocab)
+            vocab = KudoPieceVocabulariser.load(model_file.with_suffix(".vocab"), specials=special_tokens)
+        super().__init__(preprocessor=preprocessor, vocab=vocab)
 
-    def tokenise(self, pretoken: str) -> List[str]:
+    def tokenise(self, pretoken: str) -> Tokens:
         tokens = self.core.EncodeAsPieces(pretoken, enable_sampling=self._is_stochastic, nbest_size=self._k, alpha=self._alpha)
         return tokens
 

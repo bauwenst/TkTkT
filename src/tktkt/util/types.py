@@ -2,8 +2,8 @@
 Contains type aliases and classes which are mainly a type of data -- something you could see in a type annotation of
 a method/function -- rather than being focused on operations.
 """
-from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Dict, Sequence
-from abc import abstractmethod
+from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Dict, Sequence, Mapping
+from abc import abstractmethod, ABC
 from datasets import Dataset, IterableDataset
 from functools import partial
 import numpy.random as npr
@@ -236,3 +236,67 @@ def L(name: Languish) -> Language:
                 raise ValueError(f"Language cannot be recognised: {name}")
     else:
         raise TypeError(f"Unrecognised input type: {type(name)}.")
+
+
+class ExtensibleMapping(Mapping, ABC):  # (No longer used since this assumes specials are added AFTER the vocab exists, not BEFORE.)
+
+    def __init__(self):
+        self.hardcoded = dict()
+
+    @abstractmethod
+    def _get(self, key):
+        pass
+
+    @abstractmethod
+    def _keys(self) -> Iterable:
+        pass
+
+    @abstractmethod
+    def _values(self) -> Iterable:
+        pass
+
+    @abstractmethod
+    def _items(self) -> Iterable:
+        pass
+
+    def get(self, key):
+        try:
+            return self.hardcoded[key]
+        except:
+            try:
+                return self._get(key)
+            except:
+                return None
+
+    def set(self, key, value):
+        original_value = value
+        while value in set(self.values()):
+            value += 1
+        self.hardcoded[key] = value
+        if value != original_value:
+            import warnings
+            warnings.warn(f"Requested to set value {original_value} for key {key}, but was increased to {value} due to collisions.")
+
+    def keys(self):
+        yield from self.hardcoded.keys()
+        yield from self._keys()
+
+    def values(self):
+        yield from self.hardcoded.values()
+        yield from self._values()
+
+    def items(self):
+        yield from self.hardcoded.items()
+        yield from self._items()
+
+    def __getitem__(self, key):
+        return self._get(key)
+
+    def __len__(self):
+        count = 0
+        for _ in self:
+            count += 1
+        return count
+
+    def __iter__(self):
+        yield from self.keys()
