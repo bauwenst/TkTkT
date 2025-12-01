@@ -104,6 +104,7 @@ class ClassicBPE(DeterministicBPETokeniser[WithSpecials]):
             vocab=vocab,
             merges=merges,
 
+            iterations=0,
             do_morphemic_knockout=False,
             do_reification=False
         )

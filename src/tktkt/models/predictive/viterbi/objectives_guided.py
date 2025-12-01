@@ -660,8 +660,7 @@ class BoundaryPrefixAndSuffixLengthExtended(ScoreGeneratorUsingCharacterClassifi
 
 ########################################################################################################################
 
-from ....preparation.boundaries import BoundaryMarkerLocation
-from ....preparation.splitters import OnWhitespaceAndAddMarker
+from ....preparation.boundaries import BoundaryMarkerLocation, BoundaryMarker
 
 class GoldSplits(CharacterClassifier):
     """
@@ -672,8 +671,9 @@ class GoldSplits(CharacterClassifier):
            preprocessor.undo() probably works.
     """
 
-    def __init__(self, pretokeniser: OnWhitespaceAndAddMarker):
-        self.pretokeniser = pretokeniser
+    def __init__(self, boundary_marker: BoundaryMarker):
+        from ....preparation.splitters import OnWhitespaceAndAddMarker
+        self.pretokeniser = OnWhitespaceAndAddMarker(replacement=boundary_marker)
         self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == BoundaryMarkerLocation.START)
 
         from bpe_knockout.project.config import morphologyGenerator
