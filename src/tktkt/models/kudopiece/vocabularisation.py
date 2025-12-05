@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
+from ...interfaces.vocabulariser import *
 from ...util.iterables import streamPrint, streamProgress, T
 
 
@@ -33,7 +33,7 @@ class KudoPieceArguments:
     num_sub_iterations: int=2
 
 
-class KudoPieceVocabulariser(Vocabulariser):
+class KudoPieceVocabulariser(UnsupervisedVocabulariser):
     """
     Wrapper around the SentencePiece trainer for KudoPiece.
     This trainer has quite a large memory footprint. Expect every million sentences to consume about 80 GiB of RAM

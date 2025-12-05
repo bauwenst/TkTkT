@@ -4,8 +4,8 @@ from abc import abstractmethod
 from functools import lru_cache
 
 from bpe_knockout import *
-from bpe_knockout.auxiliary.tokenizer_interface import HuggingFaceTokeniserPath
-from bpe_knockout.knockout.core import MergeList
+from bpe_knockout.util.storage import HuggingFaceTokeniserPath
+from bpe_knockout.model.graph import MergeList
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 from ...interfaces.preparation import TextMapper, Preprocessor
@@ -38,15 +38,9 @@ class SimplifiedBTEInterface(BTE[WithSpecials]):
         super().__init__(
             # Init
             init_config=config,
-            starting_vocab=vocab, starting_mergelist=merges,
+            vocab=vocab, merges=merges,
 
-            # Prep
             preprocessor=preprocessor,
-
-            # Niche parameters
-            execution_policy=ExecutionPolicy.IMMEDIATE,
-            holdout=None,
-            quiet=True
         )
 
     @classmethod

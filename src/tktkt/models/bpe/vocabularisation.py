@@ -7,14 +7,14 @@ import json
 from tqdm.auto import tqdm
 
 from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase
-from bpe_knockout.knockout.core import MergeOnDisk
-from bpe_knockout.auxiliary.tokenizer_interface import SennrichTokeniserPath, HuggingFaceTokeniserPath
+from bpe_knockout.model.graph import MergeOnDisk
+from bpe_knockout.util.storage import SennrichTokeniserPath, HuggingFaceTokeniserPath
 from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
 from ...factories.preprocessing import KudoSpaceMarker
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, NamedIterable, UnidentifiedVocab
+from ...interfaces.vocabulariser import *
 from ...util.dicts import substituteKey, argmax
 from ...util.iterables import streamProgress, deduplicate
 from ...util.printing import logger, pluralise
@@ -31,7 +31,7 @@ class BpeTrainerImplementation(Enum):
     SBPE          = 4
 
 
-class BPEVocabulariser(Vocabulariser):
+class BPEVocabulariser(UnsupervisedVocabulariser):
     """
     Create a BPE tokeniser from a corpus.
 
@@ -531,7 +531,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
         return folder
 
 
-class _VocabulariserWithChizhovBackend(Vocabulariser):
+class _VocabulariserWithChizhovBackend(UnsupervisedVocabulariser):
     """
     Puts a Vocabulariser interface around the pickybpe package.
     Supports word frequency files, HuggingFace datasets, ... which were not supported by the original codebase.

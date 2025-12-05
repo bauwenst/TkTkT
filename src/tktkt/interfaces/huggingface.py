@@ -89,35 +89,37 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     which we want to avoid (the entire raison d'être of TkTkT...).
     """
 
-    def __init__(self, backend: TokeniserWithVocabulary[WithSpecials], specials_from: SpecialTokensMixin=None, **kwargs):
+    def __init__(self, backend: TokeniserWithVocabulary[WithSpecials], specials_map: dict[str,str]=None, specials_formatter: Callable[[str],str]=None, **kwargs):
+        """
+        :param specials_map: Maps the constructor arguments of SpecialTokensMixin, i.e. "bos_token", "eos_token", ...
+                             to the special keys in the given tokeniser's vocabulary's Specials.
+                             For example: {"bos_token": "BOS", "eos_token": "EOS", ...}
+        """
         self.backend = backend
+        self._specials_formatter = specials_formatter or (lambda s: "[" + s + "]")
 
-        if specials_from is None:
-            specials_from = AutoSpecials.fromStrings(self.backend.types())
+        if specials_map is None:
+            formatted_specials_map = AutoSpecials.fromTktkt(self.backend.vocab.specials, specials_formatter=self._specials_formatter).special_tokens_map
+        else:
+            formatted_specials_map = {k: self._specials_formatter(v) for k,v in specials_map.items()}
+        if self.backend.vocab.UNK is not None:
+            formatted_specials_map["unk_token"] = self._specials_formatter("UNK")
 
-        # TODO: Since this constructor is given the specials that we want, you can actually quite safely add them to
-        #       the vocab if it's a dictionary. You don't let HF do it because HF can't be trusted with making new IDs, but we can.
-        # Special tokens: HF allows you to either ADD them or DECLARE them. I choose to declare them, because adding them
-        #                 isn't done safely. Also, because HuggingFace doesn't check whether declared special tokens exist
-        #                 in the vocab (and will return the ID for UNK if you ask for their ID), I do that here.
-        vocab_keys = set(self.backend.types())                           # key "[UNK]"     -> value 0
-        special_values = set(specials_from.special_tokens_map.values())  # key "unk_token" -> value "[UNK]"
-        assert len(vocab_keys - special_values) == len(vocab_keys) - len(special_values)
+        assert not(set(formatted_specials_map.values()) & set(self.backend.vocab))
+
+        # HF allows you to either ADD them or DECLARE specials. I choose to declare them, because adding them isn't done safely. Note that HuggingFace doesn't check whether declared special tokens exist in the vocab (and will return the ID for UNK if you ask for their ID), but our Vocab does ensure this safety by construction.
         # Adding them:
-        #   self.add_special_tokens(specials_from.special_tokens_map)  # We cannot use this because in case the tokens are missing, it makes new IDs using len(vocab) and that could be an existing ID after knockout.
+        #   self.add_special_tokens(formatted_specials_map)  # We cannot use this because in case the tokens are missing, it makes new IDs using len(vocab) and that could be an existing ID after knockout.
         # Declaring them:
-        kwargs.update(specials_from.special_tokens_map)
+        kwargs.update(formatted_specials_map)
         super().__init__(**kwargs)
-
-    def _tokenize(self, text, **kwargs) -> List[str]:
-        return self.backend.tokenise(text)  #, **kwargs)  # TODO: Supporting HF's kwargs isn't important, right?
 
     @property
     def vocab_size(self) -> int:
         return self.backend.vocab.size()
 
-    def get_vocab(self) -> Mapping[str,int]:
-        return self.backend.vocab.unsafe()
+    def get_vocab(self) -> dict[str,int]:
+        return self.backend.vocab.unsafe(specials_formatter=self._specials_formatter)
 
     def _convert_token_to_id(self, token: str) -> int:
         try:  # try-except is the fastest method to check+return a key in use cases where most lookups are valid (https://stackoverflow.com/a/28860508/9352077). Additionally, you don't pre-evaluate the unk ID, which otherwise causes an infinite loop since self.unk_token_id is actually a method call that itself calls _convert_token_to_id to get the ID of UNK (and assumes that this exists). Hence, you should only evaluate self.unk_token_id when you actually need it, not just any call.
@@ -128,15 +130,25 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     def _convert_id_to_token(self, index: int) -> str:
         return self.backend.idToType(index)
 
-    def tokenize(self, text: str, **kwargs) -> List[str]:
+    def _tokenize(self, text, **kwargs) -> list[str]:
+        return self.backend.tokenise(text)  #, **kwargs)  # TODO: Supporting HF's kwargs isn't important, right?
+
+    def tokenize(self, text: str, **kwargs) -> list[str]:
+        """
+        Overrides the implementation of .tokenize() in `transformers` altogether, because it is basically a selective
+        pretokeniser on top of ._tokenize(), and we don't want to allow the possibility of selectively not tokenising
+        the surface string belonging to a special in the unsafe vocabulary.
+        The tokeniser itself cannot do this itself because it doesn't use the unsafe vocabulary, so it will always
+        segment those surface strings IF GIVEN them.
+        """
         return self.backend.prepareAndTokenise(text)  #, **kwargs)
 
-    def convert_tokens_to_string(self, tokens: List[str]) -> str:
+    def convert_tokens_to_string(self, tokens: list[str]) -> str:
         return self.backend.preprocessor.undo(tokens)
 
     ### Boilerplate below
 
-    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str]=None) -> Tuple[str]:
+    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str]=None) -> tuple[str]:
         mapping = self.get_vocab()
         if not isinstance(mapping, dict):
             warnings.warn("Vocabulary was not saved because it isn't a dictionary.")
@@ -153,7 +165,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
             return (file_path.as_posix(),)
 
     # TODO: Now that we have Specials, this can be as custom as you want!
-    def build_inputs_with_special_tokens(self, token_ids_0: List[int], token_ids_1: Optional[List[int]]=None) -> List[int]:
+    def build_inputs_with_special_tokens(self, token_ids_0: List[int], token_ids_1: Optional[List[int]]=None) -> list[int]:
         if token_ids_1 is None:
             return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
         else:
@@ -230,7 +242,7 @@ class AutoSpecials:
         """
         Tries to automatically map the given TkTkT specials to a HuggingFace mixin.
 
-        Of course, you could (and should) do this manually if you know the subclass the Specials object belongs to.
+        Of course, you could (and should!) do this manually if you know the subclass the Specials object belongs to.
         """
         if specials_formatter is None:
             specials_formatter = lambda s: "[" + s + "]"
@@ -264,9 +276,6 @@ class AutoSpecials:
             elif "pad" in special_lower:
                 if warnIfAlreadyAssigned(mixin.pad_token, special):
                     mixin.pad_token = special
-            elif "unk" in special_lower:
-                if warnIfAlreadyAssigned(mixin.unk_token, special):
-                    mixin.unk_token = special
             elif "msk" in special_lower or "mask" in special_lower:
                 if warnIfAlreadyAssigned(mixin.mask_token, special):
                     mixin.mask_token = special

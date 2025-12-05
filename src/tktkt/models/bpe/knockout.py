@@ -3,11 +3,11 @@ import warnings
 from .base import *
 from ...util.types import L, Languish
 
-CONFIGS = {
-    L("English"): setupEnglish(),
-     L("German"): setupGerman(),
-      L("Dutch"): setupDutch()
-}
+# CONFIGS = {
+#     L("English"): setupEnglish(),
+#      L("German"): setupGerman(),
+#       L("Dutch"): setupDutch()
+# }
 
 
 class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
@@ -60,17 +60,17 @@ class BPEKnockout(DeterministicBPETokeniserWithLanguage):
         )
 
     @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Languish) -> Self:
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, specials: AutoVocabSpecs[WithSpecials],
+                        language: Languish) -> Self:
         """
         Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
         (rather than wrapping it), and *also* apply knockout using the given language.
         """
-        vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
 
-            vocab=vocab_and_merges.loadVocabulary(),
-            merges=vocab_and_merges.loadMerges(),
+            vocab=AutoVocab.fromTokenizer(hf_bpe_tokenizer, specials),
+            merges=HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer).loadMerges(),
 
             language=language
         )
@@ -96,13 +96,13 @@ class ReBPE(DeterministicBPETokeniserWithLanguage):
         )
 
     @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, language: Languish, iterations: int, backwards_compatible: bool) -> Self:
-        vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
+    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, specials: AutoVocabSpecs[WithSpecials],
+                        language: Languish, iterations: int, backwards_compatible: bool) -> Self:
         return cls(
             preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
 
-            vocab=vocab_and_merges.loadVocabulary(),
-            merges=vocab_and_merges.loadMerges(),
+            vocab=AutoVocab.fromTokenizer(hf_bpe_tokenizer, specials),
+            merges=HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer).loadMerges(),
 
             language=language,
 

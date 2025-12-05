@@ -4,6 +4,7 @@ from pathlib import Path
 from collections import Counter
 
 from modest.formats.tsv import iterateTsv
+from modest.interfaces.datasets import ModestDataset
 
 from .identifiers import NoSpecials, UnidentifiedVocab, Vocab, WithSpecials
 from .preparation import Preprocessor
@@ -12,8 +13,8 @@ from ..util.iterables import streamProgress
 from ..util.timing import datetimeDashed
 from ..util.types import Comparable, NamedIterable, HuggingfaceDataset, anypartial
 
-
-TokenSortingKey = Callable[[str], Comparable]
+__all__ = ["Vocabulariser", "UnsupervisedVocabulariser", "SegmentationSupervisedVocabulariser",
+           "Preprocessor", "NamedIterable", "UnidentifiedVocab"]
 
 
 class Vocabulariser(ABC):
@@ -21,9 +22,14 @@ class Vocabulariser(ABC):
     Builds subword vocabularies.
     """
 
-    def __init__(self, name: str, preprocessor: Preprocessor):
+    def __init__(self, name: str):
         self._name = name
-        self.preprocessor = preprocessor
+
+    def _makeOutputFolder(self, extra_suffix: str="") -> Path:
+        """
+        Get a new folder in which to store any files you want to store during vocabularisation.
+        """
+        return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix) + f"_{datetimeDashed()}"])
 
     @classmethod
     @abstractmethod
@@ -33,6 +39,28 @@ class Vocabulariser(ABC):
         Depending on the vocabulariser, this can be a file or folder.
         """
         pass
+
+    @classmethod
+    def load(cls, file_or_folder: Path, specials: WithSpecials=NoSpecials(), filtered_types: set[str]=None, type_sorting_key: Optional[Callable[[str], Comparable]]=None) -> Vocab[WithSpecials]:
+        """
+        Combines the Vocabulariser-specific knowledge of ._load() with the abilities to choose
+            1. which of the loaded types to remove;
+            2. the order of the remaining types;
+            3. which specials to add to them.
+        """
+        filtered_types = filtered_types or set()
+        types = sorted(cls._load(file_or_folder), key=type_sorting_key) if type_sorting_key is not None else cls._load(file_or_folder)
+        return Vocab(filter(lambda t: t not in filtered_types, types), specials, unk_id=0)  # UNK is always 0 in vocabs trained with TkTkT.
+
+
+class UnsupervisedVocabulariser(Vocabulariser):
+    """
+    Vocabulariser which consumes unlabelled text (either as sentences or as words) and produces a vocabulary out of it.
+    """
+
+    def __init__(self, name: str, preprocessor: Preprocessor):
+        super().__init__(name=name)
+        self.preprocessor = preprocessor
 
     @abstractmethod
     def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
@@ -121,12 +149,6 @@ class Vocabulariser(ABC):
                 counter[pretoken] += count
         return NamedIterable(list(counter.items()), name=word_iterable.name)
 
-    def _makeOutputFolder(self, extra_suffix: str="") -> Path:
-        """
-        Get a new folder in which to store any files you want to store during vocabularisation.
-        """
-        return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix) + f"_{datetimeDashed()}"])
-
     # User-facing interface
 
     def vocabulariseFromTsv(self, word_frequency_tsv: Path, name_instead_of_stem: str="") -> Path:
@@ -146,75 +168,12 @@ class Vocabulariser(ABC):
                 .map(anypartial(dict.get, ..., text_field))  # Equivalent to `lambda example: example[text_field]` but this one can be pickled.
         )
 
-    @classmethod
-    def load(cls, file_or_folder: Path, specials: WithSpecials=NoSpecials(), filtered_types: set[str]=None, type_sorting_key: Optional[TokenSortingKey]=None) -> Vocab[WithSpecials]:
-        """
-        Combines the Vocabulariser-specific knowledge of ._load() with the abilities to choose
-            1. which of the loaded types to remove;
-            2. the order of the remaining types;
-            3. which specials to add to them.
-        """
-        filtered_types = filtered_types or set()
-        types = sorted(cls._load(file_or_folder), key=type_sorting_key) if type_sorting_key is not None else cls._load(file_or_folder)
-        return Vocab(filter(lambda t: t not in filtered_types, types), specials, unk_id=0)  # UNK is always 0 in vocabs trained with TkTkT.
 
-    # @classmethod
-    # def _assignIdentifiers(cls, vocab: UnidentifiedVocab, sorting_key: Optional[TokenSortingKey], starting_id: int=0) -> dict[str,int]:
-    #     if sorting_key is None:  # Note that sorted(key=None) still sorts. Here, we allow using the raw order too.
-    #         return {t:i for i,t in enumerate(vocab, start=starting_id)}
-    #     else:
-    #         return {t:i for i,t in enumerate(sorted(vocab, key=sorting_key), start=starting_id)}
+class SegmentationSupervisedVocabulariser(Vocabulariser):
+    """
+    Vocabulariser which takes in a corpus of pre-segmented strings and builds a vocabulary based on that.
+    """
 
-    # @classmethod
-    # def load(cls, file_or_folder: Path, existing_types: Union[Vocab,UnidentifiedVocab]=None, extras_first: bool=False, sorting_key: Optional[TokenSortingKey]=None) -> Vocab:
-    #     """
-    #     Load a vocabulary, i.e. a mapping from strings to integers, from a file/folder stored by this vocabulariser.
-    #     If you declare extra types with an identifier, those identifiers get priority assignment.
-    #     If you declare extra types without identifier, you can choose whether you want them in the front or the back
-    #     of the vocabulary. In both cases, when an extra type exists in the rest of the vocabulary, it is ignored there.
-    #     """
-    #     if existing_types is None:
-    #         existing_types = dict()
-    #
-    #     # Reserve IDs (jump over these when you enumerate identifiers) and types (pretend like these don't exist)
-    #     if isinstance(existing_types, dict):
-    #         reserved_types = set(existing_types.keys())
-    #         reserved_ids   = set(existing_types.values())
-    #     else:
-    #         existing_types = list(existing_types)
-    #         reserved_types = set(existing_types)
-    #         reserved_ids   = set(range(len(existing_types))) if extras_first else set()
-    #
-    #     # Do the actual loading.
-    #     vocabulary = dict()
-    #     id = 0
-    #     for typ in (sorted(cls._load(file_or_folder), key=sorting_key) if sorting_key is not None else cls._load(file_or_folder)):
-    #         while id in reserved_ids:
-    #             id += 1
-    #
-    #         if typ in reserved_types:
-    #             print(f"Warning: special token {typ} is part of the vocabulary. "
-    #                   f"In the future, there will likely be support to keep both at the same time. "
-    #                   f"For now, we will keep the newly requested ID and overwrite its place in the original vocabulary.")
-    #             continue
-    #         elif typ in vocabulary:
-    #             print(f"Warning: token {typ} was generated more than once in the {cls.__name__}. Skipping its duplicate.")
-    #             continue
-    #
-    #         vocabulary[typ] = id
-    #         id += 1
-    #
-    #     # Finally, add the reserved types.
-    #     if isinstance(existing_types, dict):
-    #         vocabulary |= existing_types
-    #         assert list(sorted(vocabulary.values())) == list(range(len(vocabulary))), f"Some of the special tokens {existing_types} fall outside the contiguous vocabulary range."
-    #     else:
-    #         id = 0 if extras_first else len(vocabulary)
-    #         for typ in existing_types:
-    #             vocabulary[typ] = id
-    #             id += 1
-    #
-    #     return vocabulary
-        # tokeniser_vocab = cls._assignIdentifiers(cls._load(file_or_folder), sorting_key=sorting_key, starting_id=len(missing_types))
-        # special_vocab   = {t: i for i,t in enumerate(missing_types)}
-        # return special_vocab | tokeniser_vocab
+    @abstractmethod
+    def vocabulariseFromModest(self, reference: ModestDataset) -> Path:
+        pass

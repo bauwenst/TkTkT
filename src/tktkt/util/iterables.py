@@ -181,6 +181,15 @@ def zipSelf(iterable: Iterable[T], offset: int=1) -> Iterator[Tuple[T,T]]:
         yield buffer.pop(0), thing
 
 
+def swapped(iterable: Iterable[tuple[T,T2]]) -> Iterator[tuple[T2,T]]:
+    """
+    Takes in tuples (A,B) and outputs them as (B,A).
+    Useful e.g. when you enumerate() but want the index to appear second.
+    """
+    for a,b in iterable:
+        yield b,a
+
+
 def streamPrint(iterable: Iterable[T]) -> Iterator[T]:
     for thing in iterable:
         print(thing)

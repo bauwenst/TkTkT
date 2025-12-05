@@ -11,13 +11,13 @@ import numpy as np
 import numpy.random as npr
 from collections import Counter
 
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab
+from ...interfaces.vocabulariser import *
 from ...util.types import NamedIterable
 from ...util.iterables import snd
 from ...util.arrays import BatchNormalisation
 
 
-class NgramVocabulariser(Vocabulariser):
+class NgramVocabulariser(UnsupervisedVocabulariser):
     """
     Count the character N-grams (or 1...N-grams) in a corpus, truncate to the most frequent K, and then select |V| from
     that (randomly or just the top).

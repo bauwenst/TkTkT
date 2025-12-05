@@ -8,14 +8,14 @@ I've reimplemented the LZW vocabulariser to support TkTkT's preprocessors and co
 from pathlib import Path
 from typing import Tuple
 
-from ...interfaces.vocabulariser import Vocabulariser, UnidentifiedVocab, NamedIterable
+from ...interfaces.vocabulariser import *
 from ...interfaces.tokeniser import Tokeniser, Preprocessor
 from ...models.greedy.directional import L2R_Greedy
 from ...util.printing import wprint
 from ...util.iterables import streamProgress
 
 
-class LzwVocabulariser(Vocabulariser):
+class LzwVocabulariser(UnsupervisedVocabulariser):
 
     def __init__(self, preprocessor: Preprocessor, vocab_size: int):
         super().__init__(name="lzw", preprocessor=preprocessor)

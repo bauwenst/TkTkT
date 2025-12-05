@@ -33,8 +33,6 @@ def makeBPE1():
         preprocessor=None,
         vocab=vocab_and_merges.loadVocabulary(),
         merges=vocab_and_merges.loadMerges(),
-
-        boundary_marker=RobertaSpaceMarker
     )
     return bpe
 

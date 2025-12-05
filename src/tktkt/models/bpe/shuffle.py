@@ -1,7 +1,7 @@
 from typing import Set
 import numpy.random as npr
 
-from bpe_knockout.knockout.core import Merge
+from bpe_knockout.model.graph import Merge
 from .base import *
 
 RNG = npr.default_rng(0)
@@ -41,8 +41,8 @@ class ShuffledBPE(DeterministicBPETokeniser):
 
         new_merges = []
 
-        closed_set: Set[str]  = set(self.vocab) - {m.childType() for m in self.merge_graph.merges}  # Probably equal to {t for t,merges in self.merge_graph.merges_of.items() if merges}
-        open_set: List[Merge] = [m for m in self.merge_graph.merges if all(part in closed_set for part in m.parts)]  # List so it can be sampled easier.
+        closed_set: set[str]  = set(self.vocab) - {m.childType() for m in self.merge_graph.merges}  # Probably equal to {t for t,merges in self.merge_graph.merges_of.items() if merges}
+        open_set: list[Merge] = [m for m in self.merge_graph.merges if all(part in closed_set for part in m.parts)]  # List so it can be sampled easier.
 
         while open_set:
             # Decide which merge comes next

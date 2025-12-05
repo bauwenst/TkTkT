@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TypeVar, Generic, Union, List
+from typing import TypeVar, Generic, Union, List, Optional
 
 from .identifiers import WithSpecials, NoSpecials
 from .preparation import Preprocessor
@@ -36,8 +36,9 @@ class Deserialiser(ABC, Generic[WithSpecials]):  # TODO: In a future version, "A
         instance. Different results come from different subclasses, not different initialisation.
     """
 
-    def __init__(self, specials: WithSpecials=NoSpecials()):
+    def __init__(self, specials: WithSpecials=NoSpecials(), unk_id: Optional[int]=0):
         self._specials: WithSpecials = specials
+        self._unk_id = unk_id
         self._vocab_cache: Vocab[WithSpecials] = None
 
     def buildVocabulary(self) -> Vocab[WithSpecials]:

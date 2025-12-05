@@ -51,10 +51,7 @@ class TokeniserWithVocabulary(Tokeniser, Generic[WithSpecials]):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials]):
         super().__init__(preprocessor=preprocessor)
-        self.vocab          = vocab
-        self._reverse_vocab = {v:k for k,v in vocab.items()}
-        assert len(self.vocab) == len(self._reverse_vocab)
-
+        self.vocab = vocab
         self._accept_all_types = False  # if True, overrides hasType() by always returning True.
 
     # Iteration:
@@ -81,7 +78,7 @@ class TokeniserWithVocabulary(Tokeniser, Generic[WithSpecials]):
 
     def idToType(self, i: int) -> str:
         try:
-            return self._reverse_vocab[i]
+            return self.vocab.inverse[i]
         except:
             if i in self.vocab.specials:
                 return ""
@@ -94,7 +91,7 @@ class TokeniserWithVocabulary(Tokeniser, Generic[WithSpecials]):
         return self._accept_all_types or t in self.vocab
 
     def hasId(self, i: int) -> bool:
-        return i in self._reverse_vocab
+        return i in self.vocab.inverse
 
     def enableInfiniteDomain(self, enable: bool):
         """

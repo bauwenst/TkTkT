@@ -18,7 +18,7 @@ from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
 import json
 
-from bpe_knockout.auxiliary.tokenizer_interface import BpeTokeniserPath, SennrichTokeniserPath
+from bpe_knockout.util.storage import BpeTokeniserPath, SennrichTokeniserPath
 from modest.formats.tsv import iterateTsv
 
 from .specials import BertSpecials
@@ -62,7 +62,7 @@ class BPE40k_Oscar30M_en(BPE_Deserialiser[WithSpecials]):
     def _bakedSpecials(self) -> set[str]:
         raise NotImplementedError()
 
-    def _buildVocabulary(self) -> Vocab:
+    def _buildVocabulary(self) -> Vocab:  # TODO: Where do I get to choose UNK?
         files = self.getFolder()
         assert isinstance(files, SennrichTokeniserPath)
         return BPEVocabulariser.load(file_or_folder=files.getPaths()[0], specials=self._specials, filtered_types=self._bakedSpecials())

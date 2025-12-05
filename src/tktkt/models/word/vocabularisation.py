@@ -6,17 +6,14 @@ from dataclasses import dataclass
 import gc
 
 from ...util.printing import intsep, percent, pluralise
-from ...util.types import NamedIterable
 from ...paths import TkTkTPaths
-from ...interfaces import Preprocessor, Vocabulariser
-from ...interfaces.vocabulariser import UnidentifiedVocab
-
+from ...interfaces.vocabulariser import *
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class CountWords(Vocabulariser):
+class CountWords(UnsupervisedVocabulariser):
     """
     Has the goal of compressing a string iterable to a TSV containing every unique word exactly once with its frequency.
 
@@ -40,10 +37,14 @@ class CountWords(Vocabulariser):
 
     def __init__(self,
         word_extractor: Preprocessor,
-        frequency_minimum: int,   # For filtering the final counter, i.e. with the "true" counts (modulo any dropping that happened while merging), to save space.)
-        sort_before_write: bool,  # Whether to sort before writing the final counter.
+        frequency_minimum: int,
+        sort_before_write: bool,
         cache_config: "CountWords.CacheConfig"
     ):
+        """
+        :param frequency_minimum: For filtering the final counter, i.e. with the "true" counts (modulo any dropping that happened while merging), to save space.
+        :param sort_before_write: Whether to sort before writing the final counter.
+        """
         super().__init__(name="counts", preprocessor=word_extractor)
         self.preprocessor = word_extractor
         self.frequency_minimum = frequency_minimum

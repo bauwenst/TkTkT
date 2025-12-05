@@ -14,7 +14,7 @@ import numpy.random as npr
 from .base import DeterministicBPETokeniser, Preprocessor, Vocab, MergeList, ClassicBPE
 from .vocabularisation import BPEVocabulariser
 from ...util.iterables import fst
-from ...interfaces.vocabulariser import Vocabulariser, UnidentifiedVocab
+from ...interfaces.vocabulariser import *
 from ...util.types import NamedIterable, Tokens
 
 
@@ -79,7 +79,7 @@ class TrimmedBPE(RecursivelyDecomposingBPE):
 ########################################################################################################################
 
 
-class _RecursivelyDecomposingBPEVocabulariser(Vocabulariser):
+class _RecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabulariser):
     """
     Vocabulariser that finds the types to disable for a RecursivelyDecomposingBPE tokeniser,
     by tokenising a corpus and computing the unigram distribution on which some operation is applied.

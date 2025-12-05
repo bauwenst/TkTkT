@@ -3,12 +3,13 @@ Main objects involved in identifier (ID) mappings, particularly Specials and the
 """
 from typing import Iterator, Iterable, TypeVar, Generic, Callable, Optional, Union
 from dataclasses import dataclass, is_dataclass, fields
+
 from transformers import PreTrainedTokenizerBase
 
 import warnings
 from copy import deepcopy
 
-from ..util.iterables import areContiguous, fst, areUnique, arePositive
+from ..util.iterables import areContiguous, fst, areUnique, arePositive, snd
 from ..util.dicts import getattr_recursive, setattr_recursive, intersect_dicts
 from ..util.exceptions import EmptyTokenError
 
@@ -161,14 +162,15 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
         super().__init__()
 
         # Initialise fields on top of dictionary
-        self.UNK                   = unk_id
-        self.specials: WithSpecials = None
-        self._specials_range_1 = []
-        self._specials_range_2 = []
+        self.UNK                     = unk_id
+        self.specials: WithSpecials  = None
+        self.inverse: dict[int, str] = None
+        self.__constructor_arguments: tuple[WithSpecials, int] = (deepcopy(specials), unk_id)
+        self.__next_id         = -1
 
         # Figure out if the user wanted absolutely or relatively specified specials.
         special_ids = list(specials)
-        if any(id < 0 for id in special_ids) or not areUnique(special_ids):  # Negatives and/or duplicates only appear in the relative case.
+        if areNotAbsoluteSpecials(specials):  # Negatives and/or duplicates only appear in the relative case.
             self._fromRelativeSpecials(ordered_types, specials)  # Has its own assertions, like how UNK == 0.
         else:  # There are no duplicates and no negatives. This is always interpreted as absolute format.
             if unk_id is None:
@@ -218,7 +220,7 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
         assert arePositive(special_ids)
         assert areUnique(special_ids)
         assert self.UNK is None or self.UNK >= 0
-        assert self.UNK not in special_ids
+        assert self.UNK not in special_ids, f"Found UNK ID {self.UNK} in specials: {absolute_specials}"
 
         # Set all non-special IDs
         next_id = 0
@@ -238,27 +240,18 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
         upper_special_ids = [special_id for special_id in special_ids if special_id >= next_id]
         if upper_special_ids:
             assert areContiguous(upper_special_ids)
-            assert min(upper_special_ids) == next_id
+            assert min(upper_special_ids) == next_id, f"Requested special ID too high (got {min(upper_special_ids)}, expected {next_id})."
+
+        # Set core fields
         self.specials = absolute_specials
-
-        # Lastly, check if you can find a lower and upper range of specials, which is usually what you want.
-        # Note that these ranges are not necessarily the topmost and bottommost IDs. They can in principle exist anywhere
-        # in the vocab. But often, it's two of them (and the case of one range is just a trivial case of two ranges with one being empty).
-        split = None
-        for i in range(len(special_ids)-1):
-            if areContiguous(special_ids[:i]) and areContiguous(special_ids[i:]):
-                split = i
-                break
-
-        if split is not None:
-            self._specials_range_1 = special_ids[:split]
-            self._specials_range_2 = special_ids[split:]
+        self.inverse = {v:k for k,v in self.items()}
+        self.__next_id = max(max(self.values()), max(self.specials)) + 1
 
     def size(self):
         return len(self) + len(list(self.specials)) + 1
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(unk={self.UNK}, specials={self.specials.__repr__()}, types={super().__repr__()})"
+        return f"{self.__class__.__name__}(types={super().__repr__()}, specials={self.specials.__repr__()}, UNK={self.UNK})"
 
     def unsafe(self, specials_formatter: Callable[[str], str] = None) -> dict[str, int]:
         """
@@ -278,11 +271,45 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
             specials_formatter(name): getattr_recursive(self.specials, recursive_name)
             for name,recursive_name in self.specials.__iter_keys__()
         }
-        if any(intersect_dicts(self, specials_mapping)):
+        if intersect_dicts(self, specials_mapping):
             raise ValueError(f"Some (formatted) specials are already part of the vocabulary: {set(intersect_dicts(self, specials_mapping).keys())}")
 
         union = self | specials_mapping
         return {k: union[k] for k in sorted(union.keys(), key=union.get)}
+
+    # TODO: For the below operations, we need to keep some kind of changelog / transaction journal that allows
+    #       easy interpretation by a function that modifies an old embedding matrix into a new one.
+
+    def settle(self):
+        """
+        Let identifiers sink to the first available free integer.
+        If the vocabulary was pruned since its instantiation, this method will make the IDs contiguous again. In this
+        sense, you could call this method "compactification".
+        If the vocabulary was extended but the original constructor got specials that needed to be at the end, they are
+        re-inserted where they were intended.
+        """
+        types = sorted(self.keys(), key=self.get)
+        new_specials, new_unk = self.__constructor_arguments
+        new_specials, new_unk = repairAbsoluteSpecials(len(types), new_specials, new_unk)
+
+        # Clears the internal dictionary, and re-initialise all other fields.
+        self.clear()
+        self.__init__(types, specials=new_specials, unk_id=new_unk)
+
+    def add(self, type: str):
+        self[type] = self.__next_id
+        self.inverse[self.__next_id] = type
+        self.__next_id += 1
+
+    def pop(self, type: str) -> int:
+        id = super().pop(type)
+        self.inverse.pop(id)
+        return id
+
+    def popitem(self) -> tuple[str,int]:
+        type, id = super().popitem()
+        self.inverse.pop(id)
+        return type, id
 
 
 SubwordCollection = Union[set[str], Vocab]
@@ -291,12 +318,12 @@ SubwordCollection = Union[set[str], Vocab]
 @dataclass
 class AutoVocabSpecs(Generic[WithSpecials]):
     specials_template: WithSpecials
-    special_to_string: dict[str, str]
+    special_to_string: dict[str, str]  # Mapping like "BOS" -> "<s>" to link Specials to surface strings in the tokeniser's vocab.
 
 
 class AutoVocab:
     """
-    Turns a flat vocabulary into a Vocab object depending on extra givens.
+    Turns a flat vocabulary with PRE-ASSIGNED identifiers into a Vocab object.
 
     The name of this class is a misnomer because AutoXYZ refers to classes that generate PretrainedXYZ objects which are
     part of the HuggingFace ecosystem, e.g. AutoModel and AutoTokenizer, and AutoSpecials in TkTkT. This is unfortunate
@@ -317,10 +344,9 @@ class AutoVocab:
         the same token, it should count as BOS) which specials a tokeniser has, it is not possible to know at type-checking-time
         (i.e. statically) the subclass of Specials that fits a tokeniser given just the tokeniser, and thus you need to
         declare the specials as a separate argument anyway, rather than just inferring them.
-
-        :param special_to_string: mapping like "BOS" -> "<s>" to link Specials to surface strings in the tokeniser's vocab.
         """
-        assert set(tokenizer.all_special_tokens) == set(tokenizer.special_tokens_map.values())  # Assumption about the HF framework.
+        # Assumptions about the HF framework.
+        assert set(tokenizer.all_special_tokens) == set(tokenizer.special_tokens_map.values())
         assert (tokenizer.unk_token is None) == ("unk_token" not in tokenizer.special_tokens_map.keys())
 
         # Verification step: we can't use the tokeniser's list of specials to statically type the result of this function,
@@ -352,6 +378,7 @@ class AutoVocab:
     def fromStrings(unsafe_vocab: dict[str,int], specials_specification: AutoVocabSpecs[WithSpecials], unk_type: Optional[str]) -> Vocab[WithSpecials]:
         assert "UNK" not in specials_specification.special_to_string.keys() and unk_type not in specials_specification.special_to_string.values(), "UNK does not count as a special. It is specified as a separate argument."
         assert set(map(fst,specials_specification.specials_template.__iter_keys__())) == set(specials_specification.special_to_string.keys()), "The keys of the 'special_to_string' mapping should match the fields of the Specials template."  # Could technically be a subset of the mapping, but I'd like the connection between the two arguments to be very strict.
+        assert set(specials_specification.special_to_string.values()).issubset(set(unsafe_vocab.keys())), "The values of the 'special_to_string' mapping should all be types in the given set of types."
         assert areUnique(unsafe_vocab.values())
         assert arePositive(unsafe_vocab.values())
         assert areContiguous(sorted(unsafe_vocab.values()))
@@ -375,3 +402,56 @@ class AutoVocab:
             assert vocab[typ] == unsafe_vocab[typ], f"For some reason, type {typ} got assigned a different ID in the new vocabulary: {vocab[typ]} (was {unsafe_vocab[typ]})."
 
         return vocab
+
+
+def areNotAbsoluteSpecials(specials: Specials) -> bool:
+    """
+    Absolute specials have only positive IDs and have no duplicates.
+    Now, whether the specials are relative (only +1/-1), that needs further checking.
+    """
+    special_ids = list(specials)
+    return any(id < 0 for id in special_ids) or not areUnique(special_ids)
+
+
+def repairAbsoluteSpecials(n_types: int, specials: WithSpecials, unk_id: Optional[int]) -> tuple[WithSpecials, Optional[int]]:
+    """
+    In cases where you have absolute specials but the subword vocabulary is too small for the given IDs, you need to
+    decrease the upper IDs.
+    """
+    specials = deepcopy(specials)
+    pinned_ids = ({"": unk_id} if unk_id is not None else dict()) | {nested_field: getattr_recursive(specials, nested_field) for _, nested_field in specials.__iter_keys__()}
+
+    for field, id in sorted(pinned_ids.items(), key=snd):
+        if id > n_types:  # => downshift
+            if field:
+                setattr_recursive(specials, field, n_types)
+            else:
+                unk_id = n_types
+        n_types += 1
+
+    return specials, unk_id
+
+
+def findSpecialRanges(n_types: int, specials: Specials) -> list[tuple[int,int]]:
+    """
+    It is sometimes useful in language models to be able to check for specials using a range check rather than looping
+    through equality checks. Usually you have a top range of specials and a bottom range of specials, although specials
+    can in principle exist anywhere in the vocab.
+
+    Returns the lower and (inclusive) upper ID of these ranges.
+    UNK does not count as a special.
+    """
+    assert not areNotAbsoluteSpecials(specials)
+    special_ids = sorted(list(specials))
+
+    ranges = []
+    start = 0
+    while start < len(special_ids):
+        offset = 0
+        while not areContiguous(special_ids[start:len(special_ids)-offset]):
+            offset += 1
+
+        ranges.append((special_ids[start], special_ids[len(special_ids)-offset-1]))
+        start = len(special_ids) - offset
+
+    return ranges

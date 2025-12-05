@@ -9,11 +9,11 @@ import warnings
 from pathlib import Path
 from typing import Tuple, List
 
-from ...interfaces.vocabulariser import Vocabulariser, Preprocessor, UnidentifiedVocab, NamedIterable
+from ...interfaces.vocabulariser import *
 from .schedules import *
 
 
-class SageVocabulariser(Vocabulariser):
+class SageVocabulariser(UnsupervisedVocabulariser):
 
     def __init__(self, preprocessor: Preprocessor, seed: int=0,
                  vocabulary_schedule: Schedule=DoubleLinearSchedule(262144, 65536, 16384, t_mid=0.5), n_vocab_samples: int=13,
