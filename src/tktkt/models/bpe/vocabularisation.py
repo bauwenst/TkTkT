@@ -20,9 +20,6 @@ from ...util.iterables import streamProgress, deduplicate
 from ...util.printing import logger, pluralise
 
 
-Merges = List[Tuple[str,str]]
-
-
 class BpeTrainerImplementation(Enum):
     CHIZHOV       = 0
     SENTENCEPIECE = 1
@@ -384,7 +381,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
     ####################################################################################################################
 
     @classmethod
-    def loadMerges(cls, file_or_folder: Path) -> Merges:
+    def loadMerges(cls, file_or_folder: Path) -> list[tuple[str,...]]:
         if file_or_folder.is_dir():
             file_or_folder = file_or_folder / "merges.txt"
 

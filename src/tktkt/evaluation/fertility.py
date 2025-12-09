@@ -31,7 +31,7 @@ def countValidSegmentations(pretoken: str, vocab: SubwordCollection) -> int:
     return options_to_get_before_char[-1]
 
 
-def prepareAndCountValidSegmentations(word: str, preprocessor: Preprocessor, vocab: SubwordCollection) -> Tuple[int, int, int]:
+def preprocessThenCountValidSegmentations(word: str, preprocessor: Preprocessor, vocab: SubwordCollection) -> Tuple[int, int, int]:
     """
     Note that the vocabulary exists in the output space of a preprocessor. This has two implications for counting segmentations:
         1. You should make sure that the given preprocessor is the full, effective preprocessor used before segmenting
@@ -170,7 +170,7 @@ class PossibleSegmentations(FinallyObservableObserver[Union[str,Tuple[str,int]],
         if self._unique_words and raw_word in self.seen:
             segs, chars, n_pretokens = self.seen[raw_word]
         else:
-            segs, chars, n_pretokens = prepareAndCountValidSegmentations(raw_word, self.effective_preprocessor, self.vocab)
+            segs, chars, n_pretokens = preprocessThenCountValidSegmentations(raw_word, self.effective_preprocessor, self.vocab)
             if self._unique_words:
                 self.seen[raw_word] = (segs, chars, n_pretokens)
                 II = 1

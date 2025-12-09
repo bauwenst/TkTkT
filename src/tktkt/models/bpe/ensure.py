@@ -9,12 +9,16 @@ TODO: What isn't possible currently is path insurance, where you can ensure that
 import warnings
 from typing import Iterable
 
-from .base import *
+from bpe_knockout.model.vocabulariser import BPEKnockoutVocabulariser
+from bpe_knockout.model.graph import Merge
+
+from .base import _DeterministicBPETokeniser, MergeList
+from ...interfaces.tokeniser import *
 from ...util.iterables import deduplicate, mapExtend
 from ...util.functions import relu
 
 
-class EnsuredBPE(DeterministicBPETokeniser):
+class EnsuredBPE(_DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList, ensure_strings: Iterable[str], forbid_strings: Iterable[str], forbid_forming: Iterable[str],
@@ -32,12 +36,7 @@ class EnsuredBPE(DeterministicBPETokeniser):
         :param do_expand_vocabulary: Whether to exceed the current size of the vocabulary. If false, the last types in
                                      the existing tokeniser will be removed.
         """
-        super().__init__(
-            preprocessor=preprocessor,
-
-            vocab=vocab,
-            merges=merges
-        )
+        super().__init__(preprocessor=preprocessor, vocab=vocab, merges=merges)
 
         self.ensured   = list(deduplicate(mapExtend(self.preprocessor.do, ensure_strings) if do_preprocess_these else ensure_strings))
         self.forbidden = list(deduplicate(mapExtend(self.preprocessor.do, forbid_strings) if do_preprocess_these else forbid_strings))
@@ -55,12 +54,12 @@ class EnsuredBPE(DeterministicBPETokeniser):
 
         # First, let's find which merges we can delete to make room for the ensured strings' merges.
         # (You have to do that now, because we're soon going to be adding merges we don't want to delete.)
-        deletable_merge_stack = []
+        deletable_merge_stack: list[Merge] = []
         if self._fixed_size:
             # Find all merges that need to be protected against trimming from the end.
             protected_merge_priorities = set()
             for ensured_string in self.ensured:
-                _, index_to_priority = self._tokenise_diagnostic(ensured_string)
+                _, index_to_priority = BPEKnockoutVocabulariser._tokenise_diagnostic(self, ensured_string)
                 protected_merge_priorities.update(index_to_priority.values())
 
             deletable_merge_stack = sorted(filter(lambda m: m.priority not in protected_merge_priorities, self.merge_graph.merges))
@@ -130,7 +129,8 @@ class EnsuredBPE(DeterministicBPETokeniser):
 
             if total_merges_to_remove:
                 deletable_merge_stack = deletable_merge_stack[-total_merges_to_remove:]  # Note that L[-0:] is the whole list, hence the extra `if`.
-                self._removeMerges(reversed(deletable_merge_stack))
+                for m in reversed(deletable_merge_stack):
+                    self.merge_graph.knockout(m.childType())
 
         ### PART 2: Forbid strings ###
         for forbidden in self.forbidden:
@@ -140,12 +140,9 @@ class EnsuredBPE(DeterministicBPETokeniser):
 
         ### PART 3: Special strings ###
         for special in self.special:
-            id_to_use = -1
             if special in self.vocab:
-                id_to_use = self.vocab[special]
                 self.merge_graph.knockout(type_to_delete=special)
-
-            self.merge_graph.addVertex(type_to_add=special, suggested_id=id_to_use)
+            self.merge_graph.addVertex(type_to_add=special)
         self._syncWithGraph()
 
         self._trained = True

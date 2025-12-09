@@ -1,16 +1,13 @@
 """
 Simplified version of the GuidedBPEDropout implementation, to speed it up.
 """
-from typing_extensions import Self
-
 import numpy.random as npr
-from transformers import PreTrainedTokenizerFast
 
-from ...interfaces.tokeniser import Preprocessor, Tokens
-from .base import Vocab, MergeList, NonDeterministicBPETokeniser, ClassicBPE
+from ...interfaces.tokeniser import *
+from .base import MergeList, _NonDeterministicBPETokeniser
 
 
-class BPEDropout(NonDeterministicBPETokeniser):
+class BPEDropout(_NonDeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
                  dropout_probability: float):
@@ -21,17 +18,6 @@ class BPEDropout(NonDeterministicBPETokeniser):
         )
         self.p = dropout_probability
         self.rng = npr.default_rng(0)
-
-    @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, dropout_probability: float) -> Self:
-        classic_implementation = ClassicBPE.fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
-        return cls(
-            preprocessor=classic_implementation.preprocessor,
-            vocab=classic_implementation.vocab,
-            merges=classic_implementation.merge_graph.getRawMerges(),
-
-            dropout_probability=dropout_probability
-        )
 
     def _finalTokens(self, tokens: Tokens) -> Tokens:
         buffer = " " + " ".join(tokens) + " "
@@ -69,7 +55,7 @@ class BPEDropout(NonDeterministicBPETokeniser):
         return buffer[1:-1].split(" ")
 
 
-class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
+class BPEDropoutNonGeometric(_NonDeterministicBPETokeniser):
     """
     The outcome of which merge is selected in BPE-dropout is geometrically distributed over the IDs of the possible merges,
     sorted in order of priority. That is: the highest-priority merge has probability (1-p) of being done, the second has
@@ -115,7 +101,7 @@ class BPEDropoutNonGeometric(NonDeterministicBPETokeniser):
         return buffer[1:-1].split(" ")
 
 
-class BPEBreakdown(NonDeterministicBPETokeniser):
+class BPEBreakdown(_NonDeterministicBPETokeniser):
     """
     Rather than dropping merges BEFORE doing them, drop merges AFTER doing them, starting all the way at the end of the
     merge process.
@@ -169,16 +155,3 @@ class BPEBreakdown(NonDeterministicBPETokeniser):
                 final_tokens.append(token_to_breakdown)
 
         return final_tokens
-
-    @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, breakdown_probability: float, within_tree: bool) -> Self:
-        classic_implementation = ClassicBPE.fromHuggingFace(hf_bpe_tokenizer)  # Use all the logic we already have for this kind of conversion.
-        return cls(
-            preprocessor=classic_implementation.preprocessor,
-
-            vocab=classic_implementation.vocab,
-            merges=classic_implementation.merge_graph.getRawMerges(),
-
-            breakdown_probability=breakdown_probability,
-            within_tree=within_tree
-        )

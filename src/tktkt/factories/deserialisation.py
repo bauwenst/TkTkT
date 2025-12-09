@@ -18,21 +18,21 @@ from huggingface_hub import hf_hub_download
 from transformers import AutoTokenizer
 import json
 
-from bpe_knockout.util.storage import BpeTokeniserPath, SennrichTokeniserPath
 from modest.formats.tsv import iterateTsv
 
-from .specials import BertSpecials
+from .specials import BertSpecials, RobertaSpecials
 from ..interfaces import Vocab, Deserialiser
 from ..interfaces.identifiers import AutoVocab, NoSpecials, WithSpecials, AutoVocabSpecs
-from ..models.bpe.vocabularisation import BPEVocabulariser, Merges
-from ..models.kudopiece.vocabularisation import KudoPieceVocabulariser
 from ..models.predictive.viterbi import HuggingFaceForBinaryCharacterClassification
+
 from ..util.trie import PrefixTrie, SuffixTrie
 from ..paths import relativeToCwd, TkTkTPaths
 from .preprocessing import *
 
-__all__ = ["BPE40k_Oscar30M_en", "BPE32ki_SlimPajama3M", "KudoPiece30k_BooksWiki_en", "KudoPiece32ki_SlimPajama3M"]
+__all__ = ["BPE40k_Oscar30M_en", "BPE32ki_SlimPajama3M", "BPE50k_RobertaBase", "KudoPiece30k_BooksWiki_en", "KudoPiece32ki_SlimPajama3M"]
 
+
+Merges = list[tuple[str,...]]
 
 def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
     # TODO: Eventually, this should become a HF checkpoint.
@@ -63,6 +63,8 @@ class BPE40k_Oscar30M_en(BPE_Deserialiser[WithSpecials]):
         raise NotImplementedError()
 
     def _buildVocabulary(self) -> Vocab:  # TODO: Where do I get to choose UNK?
+        from bpe_knockout.util.storage import SennrichTokeniserPath
+        from ..models.bpe.vocabularisation import BPEVocabulariser
         files = self.getFolder()
         assert isinstance(files, SennrichTokeniserPath)
         return BPEVocabulariser.load(file_or_folder=files.getPaths()[0], specials=self._specials, filtered_types=self._bakedSpecials())
@@ -92,10 +94,12 @@ class BPE32ki_SlimPajama3M(BPE_Deserialiser[WithSpecials]):
         '<mask>': 4
     """
     def _buildVocabulary(self) -> Vocab:
+        from ..models.bpe.vocabularisation import BPEVocabulariser
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="vocab.json"))
         return BPEVocabulariser.load(file_or_folder=downloaded_vocab, specials=self._specials)
 
     def buildMerges(self) -> Merges:
+        from ..models.bpe.vocabularisation import BPEVocabulariser
         downloaded_merges = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="merges.txt"))
         return BPEVocabulariser.loadMerges(file_or_folder=downloaded_merges)
 
@@ -112,6 +116,62 @@ class BPE32ki_SlimPajama3M(BPE_Deserialiser[WithSpecials]):
 
     def preprocessorEffective(self) -> Preprocessor:
         return ModernEnglishPreprocessor(marker=RobertaSpaceMarker)
+
+
+class BPE_Deserialiser_HuggingFace(BPE_Deserialiser[WithSpecials]):
+
+    def __init__(self):
+        super().__init__()
+
+    @abstractmethod
+    def _checkpointName(self) -> str:
+        pass
+
+    @abstractmethod
+    def _specialsTemplate(self) -> WithSpecials:
+        pass
+
+    @abstractmethod
+    def _specialsToTypes(self) -> dict[str, str]:
+        pass
+
+    def _bakedSpecials(self) -> set[str]:  # Not used for anything because of AutoVocab, but still implementing it properly.
+        return set(self._specialsToTypes().values())
+
+    def _buildVocabulary(self) -> Vocab[WithSpecials]:
+        return AutoVocab.fromTokenizer(
+            tokenizer=AutoTokenizer.from_pretrained(self._checkpointName()),
+            specials_specification=AutoVocabSpecs(specials_template=self._specialsTemplate(), special_to_string=self._specialsToTypes())
+        )
+
+    def buildMerges(self) -> Merges:
+        from bpe_knockout.model.auto import AutoMerges
+        return AutoMerges.from_pretrained(self._checkpointName())
+
+    def preprocessorNative(self) -> Preprocessor:
+        return self.preprocessorEffective()
+
+    def preprocessorEffective(self) -> Preprocessor:  # Note: these tokenisers tend to suck with boundary marking.
+        return HuggingFacePreprocessor(AutoTokenizer.from_pretrained(self._checkpointName()))
+
+
+class BPE50k_RobertaBase(BPE_Deserialiser_HuggingFace[RobertaSpecials]):
+    """
+    The BPE tokeniser for RoBERTa-base.
+    """
+    def _checkpointName(self) -> str:
+        return "FacebookAI/roberta-base"
+
+    def _specialsTemplate(self) -> RobertaSpecials:
+        return RobertaSpecials(BOS=0, EOS=0, PAD=0, MASK=0)
+
+    def _specialsToTypes(self) -> dict[str, str]:
+        return {
+            "BOS": "<s>",
+            "EOS": "</s>",
+            "PAD": "<pad>",
+            "MASK": "<mask>"
+        }
 
 
 class KudoPiece_Deserialiser(Deserialiser[WithSpecials]):
@@ -131,7 +191,7 @@ class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser[WithSpecials]):
     """
 
     def __init__(self):
-        super().__init__(specials=self._specialsTemplate())
+        super().__init__()
 
     @abstractmethod
     def _specialsTemplate(self) -> WithSpecials:
@@ -188,7 +248,7 @@ class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser[WithSpecials]):
         return preprocessor
 
 
-class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace[WithSpecials]):
+class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace[BertSpecials]):
     def _checkpointName(self) -> str:
         return "albert/albert-base-v2"
 
@@ -198,7 +258,7 @@ class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace[WithSpecials]
     def _jsonFileName(self) -> str:
         return "tokenizer.json"
 
-    def _specialsTemplate(self) -> WithSpecials:
+    def _specialsTemplate(self) -> BertSpecials:
         return BertSpecials(CLS=2, SEP=3, PAD=0, MASK=4)
 
     def _specialsToTypes(self) -> dict[str, str]:
@@ -218,6 +278,7 @@ class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser[WithSpecials]):
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.vocab"))
 
     def _buildVocabulary(self) -> Vocab:
+        from ..models.kudopiece.vocabularisation import KudoPieceVocabulariser
         return KudoPieceVocabulariser.load(file_or_folder=self.getVocabFile(), specials=self._specials, filtered_types=self._bakedSpecials())
 
     def _bakedSpecials(self) -> set[str]:

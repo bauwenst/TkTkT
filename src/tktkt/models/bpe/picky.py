@@ -8,8 +8,8 @@ from collections import defaultdict
 from pickybpe.vocabularisation import logger, EventType, PickyBPETrainer as _PickyBPETrainerBase
 from pickybpe.segmentation import Token, MergeEventIds, SplitEventIds, SplitResults, PickyBPESegmenter as _PickyBPETokeniserBackend
 
-from ...interfaces import Deserialiser, Preprocessor
-from ...interfaces.vocabulariser import Vocab, UnidentifiedVocab
+from ...interfaces import Deserialiser
+from ...interfaces.vocabulariser import UnidentifiedVocab
 from ...interfaces.tokeniser import *
 from .vocabularisation import _VocabulariserWithChizhovBackend
 

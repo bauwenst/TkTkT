@@ -1,11 +1,13 @@
 from transformers import AutoTokenizer
 
-from tktkt.evaluation.morphological import morphologyGenerator
-from tktkt.models.bpe.base import ClassicBPE
+from tktkt.factories.tokenisers import Factory_BPE_Pythonic
+from tktkt.factories.deserialisation import BPE50k_RobertaBase
 from tktkt.models.bpe.guided import GuidedBPEDropout, ConstantCharacterClassifier
 from tktkt.models.bpe.ensure import EnsuredBPE
 from tktkt.models.bpe.shuffle import ShuffledBPE
 from tktkt.util.printing import lprint
+
+from modest.languages.english import English_Celex
 
 
 def test_classicbpe():
@@ -13,9 +15,9 @@ def test_classicbpe():
     Test if TkTkT and HuggingFace produce the same tokens using their respective native BPE tokenisers.
     """
     roberta_hf = AutoTokenizer.from_pretrained("roberta-base")
-    roberta_tktkt = ClassicBPE.fromHuggingFace(roberta_hf)  # Note: this is NOT a wrapper. It extracts vocab/merges and uses a custom BPE algorithm.
+    roberta_tktkt = Factory_BPE_Pythonic(files=BPE50k_RobertaBase()).buildTokeniser()
 
-    for obj in morphologyGenerator():
+    for obj in English_Celex().generate():
         word = obj.word
         tokens1 = roberta_hf.tokenize(word)
         tokens2 = roberta_tktkt.prepareAndTokenise(word)
@@ -27,13 +29,13 @@ def test_guidedbpe():
     Test if the implementation of guided BPE, which deviates from that of classic BPE, is equivalent to it if the
     dropout probability is 0.
     """
-    base = ClassicBPE.fromHuggingFace(AutoTokenizer.from_pretrained("roberta-base"))
+    base = Factory_BPE_Pythonic(files=BPE50k_RobertaBase()).buildTokeniser()
     guided_bpe = GuidedBPEDropout(
-        base.preprocessor, base.merge_graph.vocab, [" ".join(m.parts) for m in base.merge_graph.merges], base.boundary_marker,
+        base.preprocessor, base.merge_graph.vocab, [" ".join(m.parts) for m in base.merge_graph.merges],
         dropout_probability=ConstantCharacterClassifier(p=0.0), always_dropout_above=None
     )
 
-    for obj in morphologyGenerator():
+    for obj in English_Celex().generate():
         word = obj.word
         tokens1 = base.prepareAndTokenise(word)
         tokens2 = guided_bpe.prepareAndTokenise(word)
@@ -51,7 +53,6 @@ def test_ensuredbpe():
 
     ensured_bpe = EnsuredBPE(
         preprocessor=classic_bpe.preprocessor,
-        boundary_marker=classic_bpe.boundary_marker,
         vocab=classic_bpe.vocab,
         merges=classic_bpe.merge_graph.getRawMerges(),
 
@@ -79,7 +80,6 @@ def test_shuffledbpe():
 
     shuffled = ShuffledBPE(
         preprocessor=classic.preprocessor,
-        boundary_marker=classic.boundary_marker,
 
         vocab=classic.vocab,
         merges=classic.merge_graph.getRawMerges(),

@@ -11,14 +11,15 @@ from functools import lru_cache
 from collections import Counter
 import numpy.random as npr
 
-from .base import DeterministicBPETokeniser, Preprocessor, Vocab, MergeList, ClassicBPE
+from .base import _DeterministicBPETokeniser, ClassicBPE, MergeList
 from .vocabularisation import BPEVocabulariser
 from ...util.iterables import fst
 from ...interfaces.vocabulariser import *
+from ...interfaces.tokeniser import *
 from ...util.types import NamedIterable, Tokens
 
 
-class RecursivelyDecomposingBPE(DeterministicBPETokeniser):
+class RecursivelyDecomposingBPE(_DeterministicBPETokeniser):
     """
     First applies BPE like normal, and then recursively undoes applied merges until all tokens are NOT in a predefined set of illegal types.
     """

@@ -1,11 +1,13 @@
 """
 Limits BPE to an earlier part of training by truncating the merge list.
 """
-from .base import ClassicBPE, Vocab, MergeList, Preprocessor
 from bpe_knockout.model.graph import MergeGraph
 
+from .base import _DeterministicBPETokeniser, MergeList
+from ...interfaces.tokeniser import *
 
-class TruncatedBPE(ClassicBPE):
+
+class TruncatedBPE(_DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList, delta_vocab_size: int):
         filtered_types = {m.childType() for m in sorted(MergeGraph(vocab, merges).merges)[:-delta_vocab_size]}

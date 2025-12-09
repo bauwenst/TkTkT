@@ -1,3 +1,5 @@
+from tktkt.factories.deserialisation import BPE50k_RobertaBase
+from tktkt.factories.tokenisers import Factory_BPE
 from tktkt.models.random.generationbased import RandomVocabSegmentation_GenerateAll, indicesToTokens, generateSegmentationIndices_exponentialSpace
 from tktkt.factories.preprocessing import IdentityPreprocessor
 
@@ -15,17 +17,15 @@ def test_word():
 
 
 def test_segmentationAmount():
-    from transformers import AutoTokenizer
-    from tktkt.models.bpe.base import ClassicBPE
-    from tktkt.evaluation.fertility import possibleSegmentations
-    from bpe_knockout.project.config import KnockoutDataConfiguration, setupDutch, morphologyGenerator
+    from tktkt.evaluation.fertility import preprocessThenCountValidSegmentations
+    from modest.languages.english import English_Celex
 
-    tk = ClassicBPE.fromHuggingFace(AutoTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base"))
-    with KnockoutDataConfiguration(setupDutch()):
-        for obj in morphologyGenerator():
-            word = obj.word
-            print(word, len(word))
-            assert len(generateSegmentationIndices_exponentialSpace(word, tk.vocab)) == possibleSegmentations(tk.vocab, word)
+    tk = Factory_BPE(files=BPE50k_RobertaBase()).buildTokeniser()
+    prep = tk.preprocessor
+    for obj in English_Celex().generate():
+        word = obj.word
+        print(word, len(word))
+        assert len(generateSegmentationIndices_exponentialSpace(word, tk.vocab)) == preprocessThenCountValidSegmentations(word, prep, tk.vocab)
 
 
 def test_markov_forwardbackward_equivalence():

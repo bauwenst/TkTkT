@@ -1,56 +1,16 @@
-from typing_extensions import Self
 from abc import abstractmethod
-
 from functools import lru_cache
 
-from bpe_knockout import *
-from bpe_knockout.util.storage import HuggingFaceTokeniserPath
-from bpe_knockout.model.graph import MergeList
-from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
+from bpe_knockout.model.tokeniser import BTE, MergeList  # This is for other files.
 
-from ...interfaces.preparation import TextMapper, Preprocessor
-from ...interfaces.tokeniser import Vocab, Tokens
-from ...interfaces.identifiers import AutoVocab, WithSpecials, AutoVocabSpecs
-from ...preparation.huggingface import detectBoundaryMarkerFromTokeniser, HuggingFacePreprocessor, HuggingFacePreprocessorForWords
+from ...interfaces.tokeniser import Tokens
+from ...interfaces.identifiers import WithSpecials
 
 
-class SimplifiedBTEInterface(BTE[WithSpecials]):
+class _ByteTupleEncoding(BTE[WithSpecials]):
     """
-    Wrapper class around the BPE-knockout library that abstracts away the config.
+    Wrapper class around the bpe_knockout package's tokeniser, for easily adding methods.
     """
-
-    def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab[WithSpecials], merges: MergeList,
-                 do_morphemic_knockout: bool=False, do_reification: bool=False, backwards_compatible: bool=False, iterations: int=1):
-        """
-        :param backwards_compatible: Whether to stay within the same initial vocab or not. Knockout always does, reification doesn't.
-        """
-        config = BTEConfig(iterations=iterations)
-        if do_morphemic_knockout:
-            config.knockout = KnockoutConfig(reference=ReferenceMode.MORPHEMIC)
-        if do_reification:
-            if backwards_compatible:
-                config.reify = ReifyMode.FIX_AND_LINK
-            else:
-                config.reify  = ReifyMode.FIX_AND_LINK_AND_MAKE
-                config.anneal = AnnealingConfig(reference=ReferenceMode.MORPHEMIC, when=AnnealingTime.BEFORE)
-
-        super().__init__(
-            # Init
-            init_config=config,
-            vocab=vocab, merges=merges,
-
-            preprocessor=preprocessor,
-        )
-
-    @classmethod
-    @abstractmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, for_words: bool=True) -> Self:
-        """
-        Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
-        (rather than wrapping it).
-        """
-        pass
 
     def getName(self):
         return self.__class__.__name__
@@ -60,7 +20,7 @@ class SimplifiedBTEInterface(BTE[WithSpecials]):
         pass
 
 
-class NonDeterministicBPETokeniser(SimplifiedBTEInterface[WithSpecials]):
+class _NonDeterministicBPETokeniser(_ByteTupleEncoding[WithSpecials]):
     """
     By default, the interface doesn't apply any caching to tokenisation. This supports non-determinism for e.g. BPE-dropout.
     """
@@ -68,7 +28,7 @@ class NonDeterministicBPETokeniser(SimplifiedBTEInterface[WithSpecials]):
         return False
 
 
-class DeterministicBPETokeniser(SimplifiedBTEInterface[WithSpecials]):
+class _DeterministicBPETokeniser(_ByteTupleEncoding[WithSpecials]):
     """
     Under the condition that the same string is always tokenised the same, you can add a cache on top of the tokeniser.
     """
@@ -85,30 +45,9 @@ class DeterministicBPETokeniser(SimplifiedBTEInterface[WithSpecials]):
         super()._syncWithGraph()
 
 
-class ClassicBPE(DeterministicBPETokeniser[WithSpecials]):
+class ClassicBPE(_DeterministicBPETokeniser[WithSpecials]):
     """
     BPE with binary merges (that's what the P stands for).
     Technically the constructor allows merges with more than two types.
     """
-
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList):
-        super().__init__(
-            preprocessor=preprocessor,
-
-            vocab=vocab,
-            merges=merges,
-
-            iterations=0,
-            do_morphemic_knockout=False,
-            do_reification=False
-        )
-
-    @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, specials: AutoVocabSpecs[WithSpecials], for_words: bool=True) -> "ClassicBPE[WithSpecials]":
-        vocab_and_merges = HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer)
-        return cls(
-            preprocessor=HuggingFacePreprocessorForWords(hf_bpe_tokenizer) if for_words else HuggingFacePreprocessor(hf_bpe_tokenizer),
-
-            vocab=AutoVocab.fromTokenizer(hf_bpe_tokenizer, specials),
-            merges=vocab_and_merges.loadMerges(),
-        )
+    pass

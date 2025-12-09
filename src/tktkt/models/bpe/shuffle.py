@@ -1,13 +1,13 @@
-from typing import Set
 import numpy.random as npr
 
 from bpe_knockout.model.graph import Merge
-from .base import *
+from .base import _DeterministicBPETokeniser, MergeList
+from ...interfaces.tokeniser import *
 
 RNG = npr.default_rng(0)
 
 
-class ShuffledBPE(DeterministicBPETokeniser):
+class ShuffledBPE(_DeterministicBPETokeniser):
 
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,

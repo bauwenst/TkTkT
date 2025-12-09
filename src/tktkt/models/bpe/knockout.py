@@ -1,111 +1,63 @@
-import warnings
+from typing import Optional
 
-from .base import *
-from ...util.types import L, Languish
+from bpe_knockout import ReferenceMode
+from bpe_knockout.model.auto import AutoKnockout, BTEConfig, KnockoutConfig, AnnealingConfig, ReifyMode
+from modest.interfaces.datasets import ModestDataset
 
-# CONFIGS = {
-#     L("English"): setupEnglish(),
-#      L("German"): setupGerman(),
-#       L("Dutch"): setupDutch()
-# }
+from .base import _DeterministicBPETokeniser, MergeList
+from ...interfaces.tokeniser import *
 
 
-class DeterministicBPETokeniserWithLanguage(DeterministicBPETokeniser):
-    """
-    Wrapper around the BPE-knockout tokeniser implementation that not only abstracts away the initialisation config, but
-    also the language config.
-    """
+class _KnockoutJIT(_DeterministicBPETokeniser):
 
-    def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList,
-                 language: Languish,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+                 reference_segmentations: Optional[ModestDataset],
                  iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False):
-        language = L(language)
-
-        # Get morphology config
-        if language not in CONFIGS:
-            warnings.warn(f"Language {language.display_name()} has no BPE-knockout configuration. Defaulting to English.")
-        config = CONFIGS.get(language, CONFIGS[L("English")])
-
-        # Run knockout in the context of that language
-        with KnockoutDataConfiguration(config):
-            super().__init__(
-                preprocessor=preprocessor,
-
-                vocab=vocab,
-                merges=merges,
-
-                do_morphemic_knockout=do_knockout,
-                do_reification=do_reify,
-                backwards_compatible=backwards_compatible,
-                iterations=iterations
+        if reference_segmentations is None:
+            super().__init__(preprocessor=preprocessor, vocab=vocab, merges=merges)
+        else:  # Make a config and run AutoKnockout, which uses the given dataset to modify a BTE tokeniser during the same runtime as its tokeniser is instantiated.
+            do_anneal = False
+            config = BTEConfig(
+                knockout=KnockoutConfig(reference=ReferenceMode.NONE if not do_knockout else ReferenceMode.MORPHEMIC),
+                annealing=AnnealingConfig(reference=ReferenceMode.NONE if not do_anneal else ReferenceMode.MORPHEMIC),
+                reify=ReifyMode.NONE if not do_reify else ReifyMode.FIX_AND_LINK if backwards_compatible else ReifyMode.FIX_AND_LINK_AND_MAKE,
+                iterations=iterations,
             )
+            bte = AutoKnockout(config).from_objects(preprocessor=preprocessor, vocab=vocab, merges=merges, reference=reference_segmentations)
+            super().__init__(preprocessor=preprocessor, vocab=bte.vocab, merges=bte.merge_graph.getRawMerges(), metadata=config)
 
 
-class BPEKnockout(DeterministicBPETokeniserWithLanguage):
+class BPEKnockout(_KnockoutJIT):
 
-    def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList, language: Languish):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+                 reference_segmentations: Optional[ModestDataset]):
         super().__init__(
             preprocessor=preprocessor,
-
             vocab=vocab,
             merges=merges,
 
-            language=language,
+            reference_segmentations=reference_segmentations,
 
             do_knockout=True,
             do_reify=False,
             iterations=1
         )
 
-    @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, specials: AutoVocabSpecs[WithSpecials],
-                        language: Languish) -> Self:
-        """
-        Assuming the given tokeniser is a BPE tokeniser, convert it to a native TkTkT BPE tokeniser
-        (rather than wrapping it), and *also* apply knockout using the given language.
-        """
-        return cls(
-            preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
 
-            vocab=AutoVocab.fromTokenizer(hf_bpe_tokenizer, specials),
-            merges=HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer).loadMerges(),
+class ReBPE(_KnockoutJIT):
 
-            language=language
-        )
-
-
-class ReBPE(DeterministicBPETokeniserWithLanguage):
-
-    def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList,
-                 language: Languish, iterations: int, backwards_compatible: bool=False):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+                 reference_segmentations: Optional[ModestDataset],
+                 iterations: int, backwards_compatible: bool=False):
         super().__init__(
             preprocessor=preprocessor,
-
             vocab=vocab,
             merges=merges,
 
-            language=language,
+            reference_segmentations=reference_segmentations,
 
             do_knockout=True,
             do_reify=True,
-            iterations=iterations,
-            backwards_compatible=backwards_compatible
-        )
-
-    @classmethod
-    def fromHuggingFace(cls, hf_bpe_tokenizer: PreTrainedTokenizerFast, specials: AutoVocabSpecs[WithSpecials],
-                        language: Languish, iterations: int, backwards_compatible: bool) -> Self:
-        return cls(
-            preprocessor=HuggingFacePreprocessor(hf_bpe_tokenizer),
-
-            vocab=AutoVocab.fromTokenizer(hf_bpe_tokenizer, specials),
-            merges=HuggingFaceTokeniserPath.fromTokeniser(hf_bpe_tokenizer).loadMerges(),
-
-            language=language,
-
             iterations=iterations,
             backwards_compatible=backwards_compatible
         )
