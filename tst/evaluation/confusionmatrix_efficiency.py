@@ -3,8 +3,6 @@ import re
 from tktkt.util.timing import timeit
 from tktkt.evaluation.morphological import compareSplits_cursors
 
-from bpe_knockout.project.config import morphologyGenerator
-
 
 def compareSplits_tokenLengths(candidate: str, reference: str):
     # Numpy implementation is short, but an order of magnitude slower!

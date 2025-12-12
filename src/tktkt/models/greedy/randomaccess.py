@@ -95,7 +95,6 @@ class HighestScoreFirst(TokeniserWithVocabulary[WithSpecials]):
         return self.tokenise(pretoken[:start]) + [pretoken[start:start+size]] + self.tokenise(pretoken[start+size:])
 
 
-from bpe_knockout.knockout.core import MergeGraph
 from ..bpe.base import MergeList
 
 class LastBPETokenFirst(HighestScoreFirst):
@@ -104,6 +103,7 @@ class LastBPETokenFirst(HighestScoreFirst):
     """
 
     def __init__(self, preprocessor: Preprocessor, bpe_vocab: Vocab, bpe_merges: MergeList):
+        from bpe_knockout.model.graph import MergeGraph
         scores = dict()
 
         graph = MergeGraph(bpe_vocab, bpe_merges)

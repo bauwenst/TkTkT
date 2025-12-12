@@ -1,7 +1,7 @@
 from .base import ClassicBPE
-from .knockout import BPEKnockout, ReBPE
-from .picky import PickyBPE, PickyBPEVocabulariser
 from .vocabularisation import BPEVocabulariser, BpeTrainerImplementation
+from .knockout import BPEKnockout, ReBPE, BPEKnockoutVocabulariser
+from .picky import PickyBPE, PickyBPEVocabulariser
 from .decomposing import TrimmedBPE, TrimmedBPEVocabulariser
 from .scaffold import ScaffoldBPE, ScaffoldBPEVocabulariser
 

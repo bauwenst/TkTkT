@@ -12,8 +12,8 @@ from enum import Enum
 
 from copy import copy
 
-from bpe_knockout.datahandlers.hf_corpora import punctuation
-from bpe_knockout.auxiliary.bytemapping import BYTE_ALPHABET
+from bpe_knockout.util.datahandlers.hf_corpora import punctuation
+from bpe_knockout.util.bytemapping import BYTE_ALPHABET
 
 from ...interfaces.tokeniser import *
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation

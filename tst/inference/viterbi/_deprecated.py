@@ -20,12 +20,12 @@ def compareDeprecatedUnguided():
 
 
 def compareDeprectatedProduct():
+    from modest.languages.english import English_Celex
 
     from tktkt.models.predictive.viterbi.instances import ProductViterbi
     from tktkt.models.predictive.viterbi import RA_Product
     from tktkt.factories.preprocessing import RobertaPreprocessor
 
-    from bpe_knockout.project.config import morphologyGenerator
     from transformers import RobertaTokenizer
     robbert_tokenizer = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
 
@@ -35,7 +35,7 @@ def compareDeprectatedProduct():
     tk1 = ProductViterbi(pre, vocab, max_step=None)
     tk2 = RA_Product(pre, vocab)
 
-    for obj in morphologyGenerator():
+    for obj in English_Celex().generate():
         word = obj.word
 
         tokens1 = tk1.prepareAndTokenise(word)

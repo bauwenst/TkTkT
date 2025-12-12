@@ -80,6 +80,10 @@ class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
         """
         pass
 
+    @abstractmethod
+    def get_special_tokens_mask(self, token_ids_0: list, token_ids_1: Optional[list]=None, already_has_special_tokens: bool=False) -> list[int]:
+        pass
+
 
 class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     """
@@ -92,14 +96,16 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     def __init__(self, backend: TokeniserWithVocabulary[WithSpecials], specials_map: dict[str,str]=None, specials_formatter: Callable[[str],str]=None, **kwargs):
         """
         :param specials_map: Maps the constructor arguments of SpecialTokensMixin, i.e. "bos_token", "eos_token", ...
-                             to the special keys in the given tokeniser's vocabulary's Specials.
-                             For example: {"bos_token": "BOS", "eos_token": "EOS", ...}
+                             to the special keys in the given tokeniser's Vocab's Specials.
+                             For example: {"pad_token": "PAD", "eos_token": "EOS", ...}
         """
         self.backend = backend
         self._specials_formatter = specials_formatter or (lambda s: "[" + s + "]")
 
         if specials_map is None:
-            formatted_specials_map = AutoSpecials.fromTktkt(self.backend.vocab.specials, specials_formatter=self._specials_formatter).special_tokens_map
+            # formatted_specials_map = AutoSpecials.fromTktkt(self.backend.vocab.specials, specials_formatter=self._specials_formatter).special_tokens_map  # TODO: deprecated; this method is now called from the Specials class by default.
+            specials_map           = self.backend.vocab.specials._hfSpecialsMap()
+            formatted_specials_map = {k: self._specials_formatter(v) for k,v in specials_map.items()}
         else:
             formatted_specials_map = {k: self._specials_formatter(v) for k,v in specials_map.items()}
         if self.backend.vocab.UNK is not None:
@@ -164,12 +170,21 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
 
             return (file_path.as_posix(),)
 
-    # TODO: Now that we have Specials, this can be as custom as you want!
     def build_inputs_with_special_tokens(self, token_ids_0: List[int], token_ids_1: Optional[List[int]]=None) -> list[int]:
         if token_ids_1 is None:
-            return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
+            return self.backend.vocab.specials._singleSentenceTemplate(token_ids_0)
         else:
-            return [self.bos_token_id] + token_ids_0 + [self.eos_token_id] + token_ids_1 + [self.eos_token_id]
+            return self.backend.vocab.specials._pairedSentenceTemplate(token_ids_0, token_ids_1)
+
+    def get_special_tokens_mask(self, token_ids_0: list, token_ids_1: Optional[list]=None, already_has_special_tokens: bool=False) -> list[int]:
+        if already_has_special_tokens:
+            assert token_ids_1 is None  # If not, you're claiming you got specials added to paired sequences BEFORE combining them, which is impossible.
+
+            special_id_set = set(self.backend.vocab.specials)
+            return [int(id in special_id_set) for id in token_ids_0]
+        else:
+            ids_with_specials = self.build_inputs_with_special_tokens(token_ids_0, token_ids_1)
+            return self.get_special_tokens_mask(ids_with_specials, already_has_special_tokens=True)
 
 
 class AutoSpecials:

@@ -21,6 +21,7 @@ TODO: There are two issues with our CANINE evaluation.
             result to the Viterbi tokeniser. Now you have segmentations into strings that include spaces and ë etc.
          2. Apply the byte mapping of the LM to map these tokens into the LM vocabulary.
 """
+import json
 
 from tktkt.factories.tokenisers import *
 from tktkt.util.timing import datetimeDashed
@@ -28,36 +29,35 @@ from tktkt.evaluation.morphological import intrinsicEvaluation
 from tktkt.models.predictive.viterbi import *
 from tktkt.paths import TkTkTPaths
 
-from bpe_knockout.project.config import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
+from modest.languages.english import English_Celex
 
 
 def evaluateTokenisers(tokenisers: Iterable[Tokeniser]):
-    with KnockoutDataConfiguration(setupEnglish()):
-        Pℛ𝒪𝒥ℰ𝒞𝒯.do_old_iterator = True
-        # Do evaluation
-        results = intrinsicEvaluation(tokenisers, do_whole_word=False, verbose=True)
+    dataset = English_Celex(legacy=True, verbose=True)
+    # Do evaluation
+    results = intrinsicEvaluation(tokenisers, do_whole_word=False, verbose=True)
 
-        # Turn results into a file so that you can check them even if the terminal closes
-        d = dict()
-        for result in results:
-            matrix = result.cm_morph
-            pr, re, f1 = matrix.computePrReF1()
-            tp, fp, tn, fn = matrix.compute()
+    # Turn results into a file so that you can check them even if the terminal closes
+    d = dict()
+    for result in results:
+        matrix = result.cm_morph
+        pr, re, f1 = matrix.computePrReF1()
+        tp, fp, tn, fn = matrix.compute()
 
-            d[result.name] = {
-                "morph-types": {
-                    "Pr": pr,
-                    "Re": re,
-                    "F1": f1,
-                    "TP": tp,
-                    "FP": fp,
-                    "TN": tn,
-                    "FN": fn
-                }
+        d[result.name] = {
+            "morph-types": {
+                "Pr": pr,
+                "Re": re,
+                "F1": f1,
+                "TP": tp,
+                "FP": fp,
+                "TN": tn,
+                "FN": fn
             }
+        }
 
-        with open(TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "morphology") / (Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag() + "-morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
-            json.dump(d, handle)
+    with open(TkTkTPaths.pathToEvaluations("morphology") / (dataset.identifier() + "-morphology_" + datetimeDashed() + ".json"), "w", encoding="utf-8") as handle:
+        json.dump(d, handle)
 
 
 ##################################################################################################################
@@ -151,19 +151,19 @@ def constructTokenisers_leasttoken():
 
 def constructTokenisers_dropout():
     return [
-        Factory_CanineBPEdropout(None),
-        Factory_CanineBPEdropout(0.5),
-        Factory_CanineBPEdropout(0.4),
-        Factory_CanineBPEdropout(0.3),
-        Factory_CanineBPEdropout(0.2),
-        Factory_CanineBPEdropout(0.1)
+        Factory_CanineBPEdropout(deterministic_threshold=None),
+        Factory_CanineBPEdropout(deterministic_threshold=0.5),
+        Factory_CanineBPEdropout(deterministic_threshold=0.4),
+        Factory_CanineBPEdropout(deterministic_threshold=0.3),
+        Factory_CanineBPEdropout(deterministic_threshold=0.2),
+        Factory_CanineBPEdropout(deterministic_threshold=0.1)
     ]
 
 
 def constructTokenisers_multiplicativeProbabilities():
     for scale in [0.25, 0.5, 0.75, 1.0, 1.1, 1.25]:
-        yield Factory_BoMMaProduct_ULM(PowerMBPT(power=1, scale=scale))
-    yield Factory_BoMMaProduct_ULM(DoublingMBPT())
+        yield Factory_BoMMaProduct(score_transform=PowerMBPT(power=1, scale=scale))
+    yield Factory_BoMMaProduct(score_transform=DoublingMBPT())
 
 
 def constructTokenisers_reBPE():

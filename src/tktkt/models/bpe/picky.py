@@ -13,6 +13,8 @@ from ...interfaces.vocabulariser import UnidentifiedVocab
 from ...interfaces.tokeniser import *
 from .vocabularisation import _VocabulariserWithChizhovBackend
 
+__all__ = ["PickyBPEVocabulariser", "PickyBPE", "PickyBPEDeserialiser_SmallFormat"]
+
 
 class _ChizhovBackend_PickyBPE_SmallFormat(_PickyBPETrainerBase):
     """

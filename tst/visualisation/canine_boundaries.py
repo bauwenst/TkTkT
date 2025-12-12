@@ -1,13 +1,13 @@
-from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
-from tktkt.util.strings import indicesToTokens
-from tst.evaluation.english_morphology import KnockoutDataConfiguration, setupEnglish, Pℛ𝒪𝒥ℰ𝒞𝒯
+from tst.preamble import *
 
 from tktkt.factories.tokenisers import Factory_BoMMaSum_BPE
-from tktkt.evaluation.morphological import morphologyGenerator
 from tktkt.interfaces.tokeniser import prepare_tokenise_decode
 from tktkt.visualisation.neural.splitpoints_probabilities import *
+from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
+from tktkt.util.strings import indicesToTokens
 
 from fiject import MultiHistogram, CacheMode
+from modest.languages.english import English_Celex
 
 
 def test_probabilityVisualisation():
@@ -37,33 +37,33 @@ def test_visualiseCelexMismatches():
     classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
     vocab = canine_viterbi.objectives[0].score_generator.vocab
 
-    with KnockoutDataConfiguration(setupEnglish()):
-        for obj in morphologyGenerator(verbose=False):
-            word = obj.word
+    dataset = English_Celex()
+    for obj in dataset.generate():
+        word = obj.word
 
-            reference = " ".join(obj.segment())
-            viterbi   = " ".join(prepare_tokenise_decode(word, canine_viterbi, canine_viterbi.preprocessor)).strip()
+        reference = " ".join(obj.segment())
+        viterbi   = " ".join(prepare_tokenise_decode(word, canine_viterbi, canine_viterbi.preprocessor)).strip()
 
-            if reference != viterbi:
-                print(word)
-                word = canine_viterbi.preprocessor.do(word)[0]
-                print("\tGold reference:  ", reference)
-                print("\tProbabilities:   ", visualisePredictedBoundaries(classifier, word))
-                print("\tViterbi decision:", viterbi)
-                print("\t            `--->", " // ".join(
-                    map(lambda tokens: " ".join(filter(lambda t: t, tokens)),
-                        map(canine_viterbi.preprocessor.undo_per_token,
-                            sorted(
-                                filter(lambda segmentation: not any(len(t) == 1 for t in segmentation[1:]),
-                                    map(lambda idcs: indicesToTokens(word, idcs),
-                                        generateSegmentationIndices_fixedSpace(word, vocab)
-                                        )
-                                ),
-                                reverse=True
-                            )
+        if reference != viterbi:
+            print(word)
+            word = canine_viterbi.preprocessor.do(word)[0]
+            print("\tGold reference:  ", reference)
+            print("\tProbabilities:   ", visualisePredictedBoundaries(classifier, word))
+            print("\tViterbi decision:", viterbi)
+            print("\t            `--->", " // ".join(
+                map(lambda tokens: " ".join(filter(lambda t: t, tokens)),
+                    map(canine_viterbi.preprocessor.undo_per_token,
+                        sorted(
+                            filter(lambda segmentation: not any(len(t) == 1 for t in segmentation[1:]),
+                                map(lambda idcs: indicesToTokens(word, idcs),
+                                    generateSegmentationIndices_fixedSpace(word, vocab)
+                                    )
+                            ),
+                            reverse=True
                         )
                     )
-                ))
+                )
+            ))
 
 
 def test_uncertaintyOfPredictions():
@@ -71,18 +71,17 @@ def test_uncertaintyOfPredictions():
     Produces a histogram of all the predictions made by the character classifier.
     This way, we can visually verify whether most decisions are certain or whether most decisions are ambiguous.
     """
-    with KnockoutDataConfiguration(setupEnglish()):
-        histo = MultiHistogram("CANINE_boundary-probabilities_" + Pℛ𝒪𝒥ℰ𝒞𝒯.config.langTag(), caching=CacheMode.IF_MISSING)
+    dataset = English_Celex()
+    histo = MultiHistogram("CANINE_boundary-probabilities_" + dataset.identifier(), caching=CacheMode.IF_MISSING)
+    if histo.needs_computation:
+        canine_viterbi = Factory_BoMMaSum_BPE().buildTokeniser()
+        classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
-        if histo.needs_computation:
-            canine_viterbi = Factory_BoMMaSum_BPE().buildTokeniser()
-            classifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
+        for obj in dataset.generate():
+            histo.addMany("predictions", getPredictionProbabilities(classifier, obj.word).tolist())
 
-            for obj in morphologyGenerator():
-                histo.addMany("predictions", getPredictionProbabilities(classifier, obj.word).tolist())
-
-        histo.commit_histplot(binwidth=0.05, relative_counts=True, x_lims=(-0.025,1.025), x_tickspacing=0.1,
-                              x_label="Predicted boundary probability", y_label="Proportion of words")
+    histo.commit_histplot(binwidth=0.05, relative_counts=True, x_lims=(-0.025,1.025), x_tickspacing=0.1,
+                          x_label="Predicted boundary probability", y_label="Proportion of words")
 
 
 if __name__ == "__main__":

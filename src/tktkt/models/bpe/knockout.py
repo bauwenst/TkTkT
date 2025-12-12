@@ -1,11 +1,14 @@
 from typing import Optional
 
-from bpe_knockout import ReferenceMode
+from bpe_knockout import ReferenceMode, BPEKnockoutVocabulariser, BTEConfig
 from bpe_knockout.model.auto import AutoKnockout, BTEConfig, KnockoutConfig, AnnealingConfig, ReifyMode
 from modest.interfaces.datasets import ModestDataset
 
 from .base import _DeterministicBPETokeniser, MergeList
 from ...interfaces.tokeniser import *
+
+__all__ = ["BPEKnockout", "ReBPE",
+           "BPEKnockoutVocabulariser", "BTEConfig"]  # Vocabularisation is already implemented for us.
 
 
 class _KnockoutJIT(_DeterministicBPETokeniser):

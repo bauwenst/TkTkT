@@ -22,6 +22,17 @@ class _ProhibitDeclaringConstructor(type):
 
 
 class Specials(metaclass=_ProhibitDeclaringConstructor):  # This metaclass prevents the user from writing 'def __init__(self)' which means they are more or less forced to use a dataclass.
+    """
+    A possibly nested dataclass where each field stores the identifiers for a "special", i.e. an embedding in a
+    language model that can only be added by the backend for control purposes, not through user input.
+
+    Specials MUST NOT have a string representation. They can have an informal name like you and I just have a name
+    (like "the emdding we use for classification"), but that name must never be represented as a string, and if it is,
+    then the logic that converts it to an identifier must never be used by user input.
+
+    HuggingFace used to agree, now they do it wrong. https://github.com/huggingface/transformers/issues/429
+    And yes, the good old Bobby Tables joke applies. https://nicholas.carlini.com/writing/2023/little-bobby-endoftext.html
+    """
 
     def __post_init__(self):  # This method is only called by @dataclass objects, namely at the end of their implicitly declared constructor. It is inherited, even if the base class is not a dataclass.
         assert is_dataclass(self)
@@ -108,7 +119,20 @@ class Specials(metaclass=_ProhibitDeclaringConstructor):  # This metaclass preve
             else:
                 raise TypeError(field.type)
 
-    # No other methods because we want the user to just see all the available specials when they type "."
+    # The below methods are (1) not public so they don't clutter autocompletion of specials, and (2) not abstract because otherwise you couldn't have partial specials objects.
+
+    def _hfSpecialsMap(self) -> dict[str,str]:  # {"bos_token": "BOS", "eos_token": "EOS", ...}
+        from ..interfaces.huggingface import AutoSpecials
+        return AutoSpecials.fromTktkt(self, specials_formatter=lambda x: x).special_tokens_map
+
+    def _singleSentenceTemplate(self, ids: list[int]) -> list[int]:
+        return ids
+
+    def _pairedSentenceTemplate(self, ids_1: list[int], ids_2: list[int]) -> list[int]:
+        return ids_1 + ids_2
+
+    # TODO: We may want to introduce chat templates too. For inspiration, see
+    #       https://github.com/lm-sys/FastChat/blob/main/fastchat/conversation.py
 
 
 @dataclass
@@ -313,12 +337,13 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
 
 
 SubwordCollection = Union[set[str], Vocab]
+ExistingSpecialStrings = dict[str, str]  # Mapping like "BOS" -> "<s>" to link Specials to surface strings in the tokeniser's vocab.
 
 
 @dataclass
 class AutoVocabSpecs(Generic[WithSpecials]):
     specials_template: WithSpecials
-    special_to_string: dict[str, str]  # Mapping like "BOS" -> "<s>" to link Specials to surface strings in the tokeniser's vocab.
+    special_to_string: ExistingSpecialStrings
 
 
 class AutoVocab:
@@ -432,7 +457,7 @@ def repairAbsoluteSpecials(n_types: int, specials: WithSpecials, unk_id: Optiona
     return specials, unk_id
 
 
-def findSpecialRanges(n_types: int, specials: Specials) -> list[tuple[int,int]]:
+def findSpecialRanges(specials: Specials) -> list[tuple[int,int]]:
     """
     It is sometimes useful in language models to be able to check for specials using a range check rather than looping
     through equality checks. Usually you have a top range of specials and a bottom range of specials, although specials

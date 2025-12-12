@@ -661,6 +661,7 @@ class BoundaryPrefixAndSuffixLengthExtended(ScoreGeneratorUsingCharacterClassifi
 ########################################################################################################################
 
 from ....preparation.boundaries import BoundaryMarkerLocation, BoundaryMarker
+from modest.interfaces.datasets import ModestDataset
 
 class GoldSplits(CharacterClassifier):
     """
@@ -671,13 +672,12 @@ class GoldSplits(CharacterClassifier):
            preprocessor.undo() probably works.
     """
 
-    def __init__(self, boundary_marker: BoundaryMarker):
+    def __init__(self, boundary_marker: BoundaryMarker, dataset: ModestDataset):
         from ....preparation.splitters import OnWhitespaceAndAddMarker
         self.pretokeniser = OnWhitespaceAndAddMarker(replacement=boundary_marker)
         self.pretoken_shift = len(self.pretokeniser.marker.substitute)*(self.pretokeniser.marker.location == BoundaryMarkerLocation.START)
 
-        from bpe_knockout.project.config import morphologyGenerator
-        self.gold_segmentations = {obj.word: obj.segment() for obj in morphologyGenerator()}
+        self.gold_segmentations = {obj.word: obj.segment() for obj in dataset.generate()}
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         labels = np.zeros(len(pretoken), dtype=np.float32)

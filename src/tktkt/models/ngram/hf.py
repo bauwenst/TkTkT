@@ -8,7 +8,7 @@ from .base import NgramTokeniser, NgramByteBasedMode
 from ...interfaces.huggingface import HuggingFaceTokeniserInterface
 
 
-from bpe_knockout.datahandlers.hf_corpora import punctuation
+from bpe_knockout.util.datahandlers.hf_corpora import punctuation
 
 LETTERS = {chr(i) for i in range(97,123)} | {chr(i) for i in range(65,91)} \
         | {chr(i) for i in range(224,229)} | {chr(i) for i in range(232,240)} | {chr(i) for i in range(249,253)} | {chr(i) for i in range(242,247)} \
