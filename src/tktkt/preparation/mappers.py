@@ -270,6 +270,11 @@ class IdentityMapper(InvertibleTextMapper):  # Not equivalent to InvertibleMappe
 
 
 class _PartialAlphabet(IdentityMapper):
+    """
+    Rather than defining a fixed set of character from which all outputs are made up,
+    declare a set of characters which you know you certainly want in the vocabulary because you know they will appear
+    (but other characters outside of this may appear as well).
+    """
     @abstractmethod
     def _partialAlphabet(self) -> list[str]:
         pass
@@ -280,7 +285,17 @@ class _PartialAlphabet(IdentityMapper):
 
 class RegisterASCII(_PartialAlphabet):
     def _partialAlphabet(self) -> list[str]:
-        return [chr(i) for i in range(33,123)]
+        return list(map(chr, range(33, 127)))
+
+
+class RegisterGreek(_PartialAlphabet):
+    def _partialAlphabet(self) -> list[str]:
+        return list(map(chr, range(913, 930))) + list(map(chr, range(931, 975)))  # The gap at 930 is reserved for a possible future "capital end-sigma".
+
+
+class RegisterCyrillic(_PartialAlphabet):
+    def _partialAlphabet(self) -> list[str]:
+        return list(map(chr, range(1024, 1280)))
 
 
 class AppendSpace(InvertibleTextMapper):

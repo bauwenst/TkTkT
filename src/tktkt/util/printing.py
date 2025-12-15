@@ -1,6 +1,9 @@
-import time
 from typing import Iterable, List
+
+import time
 import logging
+import os
+import sys
 
 
 def setLoggingLevel(level: int=logging.WARNING):
@@ -167,6 +170,25 @@ def logger(msg: str):
 
 def warn(*msgs):
     print("[WARNING]", *msgs)
+
+
+class SuppressedPrints:
+    """
+    Environment for stopping all Pythonic calls to stdout.
+    Unfortunately doesn't work to stop HuggingFace Rust code from println'ing.
+
+        with SuppressedPrints():
+            ....
+
+    Taken from https://stackoverflow.com/a/45669280
+    """
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        sys.stdout = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.close()
+        sys.stdout = self._original_stdout
 
 
 class doPrint:

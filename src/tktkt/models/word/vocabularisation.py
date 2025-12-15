@@ -145,7 +145,7 @@ class CountWords(UnsupervisedVocabulariser):
         is lossier than you need, since it assumes that at the end, the full counter must be held in memory before writing it away.
         """
         warn_size = self.config.flush_if_keys_exceed
-        max_size  = self.config.flush_if_keys_exceed * self.config.checkpoint_every_examples
+        max_size  = self.config.flush_if_keys_exceed * self.config.drop_if_multiple_exceeded
         warned = False
 
         # Collect
@@ -170,7 +170,7 @@ class CountWords(UnsupervisedVocabulariser):
                         gc.collect()  # We can't rely on the interpreter to decide when to garbage-collect those del'd items.
                         f += 1
                 elif not warned and current_size > warn_size:
-                    logger.warning(f"Merged counter has become bigger than during counting ({intsep(max_size)} keys).")
+                    logger.warning(f"Merged counter has become bigger than during counting ({intsep(warn_size)} keys).")
                     warned = True
 
             logger.info(f"Keys after {pluralise(idx, 'shard')}: {intsep(len(total_counter))}")

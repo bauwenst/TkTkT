@@ -41,7 +41,7 @@ class Vocabulariser(ABC):
         pass
 
     @classmethod
-    def load(cls, file_or_folder: Path, specials: WithSpecials=NoSpecials(), filtered_types: set[str]=None, type_sorting_key: Optional[Callable[[str], Comparable]]=None) -> Vocab[WithSpecials]:
+    def load(cls, file_or_folder: Path, specials: WithSpecials=NoSpecials(), unk_type: Optional[int]=0, filtered_types: set[str]=None, type_sorting_key: Optional[Callable[[str], Comparable]]=None) -> Vocab[WithSpecials]:
         """
         Combines the Vocabulariser-specific knowledge of ._load() with the abilities to choose
             1. which of the loaded types to remove;
@@ -50,7 +50,7 @@ class Vocabulariser(ABC):
         """
         filtered_types = filtered_types or set()
         types = sorted(cls._load(file_or_folder), key=type_sorting_key) if type_sorting_key is not None else cls._load(file_or_folder)
-        return Vocab(filter(lambda t: t not in filtered_types, types), specials, unk_id=0)  # UNK is always 0 in vocabs trained with TkTkT.
+        return Vocab(filter(lambda t: t not in filtered_types, types), specials, unk_id=unk_type)
 
 
 class UnsupervisedVocabulariser(Vocabulariser):

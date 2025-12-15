@@ -508,7 +508,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
         # Vocab
         BPEVocabulariser._storeVocab({
             typ.str: i
-            for i, typ in enumerate(sorted(self.str2token.values(), key=lambda token: token.id))
+            for i, typ in enumerate(sorted(filter(lambda token: token != self.unk_token, self.str2token.values()), key=lambda token: token.id))
         }, folder)
 
         # Merges
