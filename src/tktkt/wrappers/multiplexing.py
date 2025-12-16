@@ -25,7 +25,7 @@ import numpy as np
 import numpy.random as npr
 
 from ..interfaces.huggingface import AutoSpecials
-from ..interfaces.tokeniser import *
+from ..interfaces.tokenisers import *
 from ..util.iterables import arePositive
 
 

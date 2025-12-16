@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarkerLocation
-from ...interfaces.vocabulariser import *
+from ...interfaces.vocabularisers import *
 from ...util.iterables import streamPrint, streamProgress, T
 
 

@@ -3,7 +3,7 @@ from typing import Optional
 
 from sentencepiece import SentencePieceProcessor
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from .vocabularisation import KudoPieceVocabulariser
 
 

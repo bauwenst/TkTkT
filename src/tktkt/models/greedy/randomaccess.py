@@ -7,7 +7,7 @@ Apparently this was published as "FLOTA" a year prior by Hofmann (2022). https:/
 """
 from math import inf
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...util.dicts import intersect_dicts
 
 

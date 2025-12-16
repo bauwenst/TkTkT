@@ -1,5 +1,5 @@
 from tktkt.models.ngram.base import *
-from tktkt.interfaces.tokeniser import prepare_tokenise_decode
+from tktkt.interfaces.tokenisers import prepare_tokenise_decode
 
 
 if __name__ == "__main__":

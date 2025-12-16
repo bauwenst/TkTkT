@@ -1,5 +1,5 @@
-from .preparation import Preprocessor, TextMapper, InvertibleTextMapper
+from .preprocessors import Preprocessor, TextMapper, InvertibleTextMapper
 from .identifiers import Specials, Vocab
-from .vocabulariser import Vocabulariser
-from .factories import Deserialiser, TokeniserFactory
-from .tokeniser import Tokeniser, TokeniserWithVocabulary
+from .vocabularisers import Vocabulariser
+from .factories import Artifacts, TokeniserFactory
+from .tokenisers import Tokeniser, TokeniserWithVocabulary

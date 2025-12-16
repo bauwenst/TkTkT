@@ -2,7 +2,7 @@ import numpy.random as npr
 
 from bpe_knockout.model.graph import Merge
 from .base import _DeterministicBPETokeniser, MergeList
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 
 RNG = npr.default_rng(0)
 

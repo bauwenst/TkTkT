@@ -13,7 +13,7 @@ from bpe_knockout.model.vocabulariser import BPEKnockoutVocabulariser
 from bpe_knockout.model.graph import Merge
 
 from .base import _DeterministicBPETokeniser, MergeList
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...util.iterables import deduplicate, mapExtend
 from ...util.functions import relu
 

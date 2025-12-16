@@ -3,7 +3,7 @@ from typing import MutableSequence, Union, Optional
 import numpy.random as npr
 from math import exp, log, inf
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...models.predictive.viterbi import CharacterClassifier
 from .base import MergeList, _NonDeterministicBPETokeniser
 

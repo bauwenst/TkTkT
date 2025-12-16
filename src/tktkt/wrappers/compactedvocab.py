@@ -1,4 +1,4 @@
-from ..interfaces.tokeniser import TokeniserWithVocabulary
+from ..interfaces.tokenisers import TokeniserWithVocabulary
 from ..interfaces.identifiers import AutoVocabSpecs, WithSpecials, AutoVocab
 
 

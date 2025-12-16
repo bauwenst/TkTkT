@@ -5,7 +5,7 @@ from typing import Type, Optional
 from typing_extensions import Self
 
 from . import *
-from ....interfaces.tokeniser import Preprocessor
+from ....interfaces.tokenisers import Preprocessor
 from ....interfaces.identifiers import SubwordCollection
 
 

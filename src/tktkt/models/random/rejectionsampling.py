@@ -2,7 +2,7 @@ from typing import List
 from math import prod
 import numpy.random as npr
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...interfaces.identifiers import SubwordCollection
 from ...util.strings import bitstringToTokens, indicesToTokens
 

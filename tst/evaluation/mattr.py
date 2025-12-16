@@ -2,7 +2,7 @@ from tst.preamble import *
 
 from tktkt.evaluation.entropy import getTokenDistributionFromSentences_and_analyse
 from tktkt.models.word.segmentation import IdentityTokeniserWithVocab
-from tktkt.factories.preprocessing import Preprocessor, OnWhitespace
+from tktkt.factories.preprocessors import Preprocessor, OnWhitespace
 from tktkt.util.types import NamedIterable
 
 

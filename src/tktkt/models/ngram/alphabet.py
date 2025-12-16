@@ -2,7 +2,7 @@ from typing import List, Iterable
 
 from ...interfaces import Preprocessor, Vocab
 from ...interfaces.identifiers import WithSpecials
-from ...interfaces.tokeniser import TokeniserWithVocabulary
+from ...interfaces.tokenisers import TokeniserWithVocabulary
 
 
 UNICODE_VALUES = 149_813 + 65

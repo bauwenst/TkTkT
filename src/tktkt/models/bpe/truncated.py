@@ -4,7 +4,7 @@ Limits BPE to an earlier part of training by truncating the merge list.
 from bpe_knockout.model.graph import MergeGraph
 
 from .base import _DeterministicBPETokeniser, MergeList
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 
 
 class TruncatedBPE(_DeterministicBPETokeniser):

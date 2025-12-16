@@ -12,7 +12,7 @@ from typing import List
 
 from math import inf
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 
 
 class L2R_Greedy(TokeniserWithVocabulary[WithSpecials]):

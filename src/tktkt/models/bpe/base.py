@@ -3,7 +3,7 @@ from functools import lru_cache
 
 from bpe_knockout.model.tokeniser import BTE, MergeList  # This is for other files.
 
-from ...interfaces.tokeniser import Tokens
+from ...interfaces.tokenisers import Tokens
 from ...interfaces.identifiers import WithSpecials
 
 

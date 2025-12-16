@@ -13,7 +13,7 @@ not you return the characters and let them be [UNK]'ed.
 """
 import numpy.random as npr
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...util.strings import bitstringToTokens
 
 

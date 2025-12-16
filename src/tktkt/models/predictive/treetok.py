@@ -7,7 +7,7 @@ https://aclanthology.org/2025.findings-acl.1146.pdf
 from typing import List
 
 from .viterbi import CharacterClassifier
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...util.iterables import maxargmax
 
 

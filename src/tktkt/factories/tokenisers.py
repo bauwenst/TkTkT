@@ -1,7 +1,7 @@
 """
 Evaluate any tokeniser on English morphology.
 """
-from ..interfaces import TokeniserFactory, Deserialiser
+from ..interfaces import TokeniserFactory, Artifacts
 from ..interfaces.identifiers import WithSpecials
 from ..models.predictive.viterbi.instances import *
 from ..models.bpe.base import ClassicBPE
@@ -12,16 +12,16 @@ from ..models.kudopiece.segmentation import KudoPieceTokeniser
 from ..models.random.grampa import GRaMPa, PowerNormalisation
 from ..models.ngram.alphabet import UnicodeTokeniser
 from ..wrappers.multiplexing import StochasticTokeniserSwitch, MultiplexedPreprocessor
-from .preprocessing import *
-from .deserialisation import *
-from .deserialisation import BPE_Deserialiser, KudoPiece_Deserialiser, detectBoundaryMarkerFromVocabulary, getEnglishCANINE
+from .preprocessors import *
+from .artifacts import *
+from .artifacts import BPE_Artifacts, KudoPiece_Artifacts, detectBoundaryMarkerFromVocabulary, getEnglishCANINE
 
 
 ########################################################################################################################
 
 
 class Factory_BPE(TokeniserFactory[HuggingFaceBPETokeniser[WithSpecials]]):
-    def __init__(self, preprocessor: Preprocessor=None, dropout: float=0.0, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, dropout: float=0.0, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._dropout = dropout
         self._files = files
@@ -36,7 +36,7 @@ class Factory_BPE(TokeniserFactory[HuggingFaceBPETokeniser[WithSpecials]]):
 
 
 class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE[WithSpecials]]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser[WithSpecials]=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Artifacts[WithSpecials]=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._files = files
 
@@ -52,7 +52,7 @@ class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE[WithSpecials]]):
 
 
 class Factory_BPEKnockout(TokeniserFactory[BPEKnockout]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._files = files
 
@@ -66,7 +66,7 @@ class Factory_BPEKnockout(TokeniserFactory[BPEKnockout]):
 
 
 class Factory_ReBPE(TokeniserFactory[ReBPE]):
-    def __init__(self, iterations: int, reduced: bool=False, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
+    def __init__(self, iterations: int, reduced: bool=False, preprocessor: Preprocessor=None, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
         self._prep = preprocessor
         self._files = files
         self.its = iterations
@@ -92,7 +92,7 @@ class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser[WithSpecials]]):
     Defaults to the 32k SlimPajama vocab.
     """
 
-    def __init__(self, preprocessor: Preprocessor=None, files: KudoPiece_Deserialiser=KudoPiece32ki_SlimPajama3M(), kbest: int=64, alpha: float=1.0):
+    def __init__(self, preprocessor: Preprocessor=None, files: KudoPiece_Artifacts=KudoPiece32ki_SlimPajama3M(), kbest: int=64, alpha: float=1.0):
         self._prep = preprocessor
         self._files = files
         self._kbest = kbest
@@ -113,7 +113,7 @@ class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser[WithSpecials]]):
 
 
 class Factory_LeastToken(TokeniserFactory[LeastTokenViterbi]):
-    def __init__(self, preprocessor: Preprocessor=None, files: Deserialiser=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: Artifacts=BPE32ki_SlimPajama3M()):
         self._files = files
         self._prep = preprocessor or files.preprocessorEffective()
 
@@ -126,7 +126,7 @@ class Factory_LeastToken(TokeniserFactory[LeastTokenViterbi]):
 
 
 class Factory_LeastToken_BPEKnockout(TokeniserFactory[LeastTokenViterbi]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Deserialiser=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
         self._files = files
         self._prep = preprocessor or files.preprocessorEffective()
 
@@ -158,7 +158,7 @@ class Factory_BoMMaSum(TokeniserFactory[BoMMa_Sum]):
     def __init__(self,
                  generator: ScoreGeneratorUsingCharacterClassifier=BoundaryScoresChosen(LinearPT(-1, +1, negate_as_complement=True)),
                  constraint: Type[VocabularyConstraint]=VocabularyConstraintExact,
-                 preprocessor: Preprocessor=None, files: Deserialiser=KudoPiece32ki_SlimPajama3M()):
+                 preprocessor: Preprocessor=None, files: Artifacts=KudoPiece32ki_SlimPajama3M()):
         self._files = files
         self._prep = preprocessor  # TODO: As we know, BoMMa has a two-preprocessor problem.
 
@@ -180,11 +180,11 @@ class Factory_BoMMaSum(TokeniserFactory[BoMMa_Sum]):
 
 class Factory_BoMMaSum_FromTransform(Factory_BoMMaSum):
     def __init__(self,
-        files: Deserialiser=KudoPiece32ki_SlimPajama3M(),
-        generator: Type[ScoreGeneratorUsingCharacterClassifierForTransform]=BoundaryScoresChosen,
-        score_transform: ProbabilityTransform=LinearPT(-1, +1, negate_as_complement=False),
-        constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
-    ):
+                 files: Artifacts=KudoPiece32ki_SlimPajama3M(),
+                 generator: Type[ScoreGeneratorUsingCharacterClassifierForTransform]=BoundaryScoresChosen,
+                 score_transform: ProbabilityTransform=LinearPT(-1, +1, negate_as_complement=False),
+                 constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
+                 ):
         super().__init__(generator=generator(score_transform), constraint=constraint, files=files)
 
 
@@ -204,7 +204,7 @@ class Factory_BoMMaProduct(TokeniserFactory[BoMMa_Product]):
     and so that two perfect splits are better than one perfect split.
     """
 
-    def __init__(self, files: Deserialiser=KudoPiece32ki_SlimPajama3M(), score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
+    def __init__(self, files: Artifacts=KudoPiece32ki_SlimPajama3M(), score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
         self._files = files
         self.balanced_transform = score_transform
 
@@ -222,7 +222,7 @@ class Factory_BoMMaProduct(TokeniserFactory[BoMMa_Product]):
 
 
 class Factory_LeastTokenThenProbability(TokeniserFactory[LeastTokenViterbiWithProbabilityTiebreaker]):
-    def __init__(self, files: Deserialiser):
+    def __init__(self, files: Artifacts):
         self._files = files
 
     def buildTokeniser(self):
@@ -237,7 +237,7 @@ class Factory_LeastTokenThenProbability(TokeniserFactory[LeastTokenViterbiWithPr
 
 
 class Factory_ProbabilityThenLeastToken(TokeniserFactory[ProbabilityViterbiWithLeastTokenTiebreaker]):
-    def __init__(self, files: Deserialiser):
+    def __init__(self, files: Artifacts):
         self._files = files
 
     def buildTokeniser(self):
@@ -253,7 +253,7 @@ class Factory_ProbabilityThenLeastToken(TokeniserFactory[ProbabilityViterbiWithL
 
 class Factory_CanineBPEdropout(TokeniserFactory[GuidedBPEDropout]):
 
-    def __init__(self, files: BPE_Deserialiser=BPE32ki_SlimPajama3M(), deterministic_threshold: float=None):
+    def __init__(self, files: BPE_Artifacts=BPE32ki_SlimPajama3M(), deterministic_threshold: float=None):
         self._files = files
         self.threshold = deterministic_threshold
 
@@ -302,7 +302,7 @@ class Factory_Switch(TokeniserFactory[StochasticTokeniserSwitch]):
 
 class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
 
-    def __init__(self, preprocessor: Preprocessor=None, vocab_file: Deserialiser=KudoPiece32ki_SlimPajama3M(),
+    def __init__(self, preprocessor: Preprocessor=None, vocab_file: Artifacts=KudoPiece32ki_SlimPajama3M(),
                  minimal_length: int=1, temperature: float=1.0, r2l_not_l2r: bool=False):
         self._prep = preprocessor
         self._vocab_file = vocab_file
@@ -331,7 +331,7 @@ class Factory_SwitchyGrampa_ULM(TokeniserFactory[StochasticTokeniserSwitch]):
     the StochasticTokeniserSwitch constructor directly or make your own factory.
     """
 
-    def __init__(self, files: KudoPiece_Deserialiser=KudoPiece32ki_SlimPajama3M(), p: float=0.5,
+    def __init__(self, files: KudoPiece_Artifacts=KudoPiece32ki_SlimPajama3M(), p: float=0.5,
                  temperature: float=1.0, l_min: int=1,
                  kbest: int=1, smoothing_power: float=1.0):
         self._files = files
@@ -376,7 +376,7 @@ class Factory_SwitchyGrampa_BPE(TokeniserFactory[StochasticTokeniserSwitch]):
     the StochasticTokeniserSwitch constructor directly or make your own factory.
     """
 
-    def __init__(self, files: BPE_Deserialiser=BPE32ki_SlimPajama3M(), p: float=0.5,
+    def __init__(self, files: BPE_Artifacts=BPE32ki_SlimPajama3M(), p: float=0.5,
                  temperature: float=1.0, l_min: int=1,
                  dropout: float=0.0):
         self._files = files

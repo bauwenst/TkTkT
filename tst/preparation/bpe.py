@@ -1,4 +1,4 @@
-from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
+from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
 from tktkt.models.bpe.base import ClassicBPE
 
 

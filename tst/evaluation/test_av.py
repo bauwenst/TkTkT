@@ -9,7 +9,7 @@ from tktkt.util.iterables import take
 from tktkt.util.dicts import invertdict
 from tktkt.util.types import NamedIterable
 from tktkt.util.printing import percent, dprint
-from tktkt.factories.preprocessing import KudoSpaceMarker, RobertaSpaceMarker
+from tktkt.factories.preprocessors import KudoSpaceMarker, RobertaSpaceMarker
 
 
 def smallCorpus():
@@ -117,7 +117,7 @@ def filtering():
             .replace(" ", "")
         return bool(pattern.search(accessor_without_desirable_characters))
 
-    from tktkt.factories.preprocessing import TraditionalPreprocessor
+    from tktkt.factories.preprocessors import TraditionalPreprocessor
     print("Loading corpus...")
     d = getCorpus(5000)
     tk = HuggingFaceTokeniser(AutoTokenizer.from_pretrained("roberta-base"), for_single_words=True)

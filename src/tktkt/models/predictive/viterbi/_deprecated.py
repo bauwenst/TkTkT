@@ -1,7 +1,7 @@
 from typing import List, Callable
 from dataclasses import dataclass
 
-from ....interfaces.tokeniser import *
+from ....interfaces.tokenisers import *
 from ....preparation.splitters import OnWhitespaceAndAddMarker, BoundaryMarker
 
 

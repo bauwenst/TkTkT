@@ -12,7 +12,7 @@ import warnings
 import json
 from transformers import PreTrainedTokenizer, SpecialTokensMixin
 
-from .tokeniser import TokeniserWithVocabulary, WithSpecials
+from .tokenisers import TokeniserWithVocabulary, WithSpecials
 from .identifiers import Specials
 
 

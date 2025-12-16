@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 import numpy.random as npr
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...util.strings import indicesToTokens
 from ...util.arrays import *
 

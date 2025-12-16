@@ -3,7 +3,7 @@ def compareDeprecatedUnguided():
 
     from tktkt.models.predictive.viterbi import UnguidedViterbi
     from tktkt.models.predictive.viterbi.instances import LeastTokenViterbi
-    from tktkt.factories.preprocessing import RobertaSpaceMarker, RobertaPreprocessor
+    from tktkt.factories.preprocessors import RobertaSpaceMarker, RobertaPreprocessor
 
     baseline = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
     viterbi = UnguidedViterbi(baseline.get_vocab(), space_marker=RobertaSpaceMarker)
@@ -24,7 +24,7 @@ def compareDeprectatedProduct():
 
     from tktkt.models.predictive.viterbi.instances import ProductViterbi
     from tktkt.models.predictive.viterbi import RA_Product
-    from tktkt.factories.preprocessing import RobertaPreprocessor
+    from tktkt.factories.preprocessors import RobertaPreprocessor
 
     from transformers import RobertaTokenizer
     robbert_tokenizer = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")

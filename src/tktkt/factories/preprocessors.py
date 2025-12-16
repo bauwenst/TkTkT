@@ -1,7 +1,7 @@
 """
 Some common instantiations of preparation functions.
 """
-from ..interfaces.preparation import *
+from ..interfaces.preprocessors import *
 from ..preparation.splitters import *
 from ..preparation.mappers import *
 from ..preparation.huggingface import *

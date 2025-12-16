@@ -5,9 +5,9 @@ from transformers import PreTrainedTokenizerFast
 import tokenizers.pre_tokenizers as tp
 import tokenizers.normalizers as tn
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...interfaces.identifiers import AutoVocab, AutoVocabSpecs
-from ...factories.preprocessing import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
+from ...factories.preprocessors import HuggingFacePreprocessorForWords, HuggingFacePreprocessor
 
 
 class HuggingFaceTokeniser(TokeniserWithVocabulary[WithSpecials]):

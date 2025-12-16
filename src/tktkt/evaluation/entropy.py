@@ -10,7 +10,7 @@ from math import ceil
 import numpy as np
 from scipy.stats import entropy as _scipy_entropy
 
-from ..interfaces.tokeniser import Tokeniser
+from ..interfaces.tokenisers import Tokeniser
 from ..paths import TkTkTPaths
 from ..util.iterables import streamProgress, arePositive
 from ..util.combinatorics import getBitKey

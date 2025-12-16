@@ -1,6 +1,6 @@
 from tst.preamble import *
 
-from tktkt.factories.preprocessing import *
+from tktkt.factories.preprocessors import *
 
 
 def tst_distinctPunctuation():

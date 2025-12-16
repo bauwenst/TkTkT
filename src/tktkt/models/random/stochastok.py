@@ -1,6 +1,6 @@
 import numpy.random as npr
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...wrappers.multiplexing import SuccessionalTokeniser
 
 

@@ -3,11 +3,11 @@ from tst.preamble import *
 from transformers import RobertaTokenizer
 robbert_tokenizer = RobertaTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base")
 
-from tktkt.interfaces.preparation import Preprocessor
+from tktkt.interfaces.preprocessors import Preprocessor
 from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import *
 from tktkt.preparation.huggingface import HuggingFacePretokeniser
-from tktkt.factories.preprocessing import RobertaPreprocessor, RobertaSpaceMarker, SennrichSpaceMarker, \
+from tktkt.factories.preprocessors import RobertaPreprocessor, RobertaSpaceMarker, SennrichSpaceMarker, \
     IsolatedSpaceMarker, ModernEnglishPreprocessor
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 

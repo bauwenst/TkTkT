@@ -1,6 +1,6 @@
 from typing import Iterable, Tuple
 
-from ..interfaces.tokeniser import Tokeniser
+from ..interfaces.tokenisers import Tokeniser
 from ..util.timing import Timer
 
 

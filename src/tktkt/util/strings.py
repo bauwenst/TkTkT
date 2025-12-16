@@ -4,9 +4,17 @@ import numpy as np
 from .iterables import intercalate, cumsum
 
 
-def underscoreIfNotEmpty(s: str) -> str:
+def prefixIfNotEmpty(prefix: str, s: str):
+    return prefix*bool(s) + s
+
+
+def suffixIfNotEmpty(s: str, suffix: str):
+    return s + suffix*bool(s)
+
+
+def underscoreIfNotEmpty(s: str, prefix_not_suffix: bool=True) -> str:
     if s:
-        return "_" + s
+        return "_" + s if prefix_not_suffix else s + "_"
     else:
         return s
 

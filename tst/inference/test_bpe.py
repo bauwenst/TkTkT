@@ -1,7 +1,7 @@
 from transformers import AutoTokenizer
 
 from tktkt.factories.tokenisers import Factory_BPE_Pythonic
-from tktkt.factories.deserialisation import BPE50k_RobertaBase
+from tktkt.factories.artifacts import BPE50k_RobertaBase
 from tktkt.models.bpe.guided import GuidedBPEDropout, ConstantCharacterClassifier
 from tktkt.models.bpe.ensure import EnsuredBPE
 from tktkt.models.bpe.shuffle import ShuffledBPE

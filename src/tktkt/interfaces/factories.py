@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from typing import TypeVar, Generic, Union, List, Optional
 
 from .identifiers import WithSpecials, NoSpecials
-from .preparation import Preprocessor
-from .vocabulariser import Vocab
-from .tokeniser import Tokeniser
+from .preprocessors import Preprocessor
+from .vocabularisers import Vocab
+from .tokenisers import Tokeniser
 
 
 T = TypeVar("T", bound=Tokeniser)
@@ -19,7 +19,7 @@ class TokeniserFactory(Generic[T], ABC):
         pass
 
 
-class Deserialiser(ABC, Generic[WithSpecials]):  # TODO: In a future version, "Artifact" may become the name of this class.
+class Artifacts(ABC, Generic[WithSpecials]):
     """
     Loads a specific instance of vocabularisation results stored on disk somewhere (usually remotely).
 
@@ -28,11 +28,11 @@ class Deserialiser(ABC, Generic[WithSpecials]):  # TODO: In a future version, "A
 
       - Vocabularisers represent an algorithm and file format, e.g. the BPE algorithm and the Sennrich format.
 
-      - Deserialisers represent the result of an algorithm and file content, e.g. the BPE vocab and merges resulting from
+      - Artifacts represent the result of an algorithm and file content, e.g. the BPE vocab and merges resulting from
         applying BPE with |V| = 32k to SlimPajama's first 3M examples.
 
-      - TokeniserFactories, lastly, are objects that abstract over the constructor of a Tokeniser, often using a Deserialiser in the
-        process, but with customisable parameters. Deserialisers have basically no customisability: they load one very specific
+      - TokeniserFactories, lastly, are objects that abstract over the constructor of a Tokeniser, often using Artifacts in the
+        process, but with customisable parameters. Artifacts have basically no customisability: they load one very specific
         instance. Different results come from different subclasses, not different initialisation.
     """
 

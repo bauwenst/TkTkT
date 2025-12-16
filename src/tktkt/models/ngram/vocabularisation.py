@@ -11,7 +11,7 @@ import numpy as np
 import numpy.random as npr
 from collections import Counter
 
-from ...interfaces.vocabulariser import *
+from ...interfaces.vocabularisers import *
 from ...util.types import NamedIterable
 from ...util.iterables import snd
 from ...util.arrays import BatchNormalisation

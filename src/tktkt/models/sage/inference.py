@@ -1,4 +1,4 @@
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from .vocabularisation import SageVocabulariser
 
 

@@ -5,7 +5,7 @@ TODO: Has not been tested for equivalence to SentencePiece.
 """
 from typing import Dict, MutableSequence
 
-from ...interfaces.tokeniser import Preprocessor
+from ...interfaces.tokenisers import Preprocessor
 from ...models.predictive.viterbi.framework import ViterbiTokeniser, ViterbiObjective, INFTY
 from ...models.predictive.viterbi import ScoreGeneratorUsingSubstringClassifier, SubstringClassifier
 from ...models.predictive.viterbi.accumulators import ScoreSum

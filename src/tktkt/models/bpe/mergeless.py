@@ -3,7 +3,7 @@ Tokeniser which imagines BPE merges on the fly by checking if a pair can be merg
 """
 from math import inf, isinf
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...wrappers.multiplexing import SuccessionalTokeniser
 
 

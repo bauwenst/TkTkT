@@ -1,5 +1,5 @@
 from tktkt.models.compressive.lzw import LzwVocabulariser
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor, KudoSpaceMarker
+from tktkt.factories.preprocessors import ModernEnglishPreprocessor, KudoSpaceMarker
 
 
 def fromSingleSentence():

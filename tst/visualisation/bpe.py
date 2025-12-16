@@ -6,7 +6,7 @@ def minimalWorkingExample():
     from tktkt.visualisation.bpe.trees import BpeVisualiser
 
     from tktkt.factories.tokenisers import Factory_BPE_Pythonic
-    from tktkt.factories.deserialisation import BPE50k_RobertaBase
+    from tktkt.factories.artifacts import BPE50k_RobertaBase
     bpe = Factory_BPE_Pythonic(files=BPE50k_RobertaBase()).buildTokeniser()
 
     viz = BpeVisualiser(bpe)
@@ -37,7 +37,7 @@ def makeBPE2():
     Another way is to load a HuggingFace checkpoint, and convert the resulting object into a TkTkT object.
     """
     from tktkt.factories.tokenisers import Factory_BPE_Pythonic
-    from tktkt.factories.deserialisation import BPE50k_RobertaBase
+    from tktkt.factories.artifacts import BPE50k_RobertaBase
     return Factory_BPE_Pythonic(files=BPE50k_RobertaBase()).buildTokeniser()
 
 

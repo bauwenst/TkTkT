@@ -17,8 +17,8 @@ import re
 import regex  # Has \p{} classes
 
 from .boundaries import BoundaryMarker, BoundaryMarkerLocation
-from ..interfaces.preparation import Pretokeniser, InvertibleTextMapper, _PreprocessorComponentSequence
-from ..interfaces.tokeniser import Tokeniser
+from ..interfaces.preprocessors import Pretokeniser, InvertibleTextMapper, _PreprocessorComponentSequence
+from ..interfaces.tokenisers import Tokeniser
 from ..util.iterables import intercalate
 from ..util.strings import maskToTokens
 

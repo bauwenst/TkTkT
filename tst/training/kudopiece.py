@@ -1,6 +1,6 @@
 from tst.preamble import *
 from tktkt.models.kudopiece.vocabularisation import *
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor_SentencePieceCompatible
+from tktkt.factories.preprocessors import ModernEnglishPreprocessor_SentencePieceCompatible
 
 
 def main(tsv: Path):

@@ -9,7 +9,7 @@ import warnings
 from pathlib import Path
 from typing import Tuple, List
 
-from ...interfaces.vocabulariser import *
+from ...interfaces.vocabularisers import *
 from .schedules import *
 
 

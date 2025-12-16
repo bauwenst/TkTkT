@@ -8,12 +8,12 @@ from collections import defaultdict
 from pickybpe.vocabularisation import logger, EventType, PickyBPETrainer as _PickyBPETrainerBase
 from pickybpe.segmentation import Token, MergeEventIds, SplitEventIds, SplitResults, PickyBPESegmenter as _PickyBPETokeniserBackend
 
-from ...interfaces import Deserialiser
-from ...interfaces.vocabulariser import UnidentifiedVocab
-from ...interfaces.tokeniser import *
+from ...interfaces import Artifacts
+from ...interfaces.vocabularisers import UnidentifiedVocab
+from ...interfaces.tokenisers import *
 from .vocabularisation import _VocabulariserWithChizhovBackend
 
-__all__ = ["PickyBPEVocabulariser", "PickyBPE", "PickyBPEDeserialiser_SmallFormat"]
+__all__ = ["PickyBPEVocabulariser", "PickyBPE", "PickyBPEArtifacts_SmallFormat"]
 
 
 class _ChizhovBackend_PickyBPE_SmallFormat(_PickyBPETrainerBase):
@@ -84,7 +84,7 @@ class PickyBPEVocabulariser(_VocabulariserWithChizhovBackend):
 
     @classmethod
     def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        vocab = PickyBPEDeserialiser_SmallFormat._simpleVocabularyFromFile(file_or_folder)
+        vocab = PickyBPEArtifacts_SmallFormat._simpleVocabularyFromFile(file_or_folder)
         return sorted(vocab.keys(), key=vocab.get)
 
 
@@ -98,7 +98,7 @@ class Event:
     is_merge: bool  # If false, it is a split into these two tokens.
 
 
-class PickyBPEDeserialiser_SmallFormat(Deserialiser):
+class PickyBPEArtifacts_SmallFormat(Artifacts):
 
     @classmethod
     def _simpleVocabularyFromFile(cls, path: Path) -> dict[str, int]:
@@ -187,7 +187,7 @@ class PickyBPE(TokeniserWithVocabulary[WithSpecials]):
 
         # Convert to more complex internal data structures
         verbose_vocab = {t: Token(id=i, str=t, present=True) for t,i in expanded_vocab.items()}  # All the other fields are not relevant for the segmenter; e.g., 'left' and 'right' are not needed for merging due to having the merge map, and for splitting we have the SplitResults.
-        merge_map, split_map, splits = PickyBPEDeserialiser_SmallFormat._eventsToDataStructures(verbose_vocab, events)
+        merge_map, split_map, splits = PickyBPEArtifacts_SmallFormat._eventsToDataStructures(verbose_vocab, events)
 
         # To recover whether a token is present or not, it should have been split and not merged again.
         merge_map_concatenated = {verbose_vocab[left.str+right.str]: ids for (left,right), ids in merge_map.items()}

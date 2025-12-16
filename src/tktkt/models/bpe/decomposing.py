@@ -14,8 +14,8 @@ import numpy.random as npr
 from .base import _DeterministicBPETokeniser, ClassicBPE, MergeList
 from .vocabularisation import BPEVocabulariser
 from ...util.iterables import fst
-from ...interfaces.vocabulariser import *
-from ...interfaces.tokeniser import *
+from ...interfaces.vocabularisers import *
+from ...interfaces.tokenisers import *
 from ...util.types import NamedIterable, Tokens
 
 

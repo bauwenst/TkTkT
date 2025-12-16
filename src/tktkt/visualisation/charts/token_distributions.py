@@ -2,8 +2,8 @@ from typing import Dict, List, Union
 
 from fiject import StreamingMultiHistogram, StreamingVariableGranularityHistogram, BinSpec, VariableGranularityHistogram, FIJECT_DEFAULTS, HistoBars, CacheMode
 
-from ...interfaces.tokeniser import Tokeniser, TokeniserWithVocabulary
-from ...interfaces.factories import Deserialiser
+from ...interfaces.tokenisers import Tokeniser, TokeniserWithVocabulary
+from ...interfaces.factories import Artifacts
 from ...util.timing import timeit
 from ...util.iterables import streamProgress, allEqual
 from ...util.combinatorics import getLOCKey
@@ -135,7 +135,7 @@ def visualiseCharsVersusTokensRelationships(
     return histo_segmentality.getSummaries(), histo_chars_across_tokens.getSummaries().popitem()[1]
 
 
-def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithVocabulary, Deserialiser]], names: List[str]=None):
+def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithVocabulary, Artifacts]], names: List[str]=None):
     """
     Visualises the amount of characters in types of one or more subword vocabularies.
     """
@@ -151,7 +151,7 @@ def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithVocabulary, Deser
     for name,source in zip(names,vocabulary_sources):
         if isinstance(source, Tokeniser):
             type_iterator = source.types()
-        elif isinstance(source, Deserialiser):
+        elif isinstance(source, Artifacts):
             type_iterator = source.buildVocabulary().keys()
         else:
             raise TypeError

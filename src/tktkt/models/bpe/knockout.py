@@ -1,11 +1,11 @@
 from typing import Optional
 
-from bpe_knockout import ReferenceMode, BPEKnockoutVocabulariser, BTEConfig
-from bpe_knockout.model.auto import AutoKnockout, BTEConfig, KnockoutConfig, AnnealingConfig, ReifyMode
+from bpe_knockout import BPEKnockoutVocabulariser, BTEConfig, KnockoutConfig, AnnealingConfig, ReifyMode, AnnealingTime, ReferenceMode
+from bpe_knockout.model.auto import AutoKnockout
 from modest.interfaces.datasets import ModestDataset
 
 from .base import _DeterministicBPETokeniser, MergeList
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 
 __all__ = ["BPEKnockout", "ReBPE",
            "BPEKnockoutVocabulariser", "BTEConfig"]  # Vocabularisation is already implemented for us.
@@ -51,7 +51,7 @@ class ReBPE(_KnockoutJIT):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
                  reference_segmentations: Optional[ModestDataset],
-                 iterations: int, backwards_compatible: bool=False):
+                 iterations: int=100, backwards_compatible: bool=False):
         super().__init__(
             preprocessor=preprocessor,
             vocab=vocab,
@@ -59,6 +59,7 @@ class ReBPE(_KnockoutJIT):
 
             reference_segmentations=reference_segmentations,
 
+            # TODO: No annealing?
             do_knockout=True,
             do_reify=True,
             iterations=iterations,

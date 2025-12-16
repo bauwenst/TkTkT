@@ -7,7 +7,7 @@ import gc
 
 from ...util.printing import intsep, percent, pluralise
 from ...paths import TkTkTPaths
-from ...interfaces.vocabulariser import *
+from ...interfaces.vocabularisers import *
 
 import logging
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ class CountWords(UnsupervisedVocabulariser):
         self.config            = cache_config
 
     def _makeOutputFolder(self, extra_suffix: str="") -> Path:  # Remove time suffix.
-        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), [self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix)])
+        return TkTkTPaths.pathToEvaluations(self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix))
 
     def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
         raise NotImplementedError

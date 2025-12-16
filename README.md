@@ -72,7 +72,7 @@ this arguably complicated transformation:
 ```python
 from tktkt.preparation.splitters import *
 from tktkt.preparation.mappers import PseudoByteMapping
-from tktkt.factories.preprocessing import RobertaSpaceMarker
+from tktkt.factories.preprocessors import RobertaSpaceMarker
 
 
 class ExamplePretokeniser(PretokeniserSequence):
@@ -124,23 +124,24 @@ It can learn from word-count files or from corpora of sentences. It takes a `Pre
 except `Vocabulariser` is for training the tokeniser (vocabularisation) and `Tokeniser` is for inference (segmentation).
 
 #### Loading
-To make it easier to load the results of a vocabularisation run from storage back into Python, there are `Deserialiser`s
+To make it easier to load the results of a vocabularisation run from storage back into Python, there are `Artifacts` classes
 to do this for you. 
 
 For ease-of-use, many `Tokeniser` classes have a `TokeniserFactory` defined for them that simplify the instantiation process.
-Often, a `TokeniserFactory` will take a `Deserialiser` to provide it any files.
+Often, a `TokeniserFactory` will take an `Artifacts` object to provide it any files.
 
 ### Submodules
 The packages is divided into the following submodules:
 - `tktkt.interfaces`: contains the main parent classes from which all other classes derive. 
-  - The most important classes are `TextMapper`, `Pretokeniser`, `Preprocessor`, `Vocabulariser`, `Tokeniser`, `Deserialiser`, and `TokeniserFactory`.
+  - The most important classes are `TextMapper`, `Pretokeniser`, `Preprocessor`, `Vocabulariser`, `Tokeniser`, `Artifacts`, and `TokeniserFactory`.
 - `tktkt.preparation`: contains all the text preprocessing tools.
 - `tktkt.models`: contains all the tokenisation (i.e. vocabularisation and/or segmentation) algorithms.
 - `tktkt.evaluation`: contains procedures with which to quantify a `Tokeniser` through inference.
 - `tktkt.factories`: contains a bunch of pre-defined constructor calls, for both vocabularies and tokenisers:
-  - `tktkt.factories.deserialisation`: contains classes that load the files for specific tokenisers.
+  - `tktkt.factories.artifacts`: contains classes that load the files for specific tokenisers.
   - `tktkt.factories.tokenisers`: contains tokeniser factories.
-  - `tktkt.factories.preprocessing`: contains a bunch of pre-defined preprocessors so you don't have to.
+  - `tktkt.factories.specials`: contains sets of special identifiers (CLS, SEP, BOS, EOS, ...).
+  - `tktkt.factories.preprocessors`: contains a bunch of pre-defined preprocessors so you don't have to.
     Check out the `ModernEnglishPreprocessor`, for example.
   - `tktkt.factories.evaluation`: contains pre-built tokeniser evaluation pipelines.
 - `tktkt.wrappers`: contains classes that wrap around existing tokenisers to equip them with more features.
@@ -187,9 +188,10 @@ print(hf_tktkt_roberta.tokenize(sentence))
 
 ### Training and instantiating BPE
 Here's a minimal working example to train a BPE tokeniser on the first 100 000 examples of an English Wikipedia dataset:
+
 ```python
 from datasets import load_dataset
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor, KudoSpaceMarker
+from tktkt.factories.preprocessors import ModernEnglishPreprocessor, KudoSpaceMarker
 from tktkt.models.bpe.vocabularisation import BPEVocabulariser
 
 corpus        = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train", streaming=True).take(100_000)
@@ -207,15 +209,16 @@ tokeniser = HuggingFaceBPETokeniser(
     merges=vocabulariser.loadMerges(bpe_folder)
 )
 ```
-or, if we have made the results available in a `Deserialiser`, we can use a `TokeniserFactory` to do this for us in a one-liner.
+or, if we have made the results available in an `Artifacts` class, we can use a `TokeniserFactory` to do this for us in a one-liner.
 I once trained BPE across the first 3 million examples in SlimPajama, and thus we can run:
+
 ```python
-from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
+from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
 from tktkt.factories.tokenisers import Factory_BPE
 
 tokeniser = Factory_BPE(files=BPE32ki_SlimPajama3M()).buildTokeniser()
 ```
-Note that the preprocessor comes with the deserialiser, so the factory doesn't require that you specify it.
+Note that the preprocessor comes with the artifacts, so the factory doesn't require that you specify it.
 
 ### Training and instantiating ULM (a.k.a. KudoPiece)
 Let's now say you want to train and load an English ULM tokeniser. You are, of course, scared of the `sentencepiece` library
@@ -223,8 +226,9 @@ because its Python interface is a thin wrapper around a command-line call, not a
 In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in TkTkT because many tokenisers are based on a language model of unigrams).
 
 First we instantiate a preprocessor, and call the trainer with relevant training arguments:
+
 ```python
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor_SentencePieceCompatible, BoundaryMarkerLocation
+from tktkt.factories.preprocessors import ModernEnglishPreprocessor_SentencePieceCompatible, BoundaryMarkerLocation
 from tktkt.models.kudopiece.vocabularisation import *
 
 ### Your data iterator goes here.
@@ -263,7 +267,7 @@ perform any operation they want on the current pretokens. It is hence strictly m
 For example:
 
 ```python
-from tktkt.factories.preprocessing import *
+from tktkt.factories.preprocessors import *
 
 toy_preprocessor = Preprocessor(
     Lowercaser(),

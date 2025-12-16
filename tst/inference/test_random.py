@@ -1,7 +1,7 @@
-from tktkt.factories.deserialisation import BPE50k_RobertaBase
+from tktkt.factories.artifacts import BPE50k_RobertaBase
 from tktkt.factories.tokenisers import Factory_BPE
 from tktkt.models.random.generationbased import RandomVocabSegmentation_GenerateAll, indicesToTokens, generateSegmentationIndices_exponentialSpace
-from tktkt.factories.preprocessing import IdentityPreprocessor
+from tktkt.factories.preprocessors import IdentityPreprocessor
 
 
 def test_word():
@@ -37,7 +37,7 @@ def test_markov_forwardbackward_equivalence():
     """
     from transformers import AutoTokenizer
 
-    from tktkt.factories.preprocessing import ModernEnglishPreprocessor, RobertaSpaceMarker
+    from tktkt.factories.preprocessors import ModernEnglishPreprocessor, RobertaSpaceMarker
     from tktkt.models.random.grampa import RandomVocabSegmentation_GreedyMarkov, PowerNormalisation
 
     vocab = AutoTokenizer.from_pretrained("pdelobelle/robbert-v2-dutch-base").get_vocab()
@@ -73,7 +73,7 @@ def test_rejection_graph():
     Tests the graph-based uniform segmentation sampler by Cognetta (2024).
     """
     from tktkt.models.random.rejectionsampling import RandomVocabSegmentation_RejectionSampling_UniformGraph
-    from tktkt.factories.deserialisation import KudoPiece32ki_SlimPajama3M
+    from tktkt.factories.artifacts import KudoPiece32ki_SlimPajama3M
 
     vocab = KudoPiece32ki_SlimPajama3M()
     t = RandomVocabSegmentation_RejectionSampling_UniformGraph(

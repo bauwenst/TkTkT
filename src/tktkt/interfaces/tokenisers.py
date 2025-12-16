@@ -2,7 +2,7 @@ from typing import Iterable, Generic
 from abc import ABC, abstractmethod
 
 from .identifiers import Vocab, WithSpecials
-from .preparation import Preprocessor
+from .preprocessors import Preprocessor
 from ..util.exceptions import MissingUnkError
 from ..util.types import Tokens
 

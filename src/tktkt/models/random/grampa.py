@@ -2,7 +2,7 @@ from typing import List, Tuple
 import numpy as np
 import numpy.random as npr
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...util.arrays import *
 from ...util.strings import indicesToTokens
 from ...util.printing import sgnprint

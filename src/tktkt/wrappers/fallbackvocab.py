@@ -1,6 +1,6 @@
 from typing import List, Any, Tuple, Iterable
 
-from ..interfaces.tokeniser import *
+from ..interfaces.tokenisers import *
 from ..util.iterables import foldSpans
 
 

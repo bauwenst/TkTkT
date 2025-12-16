@@ -1,10 +1,10 @@
 from typing import Optional
 
 from tktkt.models.predictive.viterbi import *
-from tktkt.factories.preprocessing import RobertaPreprocessor, IdentityPreprocessor
+from tktkt.factories.preprocessors import RobertaPreprocessor, IdentityPreprocessor
 from tktkt.factories.tokenisers import Factory_BoMMaSum
-from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
-from tktkt.interfaces.tokeniser import Preprocessor
+from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
+from tktkt.interfaces.tokenisers import Preprocessor
 from tktkt.interfaces.identifiers import SubwordCollection
 
 

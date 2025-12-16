@@ -4,13 +4,13 @@ Code that brings specific instances of pre-trained tokenisers into Python data s
 Essentially, this file replaces HuggingFace's string-based
     AutoTokenizer.from_pretrained(name)
 interface with an import- and class-based
-    from tktkt.factories.deserialisation import Name
+    from tktkt.factories.artifacts import Name
     Name()
 interface, which has the benefit of being typed and allowing to specify the necessary preprocessor in Python itself
 rather than some strange serialised format (unlike e.g. spm.model files).
 
 Perhaps that means these classes should actually live in a separate package entirely (although currently, the
-amount of deserialisers is limited enough not to bother with this).
+amount of artifacts is limited enough not to bother with this).
 """
 from pathlib import Path
 
@@ -21,13 +21,13 @@ import json
 from modest.formats.tsv import iterateTsv
 
 from .specials import BertSpecials, RobertaSpecials
-from ..interfaces import Vocab, Deserialiser
+from ..interfaces import Vocab, Artifacts
 from ..interfaces.identifiers import AutoVocab, NoSpecials, WithSpecials, AutoVocabSpecs
 from ..models.predictive.viterbi import HuggingFaceForBinaryCharacterClassification
 
 from ..util.trie import PrefixTrie, SuffixTrie
 from ..paths import relativeToCwd, TkTkTPaths
-from .preprocessing import *
+from .preprocessors import *
 
 __all__ = ["BPE40k_Oscar30M_en", "BPE32ki_SlimPajama3M", "BPE50k_RobertaBase", "KudoPiece30k_BooksWiki_en", "KudoPiece32ki_SlimPajama3M"]
 
@@ -44,13 +44,13 @@ def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
     )
 
 
-class BPE_Deserialiser(Deserialiser[WithSpecials]):
+class BPE_Artifacts(Artifacts[WithSpecials]):
     @abstractmethod
     def buildMerges(self) -> Merges:
         pass
 
 
-class BPE40k_Oscar30M_en(BPE_Deserialiser[WithSpecials]):
+class BPE40k_Oscar30M_en(BPE_Artifacts[WithSpecials]):
     """
     Trained with the HuggingFace BPE trainer.
 
@@ -82,7 +82,7 @@ class BPE40k_Oscar30M_en(BPE_Deserialiser[WithSpecials]):
         return self.preprocessorNative()
 
 
-class BPE32ki_SlimPajama3M(BPE_Deserialiser[WithSpecials]):
+class BPE32ki_SlimPajama3M(BPE_Artifacts[WithSpecials]):
     """
     Trained with SentencePiece.
 
@@ -118,7 +118,7 @@ class BPE32ki_SlimPajama3M(BPE_Deserialiser[WithSpecials]):
         return ModernEnglishPreprocessor(marker=RobertaSpaceMarker)
 
 
-class BPE_Deserialiser_HuggingFace(BPE_Deserialiser[WithSpecials]):
+class BPE_Artifacts_HuggingFace(BPE_Artifacts[WithSpecials]):
 
     def __init__(self):
         super().__init__()
@@ -155,7 +155,7 @@ class BPE_Deserialiser_HuggingFace(BPE_Deserialiser[WithSpecials]):
         return HuggingFacePreprocessor(AutoTokenizer.from_pretrained(self._checkpointName()))
 
 
-class BPE50k_RobertaBase(BPE_Deserialiser_HuggingFace[RobertaSpecials]):
+class BPE50k_RobertaBase(BPE_Artifacts_HuggingFace[RobertaSpecials]):
     """
     The BPE tokeniser for RoBERTa-base.
     """
@@ -174,7 +174,7 @@ class BPE50k_RobertaBase(BPE_Deserialiser_HuggingFace[RobertaSpecials]):
         }
 
 
-class KudoPiece_Deserialiser(Deserialiser[WithSpecials]):
+class KudoPiece_Artifacts(Artifacts[WithSpecials]):
     @abstractmethod
     def getModelFile(self) -> Path:
         pass
@@ -184,7 +184,7 @@ class KudoPiece_Deserialiser(Deserialiser[WithSpecials]):
         pass
 
 
-class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser[WithSpecials]):
+class KudoPiece_Artifacts_HuggingFace(KudoPiece_Artifacts[WithSpecials]):
     """
     For vocabularies that were not trained with TkTkT and thus have all their IDs predetermined.
     Uses AutoVocab.
@@ -248,7 +248,7 @@ class KudoPiece_Deserialiser_HuggingFace(KudoPiece_Deserialiser[WithSpecials]):
         return preprocessor
 
 
-class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace[BertSpecials]):
+class KudoPiece30k_BooksWiki_en(KudoPiece_Artifacts_HuggingFace[BertSpecials]):
     def _checkpointName(self) -> str:
         return "albert/albert-base-v2"
 
@@ -270,7 +270,7 @@ class KudoPiece30k_BooksWiki_en(KudoPiece_Deserialiser_HuggingFace[BertSpecials]
         }
 
 
-class KudoPiece32ki_SlimPajama3M(KudoPiece_Deserialiser[WithSpecials]):
+class KudoPiece32ki_SlimPajama3M(KudoPiece_Artifacts[WithSpecials]):
     """
     From the same project as BPE32ki_SlimPajama3M, where it had the same specials.
     """

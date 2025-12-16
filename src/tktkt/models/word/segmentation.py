@@ -1,4 +1,4 @@
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 
 
 class IdentityTokeniser(Tokeniser):

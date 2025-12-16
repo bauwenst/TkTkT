@@ -13,7 +13,7 @@ from dacite import from_dict
 from ..paths import TkTkTPaths
 from ..util.types import Tokens
 from ..util.dicts import jsonToDataclass, dataclassToJson
-from ..interfaces.tokeniser import Preprocessor
+from ..interfaces.tokenisers import Preprocessor
 from ..interfaces.identifiers import SubwordCollection
 
 

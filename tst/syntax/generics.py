@@ -84,7 +84,7 @@ def theory_inheritance_methodtype():
 
 def test_deserialiser():
     from tktkt.factories.specials import RobertaSpecials
-    from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
+    from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
 
     d1 = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
     d1._specials  # Doesn't work, but only because of a bug in PyCharm that makes TypeVar behave badly when it has a bound.

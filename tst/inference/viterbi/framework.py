@@ -12,7 +12,7 @@ def makeTokeniser():
     max_step = 15
     print("K:", max_step)
 
-    from tktkt.factories.preprocessing import RobertaPretokeniser
+    from tktkt.factories.preprocessors import RobertaPretokeniser
     return ViterbiTokeniser(RobertaPretokeniser, max_step, [objective1, objective2])
 
 

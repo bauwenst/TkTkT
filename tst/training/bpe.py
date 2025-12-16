@@ -2,7 +2,7 @@ import logging
 import datasets
 
 from tktkt.models.bpe.vocabularisation import BPEVocabulariser, BpeTrainerImplementation
-from tktkt.factories.preprocessing import ModernEnglishPreprocessor, KudoSpaceMarker
+from tktkt.factories.preprocessors import ModernEnglishPreprocessor, KudoSpaceMarker
 from tktkt.util.printing import setLoggingLevel
 
 setLoggingLevel(logging.INFO)

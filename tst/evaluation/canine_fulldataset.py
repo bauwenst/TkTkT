@@ -11,7 +11,7 @@ from tst.preamble import *
 
 from lamoto.training.auxiliary.hyperparameters import *
 from lamoto.tasks.mbr import MBR, SUGGESTED_HYPERPARAMETERS_MBR
-from tktkt.factories.deserialisation import getEnglishCANINE
+from tktkt.factories.artifacts import getEnglishCANINE
 
 # Model setup  TODO: I wonder how we can support loading completely custom models in LaMoTO.
 wrapper = getEnglishCANINE()

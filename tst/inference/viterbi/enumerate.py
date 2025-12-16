@@ -1,7 +1,7 @@
 from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
 from tktkt.util.strings import indicesToTokens
 
-from tktkt.factories.deserialisation import BPE32ki_SlimPajama3M
+from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
 
 s = "accumulatively"
 

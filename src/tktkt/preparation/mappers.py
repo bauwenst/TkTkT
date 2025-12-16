@@ -9,7 +9,7 @@ import requests
 import unicodedata
 
 from .boundaries import BoundaryMarker
-from ..interfaces.preparation import TextMapper, InvertibleTextMapper, Pretokeniser, _PreprocessorComponentSequence
+from ..interfaces.preprocessors import TextMapper, InvertibleTextMapper, Pretokeniser, _PreprocessorComponentSequence
 from ..util.dicts import invertdict, insertKeyAlias
 
 

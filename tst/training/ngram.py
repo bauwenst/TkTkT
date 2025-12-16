@@ -5,7 +5,7 @@ def test_vocabulariser(N: int):
     import datasets
 
     from tktkt.models.ngram.vocabularisation import NgramVocabulariser
-    from tktkt.factories.preprocessing import TraditionalPretokeniser, PretokeniserSequence, \
+    from tktkt.factories.preprocessors import TraditionalPretokeniser, PretokeniserSequence, \
         AddWordBoundary, PrefixWhitespaceAsMarker, IdentityMapper, TruncateAndNormalise, Preprocessor
 
     preprocessor = Preprocessor(

@@ -13,7 +13,7 @@ from .vocabularisation import _VocabulariserWithChizhovBackend
 
 __all__ = ["ScaffoldBPE", "ScaffoldBPEVocabulariser"]
 
-from ...interfaces.vocabulariser import UnidentifiedVocab
+from ...interfaces.vocabularisers import UnidentifiedVocab
 
 
 class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):

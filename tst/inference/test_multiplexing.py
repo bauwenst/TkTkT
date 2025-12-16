@@ -5,7 +5,7 @@ def test_sharedVocabulary():
     """
     from transformers import AutoTokenizer
 
-    from tktkt.factories.preprocessing import IdentityPreprocessor
+    from tktkt.factories.preprocessors import IdentityPreprocessor
     from tktkt.wrappers.multiplexing import StochasticTokeniserMultiplexer_SameDomains, MultiplexedPreprocessor
     from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
     from tktkt.models.greedy.directional import L2R_Greedy
@@ -33,7 +33,7 @@ def test_differentVocabulary():
     """
     from tktkt.wrappers.multiplexing import StochasticTokeniserMultiplexer_DifferentDomains, MultiplexedPreprocessor
     from tktkt.models.word.segmentation import IdentityTokeniserWithVocab
-    from tktkt.factories.preprocessing import TraditionalPreprocessor, IdentityPreprocessor
+    from tktkt.factories.preprocessors import TraditionalPreprocessor, IdentityPreprocessor
     from tktkt.interfaces.identifiers import Vocab, NoSpecials
 
     tk1 = IdentityTokeniserWithVocab(IdentityPreprocessor(), Vocab(

@@ -1,7 +1,7 @@
 from tst.preamble import *
 
 from tktkt.factories.tokenisers import Factory_BoMMaSum_BPE
-from tktkt.interfaces.tokeniser import prepare_tokenise_decode
+from tktkt.interfaces.tokenisers import prepare_tokenise_decode
 from tktkt.visualisation.neural.splitpoints_probabilities import *
 from tktkt.models.random.generationbased import generateSegmentationIndices_fixedSpace
 from tktkt.util.strings import indicesToTokens

@@ -1,4 +1,4 @@
-from typing import Callable, Iterable, Tuple, Optional, Union, List
+from typing import Callable, Iterable, Tuple, Optional, Union, List, TypeVar, Generic
 from abc import ABC, abstractmethod
 from pathlib import Path
 from collections import Counter
@@ -7,7 +7,7 @@ from modest.formats.tsv import iterateTsv
 from modest.interfaces.datasets import ModestDataset
 
 from .identifiers import NoSpecials, UnidentifiedVocab, Vocab, WithSpecials
-from .preparation import Preprocessor
+from .preprocessors import Preprocessor
 from ..paths import TkTkTPaths
 from ..util.iterables import streamProgress
 from ..util.timing import datetimeDashed
@@ -29,7 +29,7 @@ class Vocabulariser(ABC):
         """
         Get a new folder in which to store any files you want to store during vocabularisation.
         """
-        return TkTkTPaths.extend(TkTkTPaths.pathToModels(), [self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix) + f"_{datetimeDashed()}"])
+        return TkTkTPaths.pathToModels(self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix) + f"_{datetimeDashed()}")
 
     @classmethod
     @abstractmethod

@@ -6,8 +6,8 @@ from typing import Tuple, Iterable, List, TypeVar, Generic
 from collections import Counter
 from abc import ABC, abstractmethod
 
-from ..interfaces.tokeniser import Tokeniser, Preprocessor
-from ..factories.preprocessing import IdentityPreprocessor
+from ..interfaces.tokenisers import Tokeniser, Preprocessor
+from ..factories.preprocessors import IdentityPreprocessor
 from ..util.iterables import streamProgress
 from ..util.printing import warn
 from ..util.aggregates import MicroMacro

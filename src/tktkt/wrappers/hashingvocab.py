@@ -1,7 +1,7 @@
 from typing import Iterable, TypeVar, Generic
 from abc import ABC, abstractmethod
 
-from ..interfaces.tokeniser import *
+from ..interfaces.tokenisers import *
 from ..util.iterables import arePositive, areContiguous
 
 

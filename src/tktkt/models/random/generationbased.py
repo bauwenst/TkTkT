@@ -5,7 +5,7 @@ import itertools
 
 from tqdm.auto import tqdm
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from ...interfaces.identifiers import SubwordCollection
 from ...evaluation.fertility import countValidSegmentations
 from ...util.iterables import drop

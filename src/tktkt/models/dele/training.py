@@ -6,7 +6,7 @@ from typing import Iterable, Type
 from pathlib import Path
 
 from .segmentation import Derivator
-from ...interfaces.tokeniser import TokeniserWithVocabulary
+from ...interfaces.tokenisers import TokeniserWithVocabulary
 from ...util.timing import datetimeDashed
 from ...paths import TkTkTPaths
 

@@ -3,7 +3,7 @@ Simplified version of the GuidedBPEDropout implementation, to speed it up.
 """
 import numpy.random as npr
 
-from ...interfaces.tokeniser import *
+from ...interfaces.tokenisers import *
 from .base import MergeList, _NonDeterministicBPETokeniser
 
 

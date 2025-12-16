@@ -13,8 +13,8 @@ from modest.formats.tsv import iterateTsv
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
-from ...factories.preprocessing import KudoSpaceMarker
-from ...interfaces.vocabulariser import *
+from ...factories.preprocessors import KudoSpaceMarker
+from ...interfaces.vocabularisers import *
 from ...util.dicts import substituteKey, argmax
 from ...util.iterables import streamProgress, deduplicate
 from ...util.printing import logger, pluralise
