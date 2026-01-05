@@ -1,8 +1,9 @@
 """
 Taken from the BPE knockout repo.
 """
-from typing import Dict, List
+from typing import Dict, List, Self
 from dataclasses import dataclass
+from pathlib import Path
 
 import json
 
@@ -10,9 +11,9 @@ from modest.interfaces.morphologies import MorphologyVisitor, MorphSplit, FreeMo
 from modest.interfaces.datasets import ModestDataset, M
 
 from ..util.aggregates import ConfusionMatrix, NestedAverage, NestedMicroMacro
+from ..util.interfaces import Cacheable, C
 from ..util.iterables import cumsum
 from ..paths import TkTkTPaths
-from ..util.types import HoldoutState
 from .observing import *
 
 
@@ -224,9 +225,31 @@ def alignedSegmentationScore(morphs: List[str], tokens: List[str], adversarial: 
 
 
 @dataclass
-class ConfusionMatrices:
+class ConfusionMatrices(Cacheable):
     cm:          ConfusionMatrix
     cm_weighted: ConfusionMatrix
+
+    _FILENAME = "confusion-matrices.json"
+
+    def exists(cls, cache_path: Path) -> bool:
+        return (cache_path / ConfusionMatrices._FILENAME).exists()
+
+    def store(self, cache_path: Path):
+        def matrixToDict(cm: ConfusionMatrix):
+            tp, fp, tn, fn = cm.compute()
+            return {"TP": tp, "FP": fp, "TN": tn, "FN": fn}
+
+        with open(cache_path / ConfusionMatrices._FILENAME, "w", encoding="utf-8") as handle:
+            json.dump({"unweighted": matrixToDict(self.cm), "weighted": matrixToDict(self.cm_weighted)}, handle)
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        def dictToMatrix(d: dict) -> ConfusionMatrix:
+            return ConfusionMatrix.fromPositivesNegatives(d["TP"], d["FP"], d["TN"], d["FN"])
+
+        with open(cache_path / ConfusionMatrices._FILENAME, "r", encoding="utf-8") as handle:
+            d = json.load(handle)
+            return ConfusionMatrices(cm=dictToMatrix(d["unweighted"]), cm_weighted=dictToMatrix(d["weighted"]))
 
 
 class MorphologyIterable(ObservableRoot[Tuple[str,M]]):
@@ -254,6 +277,15 @@ class MorphologyAsClassification(FinallyObservableObserver[Tuple[Tokens,M],Confu
         self._visitor      = visitor
         self._preprocessor = effective_preprocessor
         self._do_log_fusions = do_log_false_negatives
+
+    def _nodeIdentifier(self) -> str:
+        return ""
+
+    def _cacheType(self):
+        return ConfusionMatrices
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["morphology"]
 
     def _initialiseAsObserver(self, identifier: str):
         self._cm   = ConfusionMatrix()
@@ -284,27 +316,11 @@ class MorphologyAsClassification(FinallyObservableObserver[Tuple[Tokens,M],Confu
         #     self._cm_w.displayRePrF1(indent=2)
         return ConfusionMatrices(cm=self._cm, cm_weighted=self._cm_w)
 
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
-        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["morphology"]) / (unambiguous_cache_identifier + ".json")
-
-    def _cacheStore(self, cache_path: Path, result: ConfusionMatrices):
-        def matrixToDict(cm: ConfusionMatrix):
-            tp, fp, tn, fn = cm.compute()
-            return {"TP": tp, "FP": fp, "TN": tn, "FN": fn}
-
-        with open(cache_path, "w", encoding="utf-8") as handle:
-            json.dump({"unweighted": matrixToDict(result.cm), "weighted": matrixToDict(result.cm_weighted)}, handle)
-
-    def _cacheLoad(self, cache_path: Path) -> ConfusionMatrices:
-        def dictToMatrix(d: dict) -> ConfusionMatrix:
-            return ConfusionMatrix.fromPositivesNegatives(d["TP"], d["FP"], d["TN"], d["FN"])
-
-        with open(cache_path, "r", encoding="utf-8") as handle:
-            d = json.load(handle)
-            return ConfusionMatrices(cm=dictToMatrix(d["unweighted"]), cm_weighted=dictToMatrix(d["weighted"]))
-
 
 class ConfusionMatrixSummary(ImmediatelyObservableObserver[ConfusionMatrices,dict]):
+
+    def _nodeIdentifier(self) -> str:
+        return ""
 
     def _transit(self, sample: ConfusionMatrices, weight: float) -> dict:
         pr, re, f1       = sample.cm.computePrReF1()

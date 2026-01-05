@@ -19,17 +19,21 @@ from transformers import AutoTokenizer
 import json
 
 from modest.formats.tsv import iterateTsv
+from bpe_knockout.util.storage import SennrichTokeniserPath
+from bpe_knockout.model.auto import AutoMerges
 
 from .specials import BertSpecials, RobertaSpecials
-from ..interfaces import Vocab, Artifacts
-from ..interfaces.identifiers import AutoVocab, NoSpecials, WithSpecials, AutoVocabSpecs
+from ..interfaces import Vocab
+from ..interfaces.identifiers import AutoVocab, NoSpecials, WithSpecials, AutoVocabSpecs, UnidentifiedVocab
+from ..models.bpe.vocabularisation import BPEArtifacts, CacheableBPEArtifacts
 from ..models.predictive.viterbi import HuggingFaceForBinaryCharacterClassification
-
+from ..models.kudopiece.vocabularisation import KudoPieceArtifacts
 from ..util.trie import PrefixTrie, SuffixTrie
+from ..util.iterables import fst
 from ..paths import relativeToCwd, TkTkTPaths
 from .preprocessors import *
 
-__all__ = ["BPE40k_Oscar30M_en", "BPE32ki_SlimPajama3M", "BPE50k_RobertaBase", "KudoPiece30k_BooksWiki_en", "KudoPiece32ki_SlimPajama3M"]
+__all__ = ["BPE32ki_SlimPajama3M", "BPE50k_RobertaBase", "KudoPiece30k_BooksWiki_en", "KudoPiece32ki_SlimPajama3M"]
 
 
 Merges = list[tuple[str,...]]
@@ -44,45 +48,37 @@ def getEnglishCANINE() -> HuggingFaceForBinaryCharacterClassification:
     )
 
 
-class BPE_Artifacts(Artifacts[WithSpecials]):
-    @abstractmethod
-    def buildMerges(self) -> Merges:
-        pass
+# class BPE40k_Oscar30M_en(BPEArtifacts):
+#     """
+#     Trained with the HuggingFace BPE trainer.
+#
+#     FIXME: This was never uploaded!
+#     """
+#     def getFolder(self) -> Path:
+#         raise NotImplementedError()
+#
+#     def _bakedSpecials(self) -> set[str]:
+#         raise NotImplementedError()
+#
+#     def _getVocabulary(self) -> Vocab:  # TODO: Where do I get to choose UNK?
+#         files = self.getFolder()
+#         assert isinstance(files, SennrichTokeniserPath)
+#         return BPEVocabulariser.loadVocabulary(file_or_folder=files.getPaths()[0], specials=self._specials, filtered_types=self._bakedSpecials())
+#
+#     def getMerges(self) -> Merges:
+#         files = self.getFolder()
+#         return [tuple(m.split(" ")) for m in files.loadMerges()]
+#
+#     def preprocessorNative(self) -> Preprocessor:
+#         return Preprocessor(
+#             splitter=BoundariesFromSpacesPretokeniser(marker=RobertaSpaceMarker, byte_based=True)
+#         )
+#
+#     def preprocessorEffective(self) -> Preprocessor:
+#         return self.preprocessorNative()
 
 
-class BPE40k_Oscar30M_en(BPE_Artifacts[WithSpecials]):
-    """
-    Trained with the HuggingFace BPE trainer.
-
-    FIXME: This was never uploaded!
-    """
-    def getFolder(self) -> Path:
-        raise NotImplementedError()
-
-    def _bakedSpecials(self) -> set[str]:
-        raise NotImplementedError()
-
-    def _buildVocabulary(self) -> Vocab:  # TODO: Where do I get to choose UNK?
-        from bpe_knockout.util.storage import SennrichTokeniserPath
-        from ..models.bpe.vocabularisation import BPEVocabulariser
-        files = self.getFolder()
-        assert isinstance(files, SennrichTokeniserPath)
-        return BPEVocabulariser.load(file_or_folder=files.getPaths()[0], specials=self._specials, filtered_types=self._bakedSpecials())
-
-    def buildMerges(self) -> Merges:
-        files = self.getFolder()
-        return [tuple(m.split(" ")) for m in files.loadMerges()]
-
-    def preprocessorNative(self) -> Preprocessor:
-        return Preprocessor(
-            splitter=BoundariesFromSpacesPretokeniser(marker=RobertaSpaceMarker, byte_based=True)
-        )
-
-    def preprocessorEffective(self) -> Preprocessor:
-        return self.preprocessorNative()
-
-
-class BPE32ki_SlimPajama3M(BPE_Artifacts[WithSpecials]):
+class BPE32ki_SlimPajama3M(BPEArtifacts):
     """
     Trained with SentencePiece.
 
@@ -93,15 +89,15 @@ class BPE32ki_SlimPajama3M(BPE_Artifacts[WithSpecials]):
         '<pad>': 3
         '<mask>': 4
     """
-    def _buildVocabulary(self) -> Vocab:
-        from ..models.bpe.vocabularisation import BPEVocabulariser
+    def _getVocabulary(self) -> UnidentifiedVocab:
         downloaded_vocab = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="vocab.json"))
-        return BPEVocabulariser.load(file_or_folder=downloaded_vocab, specials=self._specials)
+        with open(downloaded_vocab, "r", encoding="utf-8") as handle:
+            vocab = json.load(handle)
+        return sorted(vocab, key=vocab.get)
 
-    def buildMerges(self) -> Merges:
-        from ..models.bpe.vocabularisation import BPEVocabulariser
+    def getMerges(self) -> Merges:
         downloaded_merges = Path(hf_hub_download(repo_id="Bauwens/BPE-32k_SlimPajama-3M", filename="merges.txt"))
-        return BPEVocabulariser.loadMerges(file_or_folder=downloaded_merges)
+        return CacheableBPEArtifacts._loadMerges(file_or_folder=downloaded_merges)
 
     def _bakedSpecials(self) -> set[str]:
         return set()
@@ -118,7 +114,7 @@ class BPE32ki_SlimPajama3M(BPE_Artifacts[WithSpecials]):
         return ModernEnglishPreprocessor(marker=RobertaSpaceMarker)
 
 
-class BPE_Artifacts_HuggingFace(BPE_Artifacts[WithSpecials]):
+class BPEArtifacts_HuggingFace(BPEArtifacts):
 
     def __init__(self):
         super().__init__()
@@ -138,14 +134,13 @@ class BPE_Artifacts_HuggingFace(BPE_Artifacts[WithSpecials]):
     def _bakedSpecials(self) -> set[str]:  # Not used for anything because of AutoVocab, but still implementing it properly.
         return set(self._specialsToTypes().values())
 
-    def _buildVocabulary(self) -> Vocab[WithSpecials]:
+    def getVocabulary(self) -> Vocab[WithSpecials]:
         return AutoVocab.fromTokenizer(
             tokenizer=AutoTokenizer.from_pretrained(self._checkpointName()),
             specials_specification=AutoVocabSpecs(specials_template=self._specialsTemplate(), special_to_string=self._specialsToTypes())
         )
 
-    def buildMerges(self) -> Merges:
-        from bpe_knockout.model.auto import AutoMerges
+    def getMerges(self) -> Merges:
         return AutoMerges.from_pretrained(self._checkpointName())
 
     def preprocessorNative(self) -> Preprocessor:
@@ -155,7 +150,7 @@ class BPE_Artifacts_HuggingFace(BPE_Artifacts[WithSpecials]):
         return HuggingFacePreprocessor(AutoTokenizer.from_pretrained(self._checkpointName()))
 
 
-class BPE50k_RobertaBase(BPE_Artifacts_HuggingFace[RobertaSpecials]):
+class BPE50k_RobertaBase(BPEArtifacts_HuggingFace):
     """
     The BPE tokeniser for RoBERTa-base.
     """
@@ -174,17 +169,7 @@ class BPE50k_RobertaBase(BPE_Artifacts_HuggingFace[RobertaSpecials]):
         }
 
 
-class KudoPiece_Artifacts(Artifacts[WithSpecials]):
-    @abstractmethod
-    def getModelFile(self) -> Path:
-        pass
-
-    @abstractmethod
-    def loadLikelihoods(self) -> Dict[str, float]:
-        pass
-
-
-class KudoPiece_Artifacts_HuggingFace(KudoPiece_Artifacts[WithSpecials]):
+class KudoPieceArtifacts_HuggingFace(KudoPieceArtifacts):
     """
     For vocabularies that were not trained with TkTkT and thus have all their IDs predetermined.
     Uses AutoVocab.
@@ -216,13 +201,16 @@ class KudoPiece_Artifacts_HuggingFace(KudoPiece_Artifacts[WithSpecials]):
     def _bakedSpecials(self) -> set[str]:  # Not used for anything because of AutoVocab, but still implementing it properly.
         return set(self._specialsToTypes().values())
 
-    def _buildVocabulary(self) -> Vocab[WithSpecials]:
+    def _getVocabulary(self) -> UnidentifiedVocab:  # Not used because of AutoVocab.
+        raise NotImplementedError()
+
+    def getVocabulary(self) -> Vocab[WithSpecials]:
         return AutoVocab.fromTokenizer(
             tokenizer=AutoTokenizer.from_pretrained(self._checkpointName()),
             specials_specification=AutoVocabSpecs(specials_template=self._specialsTemplate(), special_to_string=self._specialsToTypes())
         )
 
-    def loadLikelihoods(self) -> Dict[str, float]:
+    def getUnigramLoglikelihoods(self) -> dict[str,float]:
         tokeniser_path = Path(hf_hub_download(repo_id=self._checkpointName(), filename=self._jsonFileName()))
 
         out = dict()
@@ -248,7 +236,7 @@ class KudoPiece_Artifacts_HuggingFace(KudoPiece_Artifacts[WithSpecials]):
         return preprocessor
 
 
-class KudoPiece30k_BooksWiki_en(KudoPiece_Artifacts_HuggingFace[BertSpecials]):
+class KudoPiece30k_BooksWiki_en(KudoPieceArtifacts_HuggingFace):
     def _checkpointName(self) -> str:
         return "albert/albert-base-v2"
 
@@ -270,25 +258,24 @@ class KudoPiece30k_BooksWiki_en(KudoPiece_Artifacts_HuggingFace[BertSpecials]):
         }
 
 
-class KudoPiece32ki_SlimPajama3M(KudoPiece_Artifacts[WithSpecials]):
+class KudoPiece32ki_SlimPajama3M(KudoPieceArtifacts):
     """
     From the same project as BPE32ki_SlimPajama3M, where it had the same specials.
     """
-    def getVocabFile(self) -> Path:
+    def _getVocabFile(self) -> Path:
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.vocab"))
-
-    def _buildVocabulary(self) -> Vocab:
-        from ..models.kudopiece.vocabularisation import KudoPieceVocabulariser
-        return KudoPieceVocabulariser.load(file_or_folder=self.getVocabFile(), specials=self._specials, filtered_types=self._bakedSpecials())
 
     def _bakedSpecials(self) -> set[str]:
         return {"<s>", "</s>", "<unk>"}
 
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        return map(fst, iterateTsv(self._getVocabFile()))
+
     def getModelFile(self) -> Path:
         return Path(hf_hub_download(repo_id="Bauwens/ULM-32k_SlimPajama-3M", filename="spm.model"))
 
-    def loadLikelihoods(self) -> Dict[str, float]:
-        return {t: float(l) for t,l in iterateTsv(self.getVocabFile())}
+    def getUnigramLoglikelihoods(self) -> dict[str,float]:
+        return {t: float(l) for t,l in iterateTsv(self._getVocabFile())}
 
     def preprocessorNative(self) -> Preprocessor:
         return SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=True)  # E.g. say our preprocessor could produce a string "New York", will be sent to the tokeniser as "New York", which will turn it into " New York" and turn that into "_New_York".

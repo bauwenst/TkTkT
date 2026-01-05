@@ -82,18 +82,38 @@ def theory_inheritance_methodtype():
     box._x
 
 
-def test_deserialiser():
+# def test_deserialiser():
+#     from tktkt.factories.specials import RobertaSpecials
+#     from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
+#
+#     d1 = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
+#     d1._specials  # Doesn't work, but only because of a bug in PyCharm that makes TypeVar behave badly when it has a bound.
+#
+#     d2: BPE32ki_SlimPajama3M[RobertaSpecials] = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
+#     d2._specials  # Works
+#
+#     v = d2.getVocabulary()
+#     v.specials  # Works
+
+def test_extendedspecials():
+    from tktkt.interfaces.identifiers import SpecialsExtended
     from tktkt.factories.specials import RobertaSpecials
     from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
 
-    d1 = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
-    d1._specials  # Doesn't work, but only because of a bug in PyCharm that makes TypeVar behave badly when it has a bound.
+    extended_specials = SpecialsExtended(RobertaSpecials(-1,-1,-1,-1))
+    extended_specials.specials  # FIXME: Doesn't work, oh oh
 
-    d2: BPE32ki_SlimPajama3M[RobertaSpecials] = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
-    d2._specials  # Works
+    d: BPE32ki_SlimPajama3M = BPE32ki_SlimPajama3M()
+    v = d.getVocabulary(specials=extended_specials)
+    v.specials
 
-    v = d2.buildVocabulary()
-    v.specials  # Works
+    # These work, but I'm quite disappointed by the fact that SpecialsExtended can't infer the type of WithSpecials due to it being in the constructor.
+    extended_specials: SpecialsExtended[RobertaSpecials] = SpecialsExtended(RobertaSpecials(-1,-1,-1,-1))
+    extended_specials.specials
+
+    d: BPE32ki_SlimPajama3M = BPE32ki_SlimPajama3M()
+    v = d.getVocabulary(specials=extended_specials)
+    v.specials
 
 
 def test_factory():
@@ -106,22 +126,21 @@ def test_factory():
 def test_tokeniser():
     from tktkt.factories.tokenisers import Factory_BPE_Pythonic, BPE32ki_SlimPajama3M, ClassicBPE, TokeniserFactory
     from tktkt.factories.specials import RobertaSpecials
+    from tktkt.interfaces.identifiers import SpecialsExtended
 
-    d0 = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
-    d0._specials
+    s: SpecialsExtended[RobertaSpecials] = SpecialsExtended(RobertaSpecials(-1,-1,-1,-1), unk=0)
 
-    d: BPE32ki_SlimPajama3M[RobertaSpecials] = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
-    d._specials
-    f = Factory_BPE_Pythonic(files=d)
-    t = f.buildTokeniser()
-    t.vocab.specials  # Interestingly, the tokeniser type is inferred (because method types are no problem), but the bug in PyCharm prevents it from filling the TokeniserFactory's typevar using its constructor.
+    d1: BPE32ki_SlimPajama3M = BPE32ki_SlimPajama3M()
+    f1 = Factory_BPE_Pythonic(files=d1)
+    t1 = f1.buildTokeniser()
+    t1.vocab.specials  # Interestingly, the tokeniser type is inferred (because method types are no problem), but the bug in PyCharm prevents it from filling the TokeniserFactory's typevar using its constructor.
 
-    d2 = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
+    d2 = BPE32ki_SlimPajama3M()
     f2: TokeniserFactory[ClassicBPE[RobertaSpecials]] = Factory_BPE_Pythonic(files=d2)
     t2 = f2.buildTokeniser()
     t2.vocab.specials  # Works
 
-    d3 = BPE32ki_SlimPajama3M(RobertaSpecials(-1,-1,-1,-1))
+    d3 = BPE32ki_SlimPajama3M()
     f3 = Factory_BPE_Pythonic(files=d3)
     t3: ClassicBPE[RobertaSpecials] = f3.buildTokeniser()
     t3.vocab.specials  # Works

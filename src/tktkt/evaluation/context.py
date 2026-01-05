@@ -1,7 +1,7 @@
 """
 Evaluation of the context around tokens.
 """
-from typing import Iterable, Dict, Union, Tuple, Optional, Callable, List
+from typing import Iterable, Dict, Union, Tuple, Optional, Callable, List, Self
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass, field, fields
@@ -16,10 +16,9 @@ import re
 
 from .entropy import renyiEfficiency, DEFAULT_RENYI_ALPHA
 from .observing import FinallyObservableObserver, Observer
-from ..paths import TkTkTPaths
 from ..util.arrays import weighted_quantiles
+from ..util.interfaces import Cacheable
 from ..util.iterables import streamProgress, first
-from ..util.timing import datetimeDashed
 from ..util.dicts import ChainedCounter, invertdict
 from ..util.types import Tokens
 
@@ -66,12 +65,18 @@ class AccessorDistribution:
 
 
 @dataclass
-class AccessorDistributions:
+class AccessorDistributions(Cacheable):
     vocab: Dict[str,VocabRef]
     left_of:  AccessorDistribution
     right_of: AccessorDistribution
 
-    def save(self, path: Path=None) -> Path:
+    _FILENAME = "distributions.json"
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return (cache_path / AccessorDistributions._FILENAME).exists()
+
+    def store(self, cache_path: Path):
         def serialiseDistribution(distribution: AccessorDistribution):
             accessors = []
             for t1, counter in distribution.accessors.items():
@@ -84,14 +89,6 @@ class AccessorDistributions:
                 "accessors": accessors
             }
 
-        if path is None:
-            folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
-            path = folder / f"distributions_{datetimeDashed()}.json"
-        elif path.is_dir():
-            path = path / f"distributions_{datetimeDashed()}.json"
-        else:
-            path = path.with_suffix(".json")
-
         data = {
             "vocab": self.vocab,
             "left": serialiseDistribution(self.left_of),
@@ -99,13 +96,12 @@ class AccessorDistributions:
         }
         serialised = json.dumps(data, indent=2, ensure_ascii=False)
         serialised = re.compile(r"\[\s+([0-9]+),\s+([0-9]+)\s+\]").sub(r"[\1,\2]", serialised)
-        with open(path, "w", encoding="utf-8") as handle:
+        with open(cache_path / AccessorDistributions._FILENAME, "w", encoding="utf-8") as handle:
             handle.write(serialised)
-        return path
 
     @classmethod
-    def load(cls, file: Path) -> "AccessorDistributions":
-        with open(file, "r", encoding="utf-8") as handle:
+    def load(cls, cache_path: Path) -> Self:
+        with open(cache_path / AccessorDistributions._FILENAME, "r", encoding="utf-8") as handle:
             data = json.load(handle)
 
         distributions = AccessorDistributions(
@@ -260,16 +256,8 @@ class DistributionAccessorSummaries:
     per_type: Dict[str, TypeAccessorSummary]
     aggregates: MetaSummaries
 
-    def save(self, path: Path, stem_suffix: str="") -> Path:
-        stem_suffix = "_"*bool(stem_suffix) + stem_suffix
-        if path is None:
-            folder = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
-            path = folder / f"summaries_{datetimeDashed()}{stem_suffix}.csv"
-        elif path.is_dir():
-            path = path / f"summaries_{datetimeDashed()}{stem_suffix}.csv"
-        else:
-            path = path.with_stem(path.stem + stem_suffix).with_suffix(".csv")
-
+    def save(self, path: Path) -> Path:
+        assert path.suffix == ".csv"
         with open(path, "w", encoding="utf-8", newline="") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=["type"] + list(TypeAccessorSummary().__dict__.keys()))
             writer.writeheader()
@@ -280,10 +268,7 @@ class DistributionAccessorSummaries:
         return path
 
     @classmethod
-    def load(cls, path: Path) -> "DistributionAccessorSummaries":
-        if not path.exists():
-            return None
-
+    def load(cls, path: Path) -> Self:
         per_type = dict()
         aggregates = dict()
         with open(path, "r", encoding="utf-8") as csvfile:
@@ -303,27 +288,36 @@ class DistributionAccessorSummaries:
         )
 
 
-
 @dataclass
-class AllAccessorSummaries:
+class AllAccessorSummaries(Cacheable):
     left:  DistributionAccessorSummaries
     right: DistributionAccessorSummaries
     both:  DistributionAccessorSummaries
     min:   DistributionAccessorSummaries  # For each type separately, picks the accessor distribution with the fewest types (i.e. the most predictable side) and copies its metrics.
 
-    def save(self, folder_path: Path=None, file_prefix: str="") -> Tuple[Path,Path,Path,Path]:
-        if folder_path is None:
-            folder_path = TkTkTPaths.append(TkTkTPaths.pathToEvaluations(), "av")
-        if not file_prefix:
-            file_prefix = "summary_" + datetimeDashed()
-
-        path_template = folder_path / f"{file_prefix}.csv"
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
         return (
-            self.left .save(path_template, "left"),
-            self.right.save(path_template, "right"),
-            self.both .save(path_template, "both"),
-            self.min  .save(path_template, "min")
+            (cache_path / "summary_left.csv" ).exists() or
+            (cache_path / "summary_right.csv").exists() or
+            (cache_path / "summary_min.csv"  ).exists() or
+            (cache_path / "summary_both.csv" ).exists()
         )
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        return cls.loadFromPaths(
+            left =cache_path / "summary_left.csv",
+            right=cache_path / "summary_right.csv",
+            both =cache_path / "summary_both.csv",
+            min  =cache_path / "summary_min.csv"
+        )
+
+    def store(self, cache_path: Path):
+        self.left .save(cache_path / "summary_left.csv"),
+        self.right.save(cache_path / "summary_right.csv"),
+        self.both .save(cache_path / "summary_both.csv"),
+        self.min  .save(cache_path / "summary_min.csv")
 
     @classmethod
     def loadFromPaths(cls, left: Path, right: Path, both: Path, min: Path) -> "AllAccessorSummaries":
@@ -332,15 +326,6 @@ class AllAccessorSummaries:
             right=DistributionAccessorSummaries.load(right),
             both= DistributionAccessorSummaries.load(both),
             min=  DistributionAccessorSummaries.load(min)
-        )
-
-    @classmethod
-    def load(cls, folder_path: Path, file_prefix: str) -> "AllAccessorSummaries":
-        return cls.loadFromPaths(
-            left =folder_path / f"{file_prefix}_left.csv",
-            right=folder_path / f"{file_prefix}_right.csv",
-            both =folder_path / f"{file_prefix}_both.csv",
-            min  =folder_path / f"{file_prefix}_min.csv"
         )
 
 
@@ -354,6 +339,15 @@ class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
         """
         super().__init__(disable_cache=disable_cache, observers=observers)
         self._bucket_size = bucket_samples_every
+
+    def _nodeIdentifier(self) -> str:
+        return f"AV-bucket-size={self._bucket_size}"
+
+    def _cacheType(self):
+        return AccessorDistributions
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["av", "counts"]
 
     def _initialiseAsObserver(self, identifier: str):
         self.max_id: VocabRef           = 0
@@ -406,21 +400,21 @@ class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
             AccessorDistribution(self.right_of, self.right_bounds)
         )
 
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
-        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["av", "counts"]) / (unambiguous_cache_identifier + ".json")
-
-    def _cacheLoad(self, cache_path: Path) -> AccessorDistributions:
-        return AccessorDistributions.load(cache_path)
-
-    def _cacheStore(self, cache_path: Path, result: AccessorDistributions):
-        result.save(cache_path)
-
 
 class AccessorVariety(FinallyObservableObserver[AccessorDistributions,AllAccessorSummaries]):
 
     def __init__(self, predefined_vocab_size: Optional[int]=None, cache_disambiguator: str= "", disable_cache: bool=False, observers: List[Observer[AllAccessorSummaries]]=None):
         super().__init__(cache_disambiguator=cache_disambiguator, disable_cache=disable_cache, observers=observers)
         self._predefined_vocab_size = predefined_vocab_size
+
+    def _nodeIdentifier(self) -> str:
+        return ""
+
+    def _cacheType(self):
+        return AllAccessorSummaries
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["av", "summaries"]
 
     def _initialiseAsObserver(self, identifier: str):
         self.distributions = None
@@ -430,24 +424,6 @@ class AccessorVariety(FinallyObservableObserver[AccessorDistributions,AllAccesso
 
     def _compute(self) -> AllAccessorSummaries:
         return summariseAccessors(self.distributions, self._predefined_vocab_size)
-
-    def _cacheExists(self, cache_path: Path) -> bool:
-        unambiguous_cache_identifier = self._cacheIdentifier()
-        return (
-            (cache_path / (unambiguous_cache_identifier + "_left.csv" )).exists() or
-            (cache_path / (unambiguous_cache_identifier + "_right.csv")).exists() or
-            (cache_path / (unambiguous_cache_identifier + "_min.csv"  )).exists() or
-            (cache_path / (unambiguous_cache_identifier + "_both.csv" )).exists()
-        )
-
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
-        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["av", "summaries"])
-
-    def _cacheLoad(self, cache_path: Path) -> AllAccessorSummaries:
-        return AllAccessorSummaries.load(cache_path, file_prefix=self._cacheIdentifier())
-
-    def _cacheStore(self, cache_path: Path, result: AllAccessorSummaries):
-        result.save(cache_path, file_prefix=self._cacheIdentifier())
 
 
 def summariseAccessors(accessors: AccessorDistributions, predefined_vocab_size: Optional[int]=None) -> AllAccessorSummaries:

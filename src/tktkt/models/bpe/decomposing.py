@@ -3,20 +3,22 @@ Tokenisers that have flags attached to types in the vocabulary and recursively d
 until no token has a flag.
 """
 from typing import List, Set, Tuple
+from typing_extensions import Self
 from pathlib import Path
 from abc import abstractmethod
 
-import json
 from functools import lru_cache
 from collections import Counter
 import numpy.random as npr
 
 from .base import _DeterministicBPETokeniser, ClassicBPE, MergeList
-from .vocabularisation import BPEVocabulariser
+from .vocabularisation import BPEArtifacts, CacheableBPEArtifacts
 from ...util.iterables import fst
 from ...interfaces.vocabularisers import *
 from ...interfaces.tokenisers import *
 from ...util.types import NamedIterable, Tokens
+
+__all__ = ["ScaffoldBPE", "TrimmedBPE"]
 
 
 class RecursivelyDecomposingBPE(_DeterministicBPETokeniser):
@@ -80,7 +82,43 @@ class TrimmedBPE(RecursivelyDecomposingBPE):
 ########################################################################################################################
 
 
-class _RecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabulariser):
+class AblatedBPEArtifacts(BPEArtifacts):
+    @abstractmethod
+    def getAblations(self) -> set[str]:
+        pass
+
+
+class CacheableAblatedBPEArtifacts(CacheableBPEArtifacts, AblatedBPEArtifacts):
+    def __init__(self, types: list[str], merges: list[tuple[str,...]], ablated_types: set[str]):
+        super().__init__(types=types, merges=merges)
+        self._disabled = ablated_types
+
+    def getAblations(self) -> set[str]:
+        return self._disabled
+
+    def store(self, cache_path: Path):
+        super().store(cache_path)
+        with open(cache_path / "ablations.txt", "w", encoding="utf-8") as handle:
+            for t in self._disabled:
+                handle.write(f"{t}\n")
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        bpe_artifacts = super().load(cache_path)
+        with open(cache_path / "ablations.txt", "r", encoding="utf-8") as handle:
+            ablations = [line.rstrip() for line in handle]
+        return cls(
+            types=bpe_artifacts._types,
+            merges=bpe_artifacts._merges,
+            ablated_types=set(ablations)
+        )
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return super().exists(cache_path) and (cache_path / "ablations.txt").exists()
+
+
+class _FrequencyBasedRecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabulariser[CacheableAblatedBPEArtifacts]):
     """
     Vocabulariser that finds the types to disable for a RecursivelyDecomposingBPE tokeniser,
     by tokenising a corpus and computing the unigram distribution on which some operation is applied.
@@ -88,10 +126,12 @@ class _RecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabulariser):
     Note: this vocabulariser does NOT train the BPE tokeniser used to tokenise the corpus.
     """
 
-    def __init__(self, name: str, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList):
-        super().__init__(name=name, preprocessor=preprocessor)
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList):
+        super().__init__(preprocessor=preprocessor)
         self._tokeniser = ClassicBPE(preprocessor=preprocessor, vocab=vocab, merges=merges)
+
+    def _cacheType(self):
+        return CacheableAblatedBPEArtifacts
 
     @abstractmethod
     def _selectTypesToTrim(self, type_distribution: Counter[str]) -> Set[str]:
@@ -100,9 +140,7 @@ class _RecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabulariser):
     def _getNonAlphabet(self) -> Set[str]:
         return {t for t in self._tokeniser.vocab if not self._tokeniser.merge_graph.inAlphabet(t)}
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
-        folder = self._makeOutputFolder(word_iterable.name)
-
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableAblatedBPEArtifacts:
         # Get counts and find types
         type_counts = Counter()
         for word, count in word_iterable:
@@ -110,33 +148,17 @@ class _RecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabulariser):
                 type_counts[token] += count
         disabled_types = self._selectTypesToTrim(type_counts) & self._getNonAlphabet()
 
-        # Save tokeniser as usual.
-        BPEVocabulariser._storeVocab(self._tokeniser.vocab, folder)
-        BPEVocabulariser._storeMerges(self._tokeniser.merge_graph.getRawMerges(), folder)
-        with open(folder / "ablations.json", "w", encoding="utf-8") as handle:
-            json.dump({
-                typ: self._tokeniser.typeToId(typ)
-                for typ in disabled_types
-            }, handle, indent=4)
+        return CacheableAblatedBPEArtifacts(
+            types=list(self._tokeniser.types()),
+            merges=[tuple(m.split(" ")) for m in self._tokeniser.merge_graph.getRawMerges()],
+            ablated_types=disabled_types
+        )
 
-        return folder
-
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableAblatedBPEArtifacts:
         return self._vocabulariseFromWords(self._preprocessSentencesToPretokenCounts(sentence_iterable))
 
-    @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        if file_or_folder.is_file():
-            file_or_folder = file_or_folder.parent
 
-        # Load only the ablated types. BPEVocabulariser.load() can be used to load the expanded vocab.
-        with open(file_or_folder / "ablations.json") as handle:
-            ablations = set(json.load(handle))
-
-        return [t for t in BPEVocabulariser._load(file_or_folder) if t in ablations]
-
-
-class TrimmedBPEVocabulariser(_RecursivelyDecomposingBPEVocabulariser):
+class TrimmedBPEVocabulariser(_FrequencyBasedRecursivelyDecomposingBPEVocabulariser):
     """
     Disable all types that appear <= threshold times when tokenising the given corpus.
     This process is done in parallel (find all types, then disable them) rather than serially (find a type, disable
@@ -148,14 +170,17 @@ class TrimmedBPEVocabulariser(_RecursivelyDecomposingBPEVocabulariser):
     def __init__(self, preprocessor: Preprocessor,
                  vocab: Vocab, merges: MergeList,
                  keep_type_if_more_frequent_than: int):
-        super().__init__(name="trimmedbpe", preprocessor=preprocessor, vocab=vocab, merges=merges)
+        super().__init__(preprocessor=preprocessor, vocab=vocab, merges=merges)
         self._threshold = keep_type_if_more_frequent_than
+
+    def _identifier(self) -> str:
+        return "trimmedbpe"
 
     def _selectTypesToTrim(self, type_distribution: Counter[str]) -> Set[str]:
         return {t for t in self._tokeniser.vocab if type_distribution[t] <= self._threshold}
 
 
-class RandomDropBPE(_RecursivelyDecomposingBPEVocabulariser):
+class RandomDropBPE(_FrequencyBasedRecursivelyDecomposingBPEVocabulariser):
     """
     Flags k types for decomposition randomly from the N most frequent types.
     https://aclanthology.org/2024.lrec-main.1469.pdf
@@ -165,7 +190,6 @@ class RandomDropBPE(_RecursivelyDecomposingBPEVocabulariser):
                  vocab: Vocab, merges: MergeList,
                  top_N_sampling_domain: int, random_k_sampling_size: int, seed: int=0):
         super().__init__(
-            name="randomdropbpe",
             preprocessor=preprocessor,
             vocab=vocab, merges=merges
         )
@@ -173,6 +197,9 @@ class RandomDropBPE(_RecursivelyDecomposingBPEVocabulariser):
         self._k = random_k_sampling_size
         self._rng = npr.default_rng(seed)
         assert 0 <= self._k <= self._N <= len(self._getNonAlphabet())  # This assertion can only happen when the BPE graph is constructed.
+
+    def _identifier(self) -> str:
+        return "randomdropbpe"
 
     def _selectTypesToTrim(self, type_distribution: Counter[str]) -> List[str]:
         subcounter = Counter()  # Contains only the counts for non-alphabet types (even if not part of the given counter).

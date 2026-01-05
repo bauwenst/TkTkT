@@ -1,9 +1,9 @@
-from typing import Dict, Tuple, Union, List, Iterable
+from typing import Dict, Tuple, Union, List, Iterable, Self, Optional, Callable
+from abc import abstractmethod
 from pathlib import Path
 from enum import Enum
 from collections import defaultdict, OrderedDict, Counter
 
-import json
 from tqdm.auto import tqdm
 
 from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase
@@ -11,13 +11,19 @@ from bpe_knockout.model.graph import MergeOnDisk
 from bpe_knockout.util.storage import SennrichTokeniserPath, HuggingFaceTokeniserPath
 from modest.formats.tsv import iterateTsv
 
+from ...interfaces import Vocab
+from ...interfaces.identifiers import SpecialsExtended, WithSpecials, NoSpecials
+
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
 from ...factories.preprocessors import KudoSpaceMarker
+from ...interfaces.artifactories import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
+from ...interfaces.vocabularisers import T_CacheableArtifact, C
 from ...util.dicts import substituteKey, argmax
 from ...util.iterables import streamProgress, deduplicate
 from ...util.printing import logger, pluralise
+from ...util.types import Comparable
 
 
 class BpeTrainerImplementation(Enum):
@@ -28,7 +34,82 @@ class BpeTrainerImplementation(Enum):
     SBPE          = 4
 
 
-class BPEVocabulariser(UnsupervisedVocabulariser):
+class BPEArtifacts(Artifacts):
+    @abstractmethod
+    def getMerges(self) -> list[tuple[str,...]]:
+        pass
+
+
+class CacheableBPEArtifacts(CacheableArtifacts, BPEArtifacts):
+
+    def __init__(self, types: list[str], merges: list[tuple[str,...]]):
+        super().__init__()
+        self._types = types
+        self._merges = merges
+
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        return self._types
+
+    def getMerges(self) -> list[tuple[str, ...]]:
+        return self._merges
+
+    def store(self, cache_path: Path):
+        self._storeTypes(cache_path, self._types)
+        self._storeMerges(cache_path, self._merges)
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        return cls(types=cls._loadTypes(cache_path), merges=cls._loadMerges(cache_path))
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return cls._existsTypes(cache_path) and (cache_path / "merges.txt").exists()
+
+    def _bakedSpecials(self) -> set[str]:
+        return set()
+
+    # @classmethod
+    # def _storeVocab(cls, vocab: Union[OrderedDict[str, int], Dict[str, int], Iterable[str]], folder: Path) -> Path:
+    #     if not isinstance(vocab, dict):
+    #         vocab = OrderedDict((t,i) for i,t in enumerate(vocab))
+    #     else:
+    #         vocab = OrderedDict((t,vocab[t]) for t in sorted(vocab.keys(), key=vocab.get))
+    #
+    #     output_path = folder / "vocab.json"
+    #     with open(output_path, "w", encoding="utf-8") as handle:
+    #         json.dump(vocab, handle, ensure_ascii=False, indent=4)
+    #     return output_path
+
+    # @classmethod
+    # def _loadVocabulary(cls, file_or_folder: Path) -> UnidentifiedVocab:
+    #     if file_or_folder.is_dir():
+    #         file_or_folder = file_or_folder / "vocab.json"
+    #     with open(file_or_folder, "r", encoding="utf-8") as handle:
+    #         vocab = json.load(handle)
+    #     return sorted(vocab, key=vocab.get)
+
+    @classmethod
+    def _storeMerges(cls, folder: Path, merges: Iterable[MergeOnDisk]) -> Path:
+        output_path = folder / "merges.txt"
+        with open(output_path, "w", encoding="utf-8") as handle:
+            for parts in merges:
+                if isinstance(parts, str):
+                    parts = parts.split(" ")
+                handle.write(f"{' '.join(parts)}\n")
+
+        return output_path
+
+    @classmethod
+    def _loadMerges(cls, file_or_folder: Path) -> list[tuple[str,...]]:
+        if file_or_folder.is_dir():
+            file_or_folder = file_or_folder / "merges.txt"
+
+        with open(file_or_folder, "r", encoding="utf-8") as handle:
+            return [tuple(line.strip("\r\n").split(" ")) for line in handle
+                    if line.strip("\r\n") and not line.startswith("#version")]
+
+
+class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
     """
     Create a BPE tokeniser from a corpus.
 
@@ -44,7 +125,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
         :param replace_boundary_marker_with: only applies to implementations that aren't free to use any preprocessor with
                                              any boundary marker (SentencePiece and BPEasy).
         """
-        super().__init__(name="bpe", preprocessor=preprocessor)
+        super().__init__(preprocessor=preprocessor)
         self._size = vocab_size
         self._max_token_length = max_token_length
 
@@ -57,7 +138,13 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
 
         self._mode = implementation
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+    def _identifier(self) -> str:
+        return "bpe"
+
+    def _cacheType(self):
+        return CacheableBPEArtifacts
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableBPEArtifacts:
         # Note: The cases that preprocess beforehand do this because the trainers only accept sentences. The other cases do preprocessing internally.
         if self._mode == BpeTrainerImplementation.HUGGINGFACE:
             return self._withHfTrainer(self._preprocessWordsToSentences(word_iterable))
@@ -72,7 +159,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
         else:
             raise NotImplementedError()
 
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableBPEArtifacts:
         # Note: calling self._preprocessSentencesToSentences is up to the individual trainer implementations below.
         if self._mode == BpeTrainerImplementation.BPEASY:
             return self._withBPEasyTrainer(sentence_iterable)
@@ -87,47 +174,13 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
         else:
             raise NotImplementedError()
 
-    @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        if file_or_folder.is_dir():
-            file_or_folder = file_or_folder / "vocab.json"
-        with open(file_or_folder, "r", encoding="utf-8") as handle:
-            vocab = json.load(handle)
-        return sorted(vocab, key=vocab.get)
-
-    ####################################################################################################################
-
-    @classmethod
-    def _storeVocab(cls, vocab: Union[OrderedDict[str, int], Dict[str, int], Iterable[str]], folder: Path) -> Path:
-        if not isinstance(vocab, dict):
-            vocab = OrderedDict((t,i) for i,t in enumerate(vocab))
-        else:
-            vocab = OrderedDict((t,vocab[t]) for t in sorted(vocab.keys(), key=vocab.get))
-
-        output_path = folder / "vocab.json"
-        with open(output_path, "w", encoding="utf-8") as handle:
-            json.dump(vocab, handle, ensure_ascii=False, indent=4)
-        return output_path
-
-    @classmethod
-    def _storeMerges(cls, merges: Iterable[MergeOnDisk], folder: Path) -> Path:
-        output_path = folder / "merges.txt"
-        with open(output_path, "w", encoding="utf-8") as handle:
-            for parts in merges:
-                if isinstance(parts, str):
-                    parts = parts.split(" ")
-                handle.write(f"{' '.join(parts)}\n")
-
-        return output_path
-
-    def _withBPEasyTrainer(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _withBPEasyTrainer(self, sentence_iterable: NamedIterable[str]) -> CacheableBPEArtifacts:
         """
         Produces a pseudo-byte vocabulary with boundary marker. Assumes that the vocabulariser's preprocessor is slightly
         different from the tokeniser's preprocessor, namely that the former does not apply a pseudo-byte mapping nor adds
         boundaries other than spaces.
         """
         import bpeasy
-        out_folder = self._makeOutputFolder(sentence_iterable.name)
         logger("Note: BPEasy has a byte-based implementation. That means you should use a byte-compatible preprocessor, which doesn't add a boundary marker (unless it's a space) and doesn't apply a pseudo-byte mapping.")
 
         # Learn vocabulary.
@@ -142,13 +195,9 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
 
         vocab = self._standardiseBPEasyVocab(bytes_vocab)
         types = sorted(vocab, key=vocab.get)
-        self._storeVocab(OrderedDict( (typ, vocab.get(typ)) for typ in types ), out_folder)
-
-        # Induce merges
         merges = BPEVocabulariser.deduceMergesFromVocab(types, self._replacement_marker)
-        self._storeMerges(merges, out_folder)
 
-        return out_folder
+        return CacheableBPEArtifacts(types=types, merges=merges)
 
     def _standardiseBPEasyVocab(self, bytes_vocab: Dict[bytes,int]) -> Dict[str,int]:
         # Convert the byte-level vocabulary to pseudo-byte characters so that it can be written to a text file.
@@ -172,12 +221,8 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
         vocab = {typ.replace(" ", self._replacement_marker.substitute): vocab.get(typ) for typ in vocab}
         return vocab
 
-    def _withSBPETrainer(self, iterable: Union[NamedIterable[Tuple[str,int]], NamedIterable[str]], words_not_sentences: bool=False) -> Path:
+    def _withSBPETrainer(self, iterable: Union[NamedIterable[Tuple[str,int]], NamedIterable[str]], words_not_sentences: bool=False) -> CacheableBPEArtifacts:
         import bpe_knockout._lib.sbpe.learn_bpe as sbpe
-
-        out_folder = self._makeOutputFolder(iterable.name)
-        paths = SennrichTokeniserPath(folder=out_folder)
-        path_vocab, path_merges = paths.getPaths()
 
         # Learn merges
         iterables = []
@@ -185,23 +230,25 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
             iterables.append(f"{word} {count}" for word, count in iterable)  # Generator
         else:
             iterables.append(iterable)
-        with open(path_merges, "w", encoding="utf-8") as out_handle:
+
+        stream_merges_to = self._cachePath(iterable.name) / "temp.txt"
+        with open(stream_merges_to, "w", encoding="utf-8") as out_handle:
             sbpe.learn_bpe(iterables, out_handle, is_dict=words_not_sentences,
                            num_symbols_ori=self._size, total_symbols=True,
                            preprocessor=self.preprocessor, marker=self._marker)
+        merges = CacheableBPEArtifacts._loadMerges(stream_merges_to)
 
         # Deduce vocab
-        vocab = BPEVocabulariser.deduceVocabFromMerges(path_merges, partial_alphabet=self.preprocessor.getAlphabet())
-        self._storeVocab(vocab, out_folder)
-        return out_folder
+        vocab = BPEVocabulariser.deduceVocabFromMerges(stream_merges_to, partial_alphabet=self.preprocessor.getAlphabet())
+        return CacheableBPEArtifacts(types=sorted(vocab), merges=merges)
 
-    def _withHfTrainer(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _withHfTrainer(self, sentence_iterable: NamedIterable[str]) -> CacheableBPEArtifacts:
         """
         HuggingFace equivalent. For German: starts out extremely slow
         (giving an ETA of 500 000 hours), but finishes in under 2 hours.
         """
         from tokenizers import Tokenizer, models, pre_tokenizers, trainers
-        out_folder = self._makeOutputFolder(sentence_iterable.name)
+        out_folder = self._cachePath(sentence_iterable.name)
 
         # Model: no normaliser (because RobBERT doesn't have one) and no decoder (because training is back-end-only).
         tokeniser = Tokenizer(models.BPE())
@@ -222,19 +269,17 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
         )
         tokeniser.train_from_iterator(sentence_iterable, trainer=trainer)
 
-        # Save
+        # Serialise
         save_path = out_folder / f"tokenizer.json"
         hf = HuggingFaceTokeniserPath(json_path=save_path)  # Calls .mkdir, which is important because otherwise the next line fails.
         tokeniser.save(path=save_path.as_posix())
 
-        # Turn into vocab.json + merges.txt
-        vocab, merges = SennrichTokeniserPath(folder=out_folder).getPaths()
-        self._storeVocab(hf.loadVocabulary(), out_folder)
-        with open(merges, "w", encoding="utf-8") as out_handle:
-            out_handle.writelines([merge + "\n" for merge in hf.loadMerges()])
-        return out_folder
+        # Deserialise
+        vocab  = hf.loadVocabulary()
+        merges = [tuple(m.split(" ")) for m in hf.loadMerges()]
+        return CacheableBPEArtifacts(types=sorted(vocab, key=vocab.get), merges=merges)
 
-    def _withSentencePieceTrainer(self, word_or_sentence_iterable: NamedIterable, words_not_sentences: bool=False):
+    def _withSentencePieceTrainer(self, word_or_sentence_iterable: NamedIterable, words_not_sentences: bool=False) -> CacheableBPEArtifacts:
         """
         Benchmarks:
             - Training from a HuggingFace dataset, it takes about 2 hours to stream the next 1 million lines.
@@ -242,7 +287,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
             - For 5M exotic-concatenated sentences and max token length 32, it takes at least 769 GiB of RAM and over 8 hours to train.
         """
         from ..kudopiece.vocabularisation import KudoPieceVocabulariser, EXOTIC_SCRIPT_PRETOKEN_SEPARATOR
-        output_prefix = self._makeOutputFolder(word_or_sentence_iterable.name) / "spm"
+        output_prefix = self._cachePath(word_or_sentence_iterable.name) / "spm"
 
         if words_not_sentences:
             word_or_sentence_iterable = self._preprocessWordsToPretokenCounts_approx(word_or_sentence_iterable)  # TODO: I wonder if SP prefixes every TSV entry with a SoW. If not, you can use the non-approximative _counter variant here too.
@@ -274,15 +319,9 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
             # num_sub_iterations=self._algorithm.num_sub_iterations,
         )
 
-        # Get vocab
         vocab = self._standardiseSpmVocab(output_prefix.with_suffix(".vocab"), required_chars=self.preprocessor.getAlphabet())
-        self._storeVocab(vocab, output_prefix.parent)
-
-        # Deduce merges
         merges = self.deduceMergesFromVocab(sorted(vocab, key=vocab.get), boundary_marker=self._replacement_marker)
-        self._storeMerges(merges, output_prefix.parent)
-
-        return output_prefix.parent
+        return CacheableBPEArtifacts(types=sorted(vocab, key=vocab.get), merges=merges)
 
     def _standardiseSpmVocab(self, spm_vocab: Path, required_chars: Iterable[str]) -> Dict[str,int]:
         from ..kudopiece.vocabularisation import EXOTIC_SCRIPT_PRETOKEN_SEPARATOR
@@ -353,19 +392,28 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
 
         return vocab
 
-    def _withChizhovTrainer(self, iterable: NamedIterable, words_not_sentences: bool=False):
-        class BPEVocabulariser_Chizhov(_VocabulariserWithChizhovBackend):
+    def _withChizhovTrainer(self, iterable: NamedIterable, words_not_sentences: bool=False) -> CacheableBPEArtifacts:
+        # We define a vocabulariser on-the-fly to deal with preprocessing.
+        class BPEVocabulariser_Chizhov(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):
             def __init__(self, preprocessor: Preprocessor, vocab_size: int, character_coverage: float, max_type_length: int):
-                super().__init__(name="bpe", preprocessor=preprocessor, backend=_ChizhovBackend_BPE(
+                super().__init__(preprocessor=preprocessor, backend=_ChizhovBackend_BPE(
                     preprocessor=preprocessor,
                     vocab_size=vocab_size,
                     character_coverage=character_coverage,
                     max_type_length=max_type_length
                 ))
 
-            @classmethod
-            def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-                return BPEVocabulariser._load(file_or_folder)
+            def _identifier(self) -> str:
+                return "bpe"
+
+            def _cacheType(self):
+                return CacheableBPEArtifacts
+
+            def _dumpToArtifacts(self, dump_path: Path) -> CacheableBPEArtifacts:
+                return CacheableBPEArtifacts(
+                    types=CacheableBPEArtifacts._loadTypes(dump_path),
+                    merges=CacheableBPEArtifacts._loadMerges(dump_path)
+                )
 
         vocabulariser = BPEVocabulariser_Chizhov(
             preprocessor=self.preprocessor,
@@ -379,15 +427,6 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
             return vocabulariser._vocabulariseFromSentences(iterable)
 
     ####################################################################################################################
-
-    @classmethod
-    def loadMerges(cls, file_or_folder: Path) -> list[tuple[str,...]]:
-        if file_or_folder.is_dir():
-            file_or_folder = file_or_folder / "merges.txt"
-
-        with open(file_or_folder, "r", encoding="utf-8") as handle:
-            return [tuple(line.strip("\r\n").split(" ")) for line in handle
-                    if line.strip("\r\n") and not line.startswith("#version")]
 
     @staticmethod
     def deduceVocabFromMerges(mergefile: Path, partial_alphabet: List[str]=None) -> Dict[str, int]:
@@ -405,11 +444,11 @@ class BPEVocabulariser(UnsupervisedVocabulariser):
         # Get alphabet
         if not partial_alphabet:
             partial_alphabet = []
-        partial_alphabet = list(deduplicate(partial_alphabet + sorted(used_types - produced_types)))
+        alphabet = list(deduplicate(partial_alphabet + sorted(used_types - produced_types)))
 
         # Combine everything
         vocab = {c: i for i, c in enumerate(
-            partial_alphabet +
+            alphabet +
             list(produced_types)
         )}
 
@@ -497,7 +536,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
     def _string_to_atoms(self, word: str) -> Iterable[str]:
         return self._marker.atomise(word)
 
-    def _dump(self, path: Path):
+    def _dump(self, path: Path) -> Path:
         from pickybpe.vocabularisation import logger
 
         folder = Path(path).resolve()
@@ -506,10 +545,9 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
         logger.info(f'Dumping model to {folder.as_posix()}...')
 
         # Vocab
-        BPEVocabulariser._storeVocab({
-            typ.str: i
-            for i, typ in enumerate(sorted(filter(lambda token: token != self.unk_token, self.str2token.values()), key=lambda token: token.id))
-        }, folder)
+        CacheableBPEArtifacts._storeTypes(folder,
+            [typ.str for typ in sorted(filter(lambda token: token != self.unk_token, self.str2token.values()), key=lambda token: token.id)]
+        )
 
         # Merges
         def validate_characters(token: str) -> str:
@@ -518,35 +556,40 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
                     raise ValueError(f"Token contains invalid character: {repr(c)}.")
             return token
 
-        BPEVocabulariser._storeMerges(
+        CacheableBPEArtifacts._storeMerges(folder,
             (
                 [validate_characters(part.str) for part in parts]
                 for event_type, parts, _ in self.events if event_type == EventType.MERGE
-            ),
-            folder
+            )
         )
         return folder
 
 
-class _VocabulariserWithChizhovBackend(UnsupervisedVocabulariser):
+class _VocabulariserWithChizhovBackend(UnsupervisedVocabulariser[T_CacheableArtifact]):
     """
     Puts a Vocabulariser interface around the pickybpe package.
     Supports word frequency files, HuggingFace datasets, ... which were not supported by the original codebase.
 
-    This class itself cannot be instantiated because it doesn't know which _dump() implementation the backend uses.
+    Since the pickybpe package does not depend on TkTkT, its trainer doesn't output Artifacts but a path. This path
+    will have to be converted to the relevant Artifacts by subclasses of this class, depending on the format written
+    by the trainer.
     """
 
-    def __init__(self, name: str, preprocessor: Preprocessor, backend: _BPETrainerBase):
-        super().__init__(name=name, preprocessor=preprocessor)
+    def __init__(self, preprocessor: Preprocessor, backend: _BPETrainerBase):
+        super().__init__(preprocessor=preprocessor)
         self._backend = backend
 
-    def _vocabulariseFromPretokenCounts(self, pretoken_iterable: NamedIterable[Tuple[str,int]]) -> Path:
-        """Does no preprocessing."""
-        folder = self._makeOutputFolder(pretoken_iterable.name)
-        return self._backend._fit_from_counts(Counter(dict(pretoken_iterable)), folder, logging_step=100)
+    @abstractmethod
+    def _dumpToArtifacts(self, dump_path: Path) -> T_CacheableArtifact:
+        pass
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+    def _vocabulariseFromPretokenCounts(self, pretoken_iterable: NamedIterable[Tuple[str,int]]) -> T_CacheableArtifact:
+        """Does no preprocessing."""
+        dump_path = self._backend._fit_from_counts(Counter(dict(pretoken_iterable)), self._cachePath(pretoken_iterable.name), logging_step=100)
+        return self._dumpToArtifacts(dump_path)
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> T_CacheableArtifact:
         return self._vocabulariseFromPretokenCounts(self._preprocessWordsToPretokenCounts(word_iterable))
 
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> T_CacheableArtifact:
         return self._vocabulariseFromPretokenCounts(self._preprocessSentencesToPretokenCounts(sentence_iterable))

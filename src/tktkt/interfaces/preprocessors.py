@@ -3,6 +3,7 @@ from abc import abstractmethod, ABC
 
 from ..preparation.boundaries import BoundaryMarker
 from ..util.iterables import deduplicate
+from ..util.strings import indent
 
 
 class _PreprocessorComponent(ABC):
@@ -26,6 +27,9 @@ class _PreprocessorComponent(ABC):
     def __iter__(self) -> Iterator["_PreprocessorComponent"]:
         pass
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__
+
 
 class _PreprocessorComponentSequence(_PreprocessorComponent):
     """
@@ -43,6 +47,10 @@ class _PreprocessorComponentSequence(_PreprocessorComponent):
         for component in self:
             marker = component.getBoundaryMarker() or marker
         return marker
+
+    def __repr__(self) -> str:
+        body = ",\n".join(repr(component) for component in self)
+        return self.__class__.__name__ + "(" + ("\n" + indent(1, body) + "\n" if body else "") + ")"
 
 
 class TextMapper(_PreprocessorComponent):
@@ -122,7 +130,7 @@ class Pretokeniser(_PreprocessorComponent):
     def __iter__(self) -> Iterator[_PreprocessorComponent]:
         yield self
 
-    def getName(self):
+    def _diagnosticName(self) -> str:
         return self.__class__.__name__
 
 
@@ -163,3 +171,10 @@ class Preprocessor(_PreprocessorComponentSequence):
         yield from self.irreversible
         yield from self.reversible
         yield from self.splitter
+
+    def __repr__(self) -> str:
+        return f"Preprocessor(\n" + \
+            indent(1, repr(self.irreversible)) + ",\n" + \
+            indent(1, repr(self.reversible)) + ",\n" + \
+            indent(1, repr(self.splitter)) + "\n" + \
+        ")"

@@ -9,6 +9,7 @@ from transformers import PreTrainedTokenizerBase
 import warnings
 from copy import deepcopy
 
+from ..factories import specials
 from ..util.iterables import areContiguous, fst, areUnique, arePositive, snd
 from ..util.dicts import getattr_recursive, setattr_recursive, intersect_dicts
 from ..util.exceptions import EmptyTokenError
@@ -19,6 +20,14 @@ class _ProhibitDeclaringConstructor(type):
         super().__init__(name, bases, namespace)
         if namespace.get("__init__", None) is not None:  # namespace is basically what is written in code, but as a dictionary.
             raise AssertionError("Specials should have no __init__ constructor. They should be constructed through the @dataclass decorator.")
+
+
+class _ProhibitSubclassing(type):
+    def __init__(cls, name, bases, namespace):
+        super().__init__(name, bases, namespace)
+        for base in bases:
+            if isinstance(base, _ProhibitSubclassing):
+                raise TypeError(f"Illegal subclass '{name}' of parent class '{bases[0].__name__}'.")
 
 
 class Specials(metaclass=_ProhibitDeclaringConstructor):  # This metaclass prevents the user from writing 'def __init__(self)' which means they are more or less forced to use a dataclass.
@@ -145,6 +154,13 @@ class NoSpecials(Specials):
 
 UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers, but in some order.
 WithSpecials = TypeVar("WithSpecials", bound=Specials)  # There is a bug where this TypeVar pretends to BE its bound rather than USE its bound. You can still get type completion for .specials, but you should manually annotate the vocab as "v: Vocab[YourSpecialsType]"... https://youtrack.jetbrains.com/issue/PY-49816/Type-inference-fails-when-using-bound-typevar-inference-through-TypeT
+
+
+@dataclass
+class SpecialsExtended(Generic[WithSpecials], metaclass=_ProhibitSubclassing):
+    """Purely for bundling Specials with an UNK. This should NOT be used to define a new class of Specials."""
+    specials: WithSpecials
+    unk: Optional[int] = 0
 
 
 class Vocab(dict[str, int], Generic[WithSpecials]):

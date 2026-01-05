@@ -15,7 +15,8 @@ class HuggingFaceBPETokeniser(HuggingFaceTokeniser[WithSpecials]):
     https://huggingface.co/docs/tokenizers/api/models#tokenizers.models.BPE
     """
 
-    def __init__(self, vocab: Union[Vocab[WithSpecials], dict[str,int]], merges: list[tuple[str,str]], dropout: float=0.0, preprocessor: Optional[Preprocessor]=None):
+    def __init__(self, vocab: Union[Vocab[WithSpecials], dict[str,int]], merges: list[tuple[str,str]],
+                 dropout: float=0.0, preprocessor: Optional[Preprocessor]=None):
         backend_of_backend_of_backend = BPE(vocab=dict(vocab), merges=merges, dropout=dropout if 0.0 < dropout <= 1.0 else None)  # TODO: Known problem: because you don't use vocab.unsafe() here, HuggingFace gives you a "The OrderedVocab you are attempting to save contains holes for indices ..." print. This is harmless but annoying. https://github.com/huggingface/tokenizers/issues/1913
         backend_of_backend            = Tokenizer(model=backend_of_backend_of_backend)
         backend                       = PreTrainedTokenizerFast(tokenizer_object=backend_of_backend)

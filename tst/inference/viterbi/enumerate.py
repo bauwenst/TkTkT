@@ -9,7 +9,7 @@ english_bpe = BPE32ki_SlimPajama3M()
 preprocessor = english_bpe.preprocessorEffective()
 
 s = preprocessor.do(s)[0]
-all_segmentations = generateSegmentationIndices_fixedSpace(s, english_bpe.buildVocabulary())
+all_segmentations = generateSegmentationIndices_fixedSpace(s, english_bpe.getVocabulary())
 
 print("Enumerating...")
 print(

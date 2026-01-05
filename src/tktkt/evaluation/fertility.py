@@ -2,17 +2,13 @@
 Metrics that have to do with (1) how many segmentations a tokeniser could generate in theory,
 and (2) the amount of tokens it generates in practice.
 """
-from pathlib import Path
 from typing import Tuple, Set, Union, List
 from dataclasses import dataclass
 
-import json
 from math import log2
-from dacite import from_dict
 
-from ..paths import TkTkTPaths
+from ..util.interfaces import SimpleCacheableDataclass, C
 from ..util.types import Tokens
-from ..util.dicts import jsonToDataclass, dataclassToJson
 from ..interfaces.tokenisers import Preprocessor
 from ..interfaces.identifiers import SubwordCollection
 
@@ -49,7 +45,7 @@ def preprocessThenCountValidSegmentations(word: str, preprocessor: Preprocessor,
 
 
 @dataclass
-class VocabularyFertility:
+class VocabularyFertility(SimpleCacheableDataclass):
     """
     How many segmentations a vocabulary supports, normalised by a variety of metrics, averaged across a word corpus,
     weighed (or not) by word frequency.
@@ -72,7 +68,7 @@ class VocabularyFertility:
 
 
 @dataclass
-class InferenceFertility:
+class InferenceFertility(SimpleCacheableDataclass):
     """
     Statistics about the segmentations that are actually made in practice by a tokeniser, not how many it hypothetically supports.
     """
@@ -113,8 +109,7 @@ class PossibleSegmentations(FinallyObservableObserver[Union[str,Tuple[str,int]],
     Given words (with or without frequency), measures how many possible segmentations are achievable given a vocabulary.
     """
 
-    def __init__(
-        self,
+    def __init__(self,
         vocab: SubwordCollection,
         effective_preprocessor: Preprocessor,
 
@@ -142,6 +137,15 @@ class PossibleSegmentations(FinallyObservableObserver[Union[str,Tuple[str,int]],
         self._do_logarithmic_segmentations    = do_logarithmic_segmentations
         self._do_measure_original_word_length = do_measure_original_word_length
         self._exclude_words_over_length       = exclude_words_over_length
+
+    def _nodeIdentifier(self) -> str:
+        return str(hash(" ".join(sorted(self.vocab))))  # Ideally, a Vocab has a name, but doing it this way is actually strictly better. TODO: Maybe you want the parameters too, idk.
+
+    def _cacheType(self) -> type[C]:
+        return VocabularyFertility
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["fertility", "vocabulary"]
 
     def _initialiseAsObserver(self, identifier: str):
         self.seen = dict()
@@ -241,6 +245,15 @@ class SegmentationProperties(FinallyObservableObserver[Tokens,InferenceFertility
         super().__init__(observers=observers)
         self._unique_words = track_unique_words
 
+    def _nodeIdentifier(self) -> str:
+        return ""
+
+    def _cacheType(self) -> type[C]:
+        return InferenceFertility
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["fertility", "inference"]
+
     def _initialiseAsObserver(self, identifier: str):
         self.seen = set()
 
@@ -315,12 +328,3 @@ class SegmentationProperties(FinallyObservableObserver[Tokens,InferenceFertility
             segmentality_word_types=self.sum_tk1_on_len1/(self.sum_one or 1),
             segmentality_word_tokens=self.sum_tk1_on_len1_weighted/self.sum_one_weighted
         )
-
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
-        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["fertility", "inference"]) / (unambiguous_cache_identifier + ".json")
-
-    def _cacheLoad(self, cache_path: Path) -> InferenceFertility:
-        return jsonToDataclass(InferenceFertility, cache_path)
-
-    def _cacheStore(self, cache_path: Path, result: InferenceFertility):
-        dataclassToJson(result, cache_path)

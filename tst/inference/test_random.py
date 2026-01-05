@@ -78,7 +78,7 @@ def test_rejection_graph():
     vocab = KudoPiece32ki_SlimPajama3M()
     t = RandomVocabSegmentation_RejectionSampling_UniformGraph(
         preprocessor=vocab.preprocessorEffective(),
-        vocab=vocab.buildVocabulary()
+        vocab=vocab.getVocabulary()
     )
 
     from datasets import load_dataset

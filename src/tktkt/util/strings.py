@@ -1,4 +1,5 @@
 from typing import List, Iterable, Set
+from enum import Enum
 import numpy as np
 
 from .iterables import intercalate, cumsum
@@ -40,6 +41,10 @@ def findLongestCommonPrefix(strings: Iterable[str]) -> str:
     return ref or ""
 
 
+def anySubstringIn(substrings: Iterable[str], string: str) -> bool:
+    return any(sub in string for sub in substrings)
+
+
 def getAlphabet(strings: Iterable[str]) -> Set[str]:
     alphabet = set()
     for s in strings:
@@ -78,6 +83,58 @@ def alignCharacter(multiline_string: str, character_to_align: str) -> str:
         lines[i] = line[:loc] + " "*(move_character_to - loc) + line[loc:]
 
     return "\n".join(lines)
+
+
+class Case(Enum):
+    SNAKE  = 0  # snake_case
+    KEBAB  = 1  # kebab-case
+    PASCAL = 2  # PascalCase
+    CAMEL  = 3  # camelCase
+    FLAT   = 4  # flatcase
+    SPACED = 5  # spaced case
+
+
+def convertCase(text: str, from_case: Case, to_case: Case) -> str:
+    if from_case == to_case:
+        return text
+    if not text:
+        return text
+
+    if   from_case == Case.SNAKE:
+        parts = text.split("_")
+    elif from_case == Case.KEBAB:
+        parts = text.split("-")
+    elif from_case == Case.SPACED:
+        parts = text.split(" ")
+    elif from_case == Case.PASCAL or from_case == Case.CAMEL:
+        indices = []
+        for i,c in enumerate(text):
+            if c.isupper():
+                indices.append(i)
+        if not indices or indices[0] != 0:
+            indices.insert(0,0)
+        indices.append(len(text))
+        parts = [text[i:j] for i,j in zip(indices[:-1], indices[1:])]
+    elif from_case == Case.FLAT:
+        raise ValueError("Cannot convert from flatcase to other cases")
+    else:
+        raise NotImplementedError(from_case)
+
+    if   to_case == Case.SNAKE:
+        return "_".join(parts)
+    elif to_case == Case.KEBAB:
+        return "-".join(parts)
+    elif to_case == Case.SPACED:
+        return " ".join(parts)
+    elif to_case == Case.FLAT:
+        return "".join(parts)
+    elif to_case == Case.PASCAL:
+        return "".join(p.capitalize() for p in parts)
+    elif to_case == Case.CAMEL:
+        result = "".join(p.capitalize() for p in parts)
+        return result[0].lower() + result[1:]
+    else:
+        raise NotImplementedError(to_case)
 
 
 ########################################################################################################################

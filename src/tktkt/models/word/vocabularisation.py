@@ -1,10 +1,13 @@
-from typing import Iterator, Tuple, Iterable
+import shutil
+from abc import abstractmethod
+from typing import Iterator, Tuple, Iterable, Self
 from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
 
 import gc
 
+from ...interfaces import Artifacts, CacheableArtifacts
 from ...util.printing import intsep, percent, pluralise
 from ...paths import TkTkTPaths
 from ...interfaces.vocabularisers import *
@@ -12,8 +15,62 @@ from ...interfaces.vocabularisers import *
 import logging
 logger = logging.getLogger(__name__)
 
+_NAME_COUNTS = "words.tsv"
 
-class CountWords(UnsupervisedVocabulariser):
+
+class WordFrequencyList(Artifacts):
+    @abstractmethod
+    def getFrequencies(self) -> Iterable[tuple[str,int]]:
+        pass
+
+
+class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
+    def __init__(self, final_tsv_path: Path):
+        super().__init__()
+        self._path = final_tsv_path
+
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        for word, _ in self._readTsv(self._path):
+            yield word
+
+    def getFrequencies(self) -> Iterable[tuple[str,int]]:
+        yield from self._readTsv(self._path)
+
+    ####################################################################################################################
+
+    def store(self, cache_path: Path):
+        expected_path = cache_path / _NAME_COUNTS
+        if self._path != expected_path:
+            shutil.copy(self._path, expected_path)  # Or something like _writeTsv(expected, _readTsv(path)) or just move (because the file can be quite big). Moving is allowed because this class is not supposed to be instantiated by a client script, and thus the only time when the path is specified is when it has just been filled by the Vocabulariser.
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        return CacheableWordFrequencyList(cache_path / _NAME_COUNTS)
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return (cache_path / _NAME_COUNTS).exists()
+
+    ####################################################################################################################
+
+    @classmethod
+    def _writeTsv(cls, path: Path, items: Iterable[tuple[str, int]], sort: bool = False):
+        NUL = chr(0)
+        with open(path, "w", encoding="utf-8") as handle:
+            for k, v in (items if not sort else sorted(items, key=lambda t: (-t[1], t[0]))):
+                k = k.replace("\t", NUL).replace("\n", NUL)
+                handle.write(f"{k}\t{v}\n")
+
+    @classmethod
+    def _readTsv(cls, path: Path) -> Iterator[tuple[str, int]]:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.rstrip("\r\n")
+                word, count = line.split("\t")
+                yield word, int(count)
+
+
+class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
     """
     Has the goal of compressing a string iterable to a TSV containing every unique word exactly once with its frequency.
 
@@ -45,26 +102,23 @@ class CountWords(UnsupervisedVocabulariser):
         :param frequency_minimum: For filtering the final counter, i.e. with the "true" counts (modulo any dropping that happened while merging), to save space.
         :param sort_before_write: Whether to sort before writing the final counter.
         """
-        super().__init__(name="counts", preprocessor=word_extractor)
+        super().__init__(preprocessor=word_extractor)
         self.preprocessor = word_extractor
         self.frequency_minimum = frequency_minimum
         self.sort_before_write = sort_before_write
         self.config            = cache_config
 
-    def _makeOutputFolder(self, extra_suffix: str="") -> Path:  # Remove time suffix.
-        return TkTkTPaths.pathToEvaluations(self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix))
+    def _identifier(self) -> str:
+        return "counts"
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+    def _cacheType(self):
+        return CacheableWordFrequencyList
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableWordFrequencyList:
         raise NotImplementedError
 
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
-        folder = self._makeOutputFolder(sentence_iterable.name)
-
-        file_results = folder / (CountWords._RESULT_STEM + ".tsv")
-        if file_results.exists():
-            logger.info(f"Returning cached file {file_results.as_posix()}.")
-            return file_results
-
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableWordFrequencyList:
+        folder = self._cachePath(sentence_iterable.name)
         folder_intermediate = folder / "shards"
         folder_intermediate.mkdir(exist_ok=True)
 
@@ -94,9 +148,8 @@ class CountWords(UnsupervisedVocabulariser):
             counter = Counter()
             resume_after_idx = latest_cache
 
-        done_flag = folder / ".done"
-        if done_flag.exists():
-            return self._merge(caches, output=file_results)
+        if self._cacheStatusRead(folder) == "merging":
+            return CacheableWordFrequencyList(self._merge(caches, output_folder=folder))
 
         # Now iterate.
         idx = 0
@@ -132,27 +185,24 @@ class CountWords(UnsupervisedVocabulariser):
             if latest_checkpoint:
                 self._removeCheckpoint(folder_intermediate, latest_checkpoint)
 
-        # Add "done" flag
-        with open(done_flag, "w", encoding="utf-8"):
-            pass
-
         # Merge and delete caches
-        return self._merge(caches, output=file_results)
+        self._cacheStatusWrite(folder, "merging")
+        return CacheableWordFrequencyList(self._merge(caches, output_folder=folder))
 
-    def _merge(self, shards: list[Path], output: Path) -> Path:
+    def _merge(self, shards: list[Path], output_folder: Path) -> Path:
         """
         Note: if you will only ever stream the counts rather than hold them in memory all at once, this implementation
         is lossier than you need, since it assumes that at the end, the full counter must be held in memory before writing it away.
         """
         warn_size = self.config.flush_if_keys_exceed
-        max_size  = self.config.flush_if_keys_exceed * self.config.drop_if_multiple_exceeded
+        max_size  = int(self.config.flush_if_keys_exceed * self.config.drop_if_multiple_exceeded)
         warned = False
 
         # Collect
         total_counter = Counter()
         for idx, shard in enumerate(shards, start=1):
             logger.info(f"Reading shard {shard.name}...")
-            for word, count in self._readTsv(shard):
+            for word, count in CacheableWordFrequencyList._readTsv(shard):
                 total_counter[word] += count
 
                 # Check for overflow
@@ -192,10 +242,12 @@ class CountWords(UnsupervisedVocabulariser):
             logger.info(f"Kept {percent(n_keys_after, n_keys_before)} of all keys and {percent(total_after, total_before)} of occurrences.")
 
         # Save
+        output = output_folder / _NAME_COUNTS
         logger.info(f"S{'orting and s' if self.sort_before_write else ''}aving {intsep(len(total_counter))} keys totalling {intsep(total_counter.total())} occurrences...")
-        self._writeTsv(output, total_counter.items(), sort=self.sort_before_write)
+        CacheableWordFrequencyList._writeTsv(output, total_counter.items(), sort=self.sort_before_write)
 
         # Delete
+        self._cacheStatusClear(output_folder)
         if self.config.delete_cache_after:
             logger.info("Deleting caches...")
             parents = set()
@@ -209,43 +261,15 @@ class CountWords(UnsupervisedVocabulariser):
 
     def _saveCounter(self, counter: Counter, folder: Path, n_examples_seen: int, is_temporary: bool) -> Path:
         path = folder / ("_"*is_temporary + f"{n_examples_seen}.tsv")
-        self._writeTsv(path, counter.items())
+        CacheableWordFrequencyList._writeTsv(path, counter.items())
         return path
 
     def _loadCounter(self, path: Path) -> Counter:
         counter = Counter()
-        for word, count in self._readTsv(path):
+        for word, count in CacheableWordFrequencyList._readTsv(path):
             counter[word] += count
         return counter
 
     def _removeCheckpoint(self, folder: Path, checkpoint_id: int):
         path = folder / f"_{checkpoint_id}.tsv"
         path.unlink()
-
-    @classmethod
-    def _writeTsv(cls, path: Path, items: Iterable[tuple[str,int]], sort: bool=False):
-        NUL = chr(0)
-        with open(path, "w", encoding="utf-8") as handle:
-            for k,v in (items if not sort else sorted(items, key=lambda t: (-t[1], t[0]))):
-                k = k.replace("\t", NUL).replace("\n", NUL)
-                handle.write(f"{k}\t{v}\n")
-
-    @classmethod
-    def _readTsv(cls, path: Path) -> Iterator[tuple[str,int]]:
-        with open(path, "r", encoding="utf-8") as handle:
-            for line in handle:
-                line = line.rstrip("\r\n")
-                word, count = line.split("\t")
-                yield word, int(count)
-
-    @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        """
-        If, for some reason, you want to load the resulting words as if it is a vocabulary.
-        """
-        if file_or_folder.is_dir():
-            file_or_folder = file_or_folder / (CountWords._RESULT_STEM + ".tsv")
-        assert file_or_folder.suffix == ".tsv"
-
-        for word, _ in cls._readTsv(file_or_folder):
-            yield word

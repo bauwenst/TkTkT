@@ -1,19 +1,17 @@
+from typing import Iterable
 from pathlib import Path
-
 from collections import defaultdict
 import json
-from typing import Iterable
 
 from pickybpe.utils import Token, PairCounts, PathLike
-from pickybpe.vocabularisation import BPETrainer as _BPETrainerBase
+from pickybpe.vocabularisation import BPETrainer as _BPETrainerBase, EventType
 
 from ...interfaces import Preprocessor
-from .decomposing import ScaffoldBPE
-from .vocabularisation import _VocabulariserWithChizhovBackend
+from ...interfaces.vocabularisers import UnidentifiedVocab
+from .decomposing import ScaffoldBPE, CacheableAblatedBPEArtifacts
+from .vocabularisation import _VocabulariserWithChizhovBackend, CacheableBPEArtifacts
 
 __all__ = ["ScaffoldBPE", "ScaffoldBPEVocabulariser"]
-
-from ...interfaces.vocabularisers import UnidentifiedVocab
 
 
 class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
@@ -44,7 +42,25 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
             folder = folder.parent
 
         # Dump extended vocab and merges
-        super()._dump(folder)
+        # super()._dump(folder)
+        # - Vocab
+        CacheableBPEArtifacts._storeTypes(folder, [
+            typ.str for typ in sorted(filter(lambda token: token != self.unk_token, self.str2token.values()), key=lambda token: token.id)
+        ])
+
+        # Merges
+        def validate_characters(token: str) -> str:
+            for c in token:
+                if c.isspace() or len(c.__repr__()) == 6:  # Cannot be printed properly in a text file.
+                    raise ValueError(f"Token contains invalid character: {repr(c)}.")
+            return token
+
+        CacheableBPEArtifacts._storeMerges(folder,
+            (
+                [validate_characters(part.str) for part in parts]
+                for event_type, parts, _ in self.events if event_type == EventType.MERGE
+            )
+        )
 
         # Dump scaffold types with diagnostics
         with open(folder / "ablations.json", "w", encoding="utf-8") as handle:
@@ -60,24 +76,31 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
             }, handle, indent=4)
 
 
-class ScaffoldBPEVocabulariser(_VocabulariserWithChizhovBackend):
+class ScaffoldBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableAblatedBPEArtifacts]):
 
     def __init__(self, preprocessor: Preprocessor, vocab_size: int, character_coverage: int, max_type_length: int):
-        super().__init__(name="scaffoldbpe", preprocessor=preprocessor, backend=_ChizhovBackend_ScaffoldBPE(
+        super().__init__(preprocessor=preprocessor, backend=_ChizhovBackend_ScaffoldBPE(
             preprocessor=preprocessor,
             vocab_size=vocab_size,
             max_type_length=max_type_length,
             character_coverage=character_coverage
         ))
 
-    @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:  # Loads only the ablated types.
-        path = Path(file_or_folder).resolve()
-        if path.is_dir():
-            path = path / "ablations.json"
+    def _identifier(self) -> str:
+        return "scaffoldbpe"
 
-        with open(path, "r", encoding="utf-8") as handle:
-            return [t for t in json.load(handle).keys()]
+    def _cacheType(self):
+        return CacheableAblatedBPEArtifacts
+
+    def _dumpToArtifacts(self, dump_path: Path) -> CacheableAblatedBPEArtifacts:
+        with open(dump_path / "ablations.json", "r", encoding="utf-8") as handle:
+            deleted = set(json.load(handle).keys())
+
+        return CacheableAblatedBPEArtifacts(
+            types=CacheableBPEArtifacts._loadTypes(dump_path),
+            merges=CacheableBPEArtifacts._loadMerges(dump_path),
+            ablated_types=deleted
+        )
 
     # @classmethod
     # def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:

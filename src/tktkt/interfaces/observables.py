@@ -1,15 +1,20 @@
 """
 Abstract classes to do with the observable-observer framework.
+You should import from this file only when you are developing new observers/observables, otherwise you probably need
+the tktkt.evaluation.observing submodule.
 """
 from abc import ABC, abstractmethod
-from typing import List, TypeVar, Generic, Iterator, Any, Callable, Tuple, Union
+from typing import List, TypeVar, Generic, Iterator, Any, Callable, Tuple
 from pathlib import Path
 
 import numpy.random as npr
 import traceback
 import colorama
 
+from ..paths import TkTkTPaths
+from ..util.interfaces import C
 from ..util.strings import indent, suffixIfNotEmpty, prefixIfNotEmpty
+from ..interfaces.vocabularisers import Cache, Cacheable
 
 
 Received = TypeVar("Received")
@@ -144,7 +149,7 @@ class Observable(ObservableMeta[Sent]):
                 raise ObserverEarlyExit()
 
     def _initialiseObservers(self, identifier_so_far: str):  # This method only to be called by users of this class, not by the class itself.
-        self._callObservers(lambda observer: observer._initialise(identifier_so_far + "_" + self._nodeIdentifier().replace("_", "-")))
+        self._callObservers(lambda observer: observer._initialise(identifier_so_far + prefixIfNotEmpty("_", self._nodeIdentifier().replace("_", "-"))))
 
     def _send(self, sample: Sent, weight: float):
         self._callObservers(lambda observer: observer._receive(sample, weight))
@@ -268,7 +273,9 @@ class ImmediatelyObservableObserver(ObservableObserver[Received, Sent]):
         self._send(self._transit(sample, weight), weight)
 
 
-class FinallyObservableObserver(ObservableObserver[Received, Sent]):
+CacheableSent = TypeVar("CacheableSent", bound=Cacheable)
+
+class FinallyObservableObserver(ObservableObserver[Received, CacheableSent], Cache[CacheableSent]):
     """
     Special kind of ObservableObserver which only outputs something when its Observable is FINISHED.
     Its observers need to be sent the result before they are finished too.
@@ -276,7 +283,7 @@ class FinallyObservableObserver(ObservableObserver[Received, Sent]):
     This is the one type of Observer that has caching.
     """
 
-    def __init__(self, cache_disambiguator: str= "", disable_cache: bool=False, observers: List[Observer[Sent]]=None):
+    def __init__(self, cache_disambiguator: str= "", disable_cache: bool=False, observers: List[Observer[CacheableSent]]=None):
         """
         :param cache_disambiguator: If you have two observers that would use the same cache given the same run identifier,
                                     this argument allows separating their two caches.
@@ -292,41 +299,27 @@ class FinallyObservableObserver(ObservableObserver[Received, Sent]):
 
         # Caching.
         self._stored_global_run_identifier = global_run_identifier
-        if not self._disable_cache and self._cacheExists(self._cachePath(self._cacheIdentifier())):
+        if not self._disable_cache and self._cacheType().exists(self._cachePath(self._cacheIdentifier())):
             raise ObserverEarlyExit()
 
     @abstractmethod
-    def _compute(self) -> Sent:
+    def _compute(self) -> CacheableSent:
         pass
 
-    def _cacheIdentifier(self) -> str:
+    @abstractmethod
+    def _cacheSubfolders(self) -> list[str]:
+        pass
+
+    def _cacheIdentifier(self) -> str:  # In Vocabularisers, you don't need to use fields for this function, since the identifier is known in the same context that ._cacheRun is run. Not only is that not the case here, but also, the possibility of name aliasing exists, which is never the case for Vocabularisers.
         return self._stored_global_run_identifier + prefixIfNotEmpty("_", self._disambiguation_identifier)
 
-    @abstractmethod
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:  # Can be a folder or a file.
-        pass
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:  # TODO: There is a case to be made that actually, the identifier should be FIRST, so that all results of one run are grouped in their own little file system.
+        return TkTkTPaths.pathToEvaluations(*self._cacheSubfolders(), unambiguous_cache_identifier)
 
-    def _cacheExists(self, cache_path: Path) -> bool:
-        return cache_path.exists()  # Not always sufficient, but the default is that it is.
-
-    @abstractmethod
-    def _cacheLoad(self, cache_path: Path) -> Sent:
-        pass
-
-    @abstractmethod
-    def _cacheStore(self, cache_path: Path, result: Sent):
-        pass
+    def _cacheFinalise(self, loaded: C) -> C:
+        return loaded
 
     def _finishAsObserver(self):
-        if self._disable_cache:
-            result = self._compute()
-        else:
-            cache_path = self._cachePath(self._cacheIdentifier())
-            if self._cacheExists(cache_path):
-                result = self._cacheLoad(cache_path)
-            else:
-                result = self._compute()
-                self._cacheStore(cache_path, result)
-
+        result = self._cacheRun(self._cacheIdentifier(), self._compute)
         self._send(result, 1)
         # Only after THIS will its own observers be finished.

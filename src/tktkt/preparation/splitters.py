@@ -44,8 +44,8 @@ class PretokeniserSequence(Pretokeniser, _PreprocessorComponentSequence):
             pretokens = pretokeniser.invertTokens(pretokens)
         return pretokens
 
-    def getName(self) -> str:
-        return "Sequence(" + "+".join([p.getName() for p in self.sequence]) + ")" if self.sequence else "Identity"
+    def _diagnosticName(self) -> str:
+        return "Sequence(" + "+".join([p._diagnosticName() for p in self.sequence]) + ")" if self.sequence else "Identity"
 
     def __iter__(self):
         for pretokeniser in self.sequence:
@@ -61,8 +61,8 @@ class PretokeniserSequence_Diagnostic(PretokeniserSequence):
 
     def __init__(self, sub_pretokenisers: List[Pretokeniser]):
         super().__init__(sub_pretokenisers)
-        max_name_length     = max(map(len, map(Pretokeniser.getName, sub_pretokenisers)))
-        self._indents = [max_name_length - len(p.getName()) for p in sub_pretokenisers]
+        max_name_length =          max(map(len, (p._diagnosticName()  for p in sub_pretokenisers)))
+        self._indents   = [max_name_length - len(p._diagnosticName()) for p in sub_pretokenisers]
 
     def split(self, text: str) -> List[str]:
         current_pretokens = [text]
@@ -73,7 +73,7 @@ class PretokeniserSequence_Diagnostic(PretokeniserSequence):
                 generated_pretokens.extend(pretokeniser.split(pretoken))
 
             current_pretokens = generated_pretokens
-            print("\t->", pretokeniser.getName() + " "*indent, "->", current_pretokens)
+            print("\t->", pretokeniser._diagnosticName() + " " * indent, "->", current_pretokens)
 
         return current_pretokens
 
@@ -81,7 +81,7 @@ class PretokeniserSequence_Diagnostic(PretokeniserSequence):
         print(pretokens)
         for pretokeniser, indent in zip(reversed(self.sequence), reversed(self._indents)):
             pretokens = pretokeniser.invertTokens(pretokens)
-            print("\t->", pretokeniser.getName() + "⁻¹" + " "*indent, "->", pretokens)
+            print("\t->", pretokeniser._diagnosticName() + "⁻¹" + " " * indent, "->", pretokens)
         return pretokens
 
 
@@ -626,8 +626,8 @@ class AddWordBoundary(Pretokeniser):
 
         return new_pretokens
 
-    def getName(self):
-        return super().getName() + "(" + "+"*(self.marker.location == BoundaryMarkerLocation.END) + self.marker.substitute + "+"*(self.marker.location == BoundaryMarkerLocation.START) + ")"
+    def _diagnosticName(self):
+        return super()._diagnosticName() + "(" + "+"*(self.marker.location == BoundaryMarkerLocation.END) + self.marker.substitute + "+"*(self.marker.location == BoundaryMarkerLocation.START) + ")"
 
 
 class AddCapitalMarker(Pretokeniser):
@@ -726,8 +726,8 @@ class MapperAsPretokeniser(Pretokeniser, _PreprocessorComponentSequence):
     def invertTokens(self, pretokens: List[str]) -> List[str]:
         return [self.invertToken(p) for p in pretokens]
 
-    def getName(self):
-        return super().getName() + "(" + self.core.__class__.__name__ + ")"
+    def _diagnosticName(self):
+        return super()._diagnosticName() + "(" + self.core.__class__.__name__ + ")"
 
 
 class InsertReverse(Pretokeniser):

@@ -11,9 +11,9 @@ __all__ = ["BPEKnockout", "ReBPE",
            "BPEKnockoutVocabulariser", "BTEConfig"]  # Vocabularisation is already implemented for us.
 
 
-class _KnockoutJIT(_DeterministicBPETokeniser):
+class _KnockoutJIT(_DeterministicBPETokeniser[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList,
                  reference_segmentations: Optional[ModestDataset],
                  iterations: int, do_knockout: bool, do_reify: bool, backwards_compatible: bool=False):
         if reference_segmentations is None:
@@ -30,9 +30,9 @@ class _KnockoutJIT(_DeterministicBPETokeniser):
             super().__init__(preprocessor=preprocessor, vocab=bte.vocab, merges=bte.merge_graph.getRawMerges(), metadata=config)
 
 
-class BPEKnockout(_KnockoutJIT):
+class BPEKnockout(_KnockoutJIT[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList,
                  reference_segmentations: Optional[ModestDataset]):
         super().__init__(
             preprocessor=preprocessor,
@@ -47,9 +47,9 @@ class BPEKnockout(_KnockoutJIT):
         )
 
 
-class ReBPE(_KnockoutJIT):
+class ReBPE(_KnockoutJIT[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList,
                  reference_segmentations: Optional[ModestDataset],
                  iterations: int=100, backwards_compatible: bool=False):
         super().__init__(

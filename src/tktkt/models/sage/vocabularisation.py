@@ -5,15 +5,41 @@ Builds a vocabulary using the SaGe algorithm described in
 During vocabulary building, words are kept in the context of their sentences rather than coming from a word frequency
 list. The resulting vocabulary is just a set of subwords without context, however.
 """
-import warnings
 from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Self
 
+import warnings
+
+from ...interfaces import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
 from .schedules import *
 
 
-class SageVocabulariser(UnsupervisedVocabulariser):
+class SageArtifacts(Artifacts):
+    pass
+
+
+class CacheableSageArtifacts(SageArtifacts, CacheableArtifacts):
+    def __init__(self, types: list[str]):
+        super().__init__()
+        self._types = types
+
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        return self._types
+
+    def store(self, cache_path: Path):
+        self._storeTypes(cache_path, self._types)
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        return CacheableSageArtifacts(types=cls._loadTypes(cache_path))
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return cls._existsTypes(cache_path)
+
+
+class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
 
     def __init__(self, preprocessor: Preprocessor, seed: int=0,
                  vocabulary_schedule: Schedule=DoubleLinearSchedule(262144, 65536, 16384, t_mid=0.5), n_vocab_samples: int=13,
@@ -41,7 +67,7 @@ class SageVocabulariser(UnsupervisedVocabulariser):
                                    more slowly, the selected indices will be denser.
         :param n_embedding_samples: How many equidistant samples to take on the index scale.
         """
-        super().__init__(name="sage", preprocessor=preprocessor)
+        super().__init__(preprocessor=preprocessor)
 
         import sage_tokenizer  # Just to check that you have it.
 
@@ -54,6 +80,12 @@ class SageVocabulariser(UnsupervisedVocabulariser):
 
         self.initial_hex_vocab = None
         self.seed = seed
+
+    def _identifier(self) -> str:
+        return "sage"
+
+    def _cacheType(self):
+        return CacheableSageArtifacts
 
     def initialiseVocabulary(self, vocab: UnidentifiedVocab):
         """
@@ -70,15 +102,10 @@ class SageVocabulariser(UnsupervisedVocabulariser):
     def _toHexString(cls, typ: str) -> str:
         return typ.encode(encoding="utf-8").hex()
 
-    @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        with open(file_or_folder, "r", encoding="utf-8") as handle:
-            return [bytes.fromhex(line).decode(encoding="utf-8") for line in handle]
-
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableSageArtifacts:
         raise RuntimeError("SaGe operates on contextual corpora, not on word lists.")
 
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableSageArtifacts:
         if not self.initial_hex_vocab:
             raise RuntimeError("SaGe vocabulary wasn't yet initialised.")
 
@@ -92,9 +119,9 @@ class SageVocabulariser(UnsupervisedVocabulariser):
             random_seed=self.seed
         )
 
-        setSageFolder(self._makeOutputFolder(sentence_iterable.name))
+        setSageFolder(self._cachePath(sentence_iterable.name))
 
-        return builder.build_vocab(
+        hex_vocab_path = builder.build_vocab(
             experiment_name="sage",
             initial_vocabulary=self.initial_hex_vocab,
             corpus=sentence_iterable,  # TODO: Possible replace this by self._preprocessSentencesToListsAsStrings(sentence_iterable).
@@ -103,3 +130,18 @@ class SageVocabulariser(UnsupervisedVocabulariser):
             corpus_cache="",  # Don't use corpus caching. Slower, but it is what you would expect by coming from an iterable.
             do_log_stdout=True
         )
+
+        types = []
+        with open(hex_vocab_path, "r", encoding="utf-8") as handle:
+            for line in handle.readlines():
+                hex_string = line.rstrip()
+                utf8_bytes = bytes.fromhex(hex_string)
+                try:
+                    type_string = utf8_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    print("Cannot properly decode partial UTF-8 character from bytes:", utf8_bytes)
+                    type_string = utf8_bytes.decode("utf-8", errors="replace")
+                    print("\tImputed to", type_string)
+                types.append(type_string)
+
+        return CacheableSageArtifacts(types=types)

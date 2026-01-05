@@ -4,7 +4,7 @@ from tktkt.models.bpe.base import ClassicBPE
 
 def test_preprocessAlreadySegmented():
     files = BPE32ki_SlimPajama3M()
-    bpe = ClassicBPE(files.preprocessorEffective(), vocab=files.buildVocabulary(), merges=files.buildMerges())
+    bpe = ClassicBPE(files.preprocessorEffective(), vocab=files.getVocabulary(), merges=files.getMerges())
 
     input_string = "ab err ant"
     output_string = bpe._preprocessAlreadySegmentedString("ab err ant")

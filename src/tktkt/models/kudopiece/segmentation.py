@@ -4,18 +4,21 @@ from typing import Optional
 from sentencepiece import SentencePieceProcessor
 
 from ...interfaces.tokenisers import *
-from .vocabularisation import KudoPieceVocabulariser
+from ...interfaces.identifiers import NoSpecials, SpecialsExtended
+from ...util.iterables import fst
+from .vocabularisation import CacheableKudoPieceArtifacts
 
 
 class KudoPieceTokeniser(TokeniserWithVocabulary[WithSpecials]):
 
     def __init__(self, preprocessor: Preprocessor, model_file: Path, kbest: int=1, smoothing_power: float=1,
-                 vocab: Optional[Vocab[WithSpecials]]=None, special_tokens: Optional[WithSpecials]=None):
+                 vocab: Optional[Vocab[WithSpecials]]=None, specials_if_no_vocab: Optional[SpecialsExtended]=None):
         """
         :param kbest: KudoPiece finds the k segmentations s with the highest joint token probabilities P(s)...
         :param smoothing_power: ...and samples across those k proportionally to P(s)^smoothing_power.
         :param vocab: Predefined vocabulary you want to use. If not given, it will be loaded from the same folder as the model file.
-        :param special_tokens: If a vocab is not given, the special tokens to add when we load the vocab automatically.
+                      (This is normally not optional in TkTkT, but we make an exception for KudoPiece since people want ultra-easy access for existing tokenisers.)
+        :param specials_if_no_vocab: If a vocab is not given, the special tokens to add when we load the vocab automatically.
         """
         self._k = kbest
         self._alpha = smoothing_power
@@ -23,8 +26,20 @@ class KudoPieceTokeniser(TokeniserWithVocabulary[WithSpecials]):
 
         self.core = SentencePieceProcessor()
         self.core.Init(model_file.as_posix())
+
+        # Might be removed in the future depending on how friendly we want to be to people who refuse to works with TkTkT's Artifacts and Vocab.
         if vocab is None:
-            vocab = KudoPieceVocabulariser.load(model_file.with_suffix(".vocab"), specials=special_tokens)
+            types = list(map(fst, CacheableKudoPieceArtifacts._loadLikelihoods(model_file.with_suffix(".vocab"))))
+            if specials_if_no_vocab is not None:
+                vocab = Vocab(types, specials=specials_if_no_vocab.specials, unk_id=specials_if_no_vocab.unk)
+            else:
+                # SentencePiece can add <unk>, <s>, </s>, <pad>. We only check for <unk> because I'm not going to support 16 different combinations.
+                if "<unk>" in types:
+                    unk_id = types.index("<unk>")
+                    types.remove("<unk>")
+                else:
+                    unk_id = None
+                vocab = Vocab(types, specials=NoSpecials(), unk_id=unk_id)
         super().__init__(preprocessor=preprocessor, vocab=vocab)
 
     def tokenise(self, pretoken: str) -> Tokens:

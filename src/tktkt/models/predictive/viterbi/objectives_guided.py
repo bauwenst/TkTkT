@@ -10,7 +10,7 @@ TODO: Another idea:
       a fixed length k.
 """
 from typing import List, MutableSequence
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 
 import numpy as np
 import torch
@@ -21,7 +21,7 @@ from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
 from ....util.printing import sgnprint
 
 
-class CharacterClassifier:
+class CharacterClassifier(ABC):
 
     @abstractmethod
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:  # "MutableSequence" is just "anything that can be indexed with [], has order, and can be modified"
@@ -37,7 +37,7 @@ class CharacterClassifier:
         pass
 
 
-class SubstringClassifier:
+class SubstringClassifier(ABC):
 
     @abstractmethod
     def getSegmentLogProbabilities(self, pretoken: str, max_k: int) -> MutableSequence[MutableSequence[float]]:

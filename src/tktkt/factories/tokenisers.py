@@ -2,7 +2,7 @@
 Evaluate any tokeniser on English morphology.
 """
 from ..interfaces import TokeniserFactory, Artifacts
-from ..interfaces.identifiers import WithSpecials
+from ..interfaces.identifiers import WithSpecials, SpecialsExtended, NoSpecials
 from ..models.predictive.viterbi.instances import *
 from ..models.bpe.base import ClassicBPE
 from ..models.bpe.knockout import BPEKnockout, ReBPE
@@ -14,73 +14,77 @@ from ..models.ngram.alphabet import UnicodeTokeniser
 from ..wrappers.multiplexing import StochasticTokeniserSwitch, MultiplexedPreprocessor
 from .preprocessors import *
 from .artifacts import *
-from .artifacts import BPE_Artifacts, KudoPiece_Artifacts, detectBoundaryMarkerFromVocabulary, getEnglishCANINE
+from .artifacts import BPEArtifacts, KudoPieceArtifacts, detectBoundaryMarkerFromVocabulary, getEnglishCANINE
 
 
 ########################################################################################################################
 
 
+DEFAULT_SPECIALS = SpecialsExtended(NoSpecials())
+
+
 class Factory_BPE(TokeniserFactory[HuggingFaceBPETokeniser[WithSpecials]]):
-    def __init__(self, preprocessor: Preprocessor=None, dropout: float=0.0, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS, dropout: float=0.0):
         self._prep = preprocessor
-        self._dropout = dropout
         self._files = files
+        self._specials = specials
+
+        self._dropout = dropout
 
     def buildTokeniser(self):
-        if self._prep is None:
-            self._prep = self._files.preprocessorEffective()  # Effective preprocessor because we use HuggingFace inference, which does not do built-in preprocessing.
-
-        return HuggingFaceBPETokeniser(vocab=self._files.buildVocabulary(), merges=self._files.buildMerges(), dropout=self._dropout, preprocessor=self._prep)
+        merges = [(t1,t2) for t1,t2 in self._files.getMerges()]  # We do this as an assertion; if any merge has more than two parts, unpacking into t1,t2 will error.
+        return HuggingFaceBPETokeniser(
+            vocab=self._files.getVocabulary(specials=self._specials),
+            merges=merges,
+            dropout=self._dropout,
+            preprocessor=self._prep or self._files.preprocessorEffective()  # Effective preprocessor because we use HuggingFace inference, which does not do built-in preprocessing.
+        )
         # english_bpe = getEnglishBpeFiles().toFastBPE()  # HuggingFace automatically sets a ByteBased tokenizers.pretokeniser on all RobertaTokenizerFast instances, which also implicitly adds a start-of-word Ġ as replacement for spaces.
         # return HuggingFaceTokeniser(wrapped_tokeniser=english_bpe, for_single_words=True)
 
 
 class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE[WithSpecials]]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Artifacts[WithSpecials]=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._prep = preprocessor
         self._files = files
+        self._specials = specials
 
     def buildTokeniser(self):
-        if self._prep is None:
-            self._prep = self._files.preprocessorEffective()
-
         return ClassicBPE(
-            preprocessor=self._prep,
-            vocab=self._files.buildVocabulary(),
-            merges=self._files.buildMerges()
+            preprocessor=self._prep or self._files.preprocessorEffective(),
+            vocab=self._files.getVocabulary(specials=self._specials),
+            merges=self._files.getMerges()
         )
 
 
-class Factory_BPEKnockout(TokeniserFactory[BPEKnockout]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
+class Factory_BPEKnockout(TokeniserFactory[BPEKnockout[WithSpecials]]):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._prep = preprocessor
         self._files = files
+        self._specials = specials
 
     def buildTokeniser(self):
         return BPEKnockout(
-            preprocessor=self._prep,
-            vocab=self._files.buildVocabulary(),
-            merges=self._files.buildMerges(),
-            language="English"
+            preprocessor=self._prep or self._files.preprocessorEffective(),
+            vocab=self._files.getVocabulary(specials=self._specials),
+            merges=self._files.getMerges(),
         )
 
 
-class Factory_ReBPE(TokeniserFactory[ReBPE]):
-    def __init__(self, iterations: int, reduced: bool=False, preprocessor: Preprocessor=None, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
+class Factory_ReBPE(TokeniserFactory[ReBPE[WithSpecials]]):
+    def __init__(self, iterations: int, reduced: bool=False,
+                 preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._prep = preprocessor
         self._files = files
+        self._specials = specials
         self.its = iterations
         self.bc = reduced
 
     def buildTokeniser(self):
-        if self._prep is None:
-            self._prep = self._files.preprocessorEffective()
-
         return ReBPE(
-            preprocessor=self._prep,
-            vocab=self._files.buildVocabulary(),
-            merges=self._files.buildMerges(),
-            language="English",
+            preprocessor=self._prep or self._files.preprocessorEffective(),
+            vocab=self._files.getVocabulary(specials=self._specials),
+            merges=self._files.getMerges(),
 
             iterations=self.its,
             backwards_compatible=self.bc
@@ -92,20 +96,19 @@ class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser[WithSpecials]]):
     Defaults to the 32k SlimPajama vocab.
     """
 
-    def __init__(self, preprocessor: Preprocessor=None, files: KudoPiece_Artifacts=KudoPiece32ki_SlimPajama3M(), kbest: int=64, alpha: float=1.0):
+    def __init__(self, kbest: int=64, alpha: float=1.0,
+                 preprocessor: Preprocessor=None, files: KudoPieceArtifacts=KudoPiece32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._prep = preprocessor
         self._files = files
+        self._specials = specials
         self._kbest = kbest
         self._alpha = alpha
 
     def buildTokeniser(self):
-        if self._prep is None:
-            self._prep = self._files.preprocessorNative()  # Native preprocessor due to SentencePiece inference.
-
         return KudoPieceTokeniser(
-            preprocessor=self._prep,
+            preprocessor=self._prep or self._files.preprocessorNative(),  # Native preprocessor due to SentencePiece inference.
             model_file=self._files.getModelFile(),
-            vocab=self._files.buildVocabulary(),
+            vocab=self._files.getVocabulary(specials=self._specials),
 
             kbest=self._kbest,
             smoothing_power=self._alpha
@@ -113,30 +116,31 @@ class Factory_KudoPiece(TokeniserFactory[KudoPieceTokeniser[WithSpecials]]):
 
 
 class Factory_LeastToken(TokeniserFactory[LeastTokenViterbi]):
-    def __init__(self, preprocessor: Preprocessor=None, files: Artifacts=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: Artifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._files = files
         self._prep = preprocessor or files.preprocessorEffective()
+        self._specials = specials
 
     def buildTokeniser(self):
         return LeastTokenViterbi(
             preprocessor=self._prep,
-            vocab=self._files.buildVocabulary(),
+            vocab=self._files.getVocabulary(specials=self._specials),
             max_step=20
         )
 
 
 class Factory_LeastToken_BPEKnockout(TokeniserFactory[LeastTokenViterbi]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPE_Artifacts=BPE32ki_SlimPajama3M()):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._files = files
         self._prep = preprocessor or files.preprocessorEffective()
+        self._specials = specials
 
     def buildTokeniser(self):
         # Prune the vocabulary with BPE-knockout
         only_for_vocabulary = BPEKnockout(
             preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),
-            vocab=self._files.buildVocabulary(),
-            merges=self._files.buildMerges(),
-            language="English"
+            vocab=self._files.getVocabulary(specials=self._specials),
+            merges=self._files.getMerges(),
         )
 
         # Use this new vocabulary
@@ -158,9 +162,10 @@ class Factory_BoMMaSum(TokeniserFactory[BoMMa_Sum]):
     def __init__(self,
                  generator: ScoreGeneratorUsingCharacterClassifier=BoundaryScoresChosen(LinearPT(-1, +1, negate_as_complement=True)),
                  constraint: Type[VocabularyConstraint]=VocabularyConstraintExact,
-                 preprocessor: Preprocessor=None, files: Artifacts=KudoPiece32ki_SlimPajama3M()):
-        self._files = files
+                 preprocessor: Preprocessor=None, files: Artifacts=KudoPiece32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._prep = preprocessor  # TODO: As we know, BoMMa has a two-preprocessor problem.
+        self._files = files
+        self._specials = specials
 
         self.generator = generator
         self.constraint = constraint
@@ -174,7 +179,7 @@ class Factory_BoMMaSum(TokeniserFactory[BoMMa_Sum]):
             score_generator=self.generator,
 
             vocabulary_constraint_class=self.constraint,
-            vocab=self._files.buildVocabulary()
+            vocab=self._files.getVocabulary(specials=self._specials)
         ).from_object(english_canine_mbr)
 
 
@@ -183,9 +188,9 @@ class Factory_BoMMaSum_FromTransform(Factory_BoMMaSum):
                  files: Artifacts=KudoPiece32ki_SlimPajama3M(),
                  generator: Type[ScoreGeneratorUsingCharacterClassifierForTransform]=BoundaryScoresChosen,
                  score_transform: ProbabilityTransform=LinearPT(-1, +1, negate_as_complement=False),
-                 constraint: Type[VocabularyConstraint]=VocabularyConstraintExact
-                 ):
-        super().__init__(generator=generator(score_transform), constraint=constraint, files=files)
+                 constraint: Type[VocabularyConstraint]=VocabularyConstraintExact,
+                 specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
+        super().__init__(generator=generator(score_transform), constraint=constraint, files=files, specials=specials)
 
 
 class Factory_BoMMaProduct(TokeniserFactory[BoMMa_Product]):
@@ -204,8 +209,9 @@ class Factory_BoMMaProduct(TokeniserFactory[BoMMa_Product]):
     and so that two perfect splits are better than one perfect split.
     """
 
-    def __init__(self, files: Artifacts=KudoPiece32ki_SlimPajama3M(), score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT()):
+    def __init__(self, files: Artifacts=KudoPiece32ki_SlimPajama3M(), score_transform: MultiplicativelyBalancedProbabilityTransform=DoublingMBPT(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._files = files
+        self._specials = specials
         self.balanced_transform = score_transform
 
     def buildTokeniser(self):
@@ -217,13 +223,14 @@ class Factory_BoMMaProduct(TokeniserFactory[BoMMa_Product]):
             score_generator=BoundaryScoresChosen(self.balanced_transform),
 
             vocabulary_constraint_class=VocabularyConstraintExact,
-            vocab=self._files.buildVocabulary()
+            vocab=self._files.getVocabulary(specials=self._specials)
         ).from_object(english_canine_mbr)
 
 
 class Factory_LeastTokenThenProbability(TokeniserFactory[LeastTokenViterbiWithProbabilityTiebreaker]):
-    def __init__(self, files: Artifacts):
+    def __init__(self, files: Artifacts, specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._files = files
+        self._specials = specials
 
     def buildTokeniser(self):
         english_canine_mbr = getEnglishCANINE()
@@ -231,14 +238,15 @@ class Factory_LeastTokenThenProbability(TokeniserFactory[LeastTokenViterbiWithPr
             preprocessor=self._files.preprocessorEffective(),
             max_step=20,
 
-            vocab=self._files.buildVocabulary(),
+            vocab=self._files.getVocabulary(specials=self._specials),
             logprob_classifier=english_canine_mbr
         )
 
 
 class Factory_ProbabilityThenLeastToken(TokeniserFactory[ProbabilityViterbiWithLeastTokenTiebreaker]):
-    def __init__(self, files: Artifacts):
+    def __init__(self, files: Artifacts, specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._files = files
+        self._specials = specials
 
     def buildTokeniser(self):
         english_canine_mbr = getEnglishCANINE()
@@ -246,15 +254,17 @@ class Factory_ProbabilityThenLeastToken(TokeniserFactory[ProbabilityViterbiWithL
             preprocessor=self._files.preprocessorEffective(),
             max_step=20,
 
-            vocab=self._files.buildVocabulary(),
+            vocab=self._files.getVocabulary(specials=self._specials),
             logprob_classifier=english_canine_mbr
         )
 
 
-class Factory_CanineBPEdropout(TokeniserFactory[GuidedBPEDropout]):
+class Factory_CanineBPEdropout(TokeniserFactory[GuidedBPEDropout[WithSpecials]]):
 
-    def __init__(self, files: BPE_Artifacts=BPE32ki_SlimPajama3M(), deterministic_threshold: float=None):
+    def __init__(self, deterministic_threshold: float=None,
+                 files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._files = files
+        self._specials = specials
         self.threshold = deterministic_threshold
 
     def buildTokeniser(self):
@@ -262,8 +272,8 @@ class Factory_CanineBPEdropout(TokeniserFactory[GuidedBPEDropout]):
         return GuidedBPEDropout(
             preprocessor=self._files.preprocessorEffective(),
 
-            vocab=self._files.buildVocabulary(),
-            merges=self._files.buildMerges(),
+            vocab=self._files.getVocabulary(specials=self._specials),
+            merges=self._files.getMerges(),
 
             dropout_probability=english_canine_mbr,
             always_dropout_above=self.threshold,
@@ -271,7 +281,7 @@ class Factory_CanineBPEdropout(TokeniserFactory[GuidedBPEDropout]):
 
 
 class Factory_Character(TokeniserFactory[UnicodeTokeniser[WithSpecials]]):
-    def __init__(self, specials: WithSpecials):
+    def __init__(self, specials: WithSpecials=NoSpecials()):
         self._specials = specials
 
     def buildTokeniser(self):
@@ -300,23 +310,21 @@ class Factory_Switch(TokeniserFactory[StochasticTokeniserSwitch]):
         )
 
 
-class Factory_GRaMPa(TokeniserFactory[GRaMPa]):
+class Factory_GRaMPa(TokeniserFactory[GRaMPa[WithSpecials]]):
 
-    def __init__(self, preprocessor: Preprocessor=None, vocab_file: Artifacts=KudoPiece32ki_SlimPajama3M(),
+    def __init__(self, preprocessor: Preprocessor=None, vocab_file: Artifacts=KudoPiece32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS,
                  minimal_length: int=1, temperature: float=1.0, r2l_not_l2r: bool=False):
         self._prep = preprocessor
         self._vocab_file = vocab_file
+        self._specials = specials
         self._temp = temperature
         self._minlen = minimal_length
         self._r2l = r2l_not_l2r
 
     def buildTokeniser(self):
-        if self._prep is None:
-            self._prep = self._vocab_file.preprocessorEffective()  # Effective preprocessor because GRaMPa inference has no built-in preprocessor.
-
         return GRaMPa(
-            preprocessor=self._prep,
-            vocab=self._vocab_file.buildVocabulary(),
+            preprocessor=self._prep or self._vocab_file.preprocessorEffective(),  # Effective preprocessor because GRaMPa inference has no built-in preprocessor.
+            vocab=self._vocab_file.getVocabulary(specials=self._specials),
 
             probabilities_to_probabilities=PowerNormalisation(temperature=self._temp),
             minimal_token_length=self._minlen,
@@ -331,10 +339,12 @@ class Factory_SwitchyGrampa_ULM(TokeniserFactory[StochasticTokeniserSwitch]):
     the StochasticTokeniserSwitch constructor directly or make your own factory.
     """
 
-    def __init__(self, files: KudoPiece_Artifacts=KudoPiece32ki_SlimPajama3M(), p: float=0.5,
+    def __init__(self, files: KudoPieceArtifacts=KudoPiece32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS,
+                 p: float=0.5,
                  temperature: float=1.0, l_min: int=1,
                  kbest: int=1, smoothing_power: float=1.0):
         self._files = files
+        self._specials = specials
         self.p = p
 
         self.t = temperature
@@ -348,12 +358,14 @@ class Factory_SwitchyGrampa_ULM(TokeniserFactory[StochasticTokeniserSwitch]):
 
         build1 = Factory_KudoPiece(
             files=self._files,
+            specials=self._specials,
             kbest=self.kbest,
             alpha=self.smoothing_power
         )
         build2 = Factory_GRaMPa(
-            preprocessor=ModernEnglishPreprocessor(marker=detectBoundaryMarkerFromVocabulary(self._files.buildVocabulary())),
+            preprocessor=ModernEnglishPreprocessor(marker=detectBoundaryMarkerFromVocabulary(self._files.getVocabulary())),
             vocab_file=self._files,
+            specials=self._specials,
             minimal_length=self.l,
             temperature=self.t
         )
@@ -376,10 +388,11 @@ class Factory_SwitchyGrampa_BPE(TokeniserFactory[StochasticTokeniserSwitch]):
     the StochasticTokeniserSwitch constructor directly or make your own factory.
     """
 
-    def __init__(self, files: BPE_Artifacts=BPE32ki_SlimPajama3M(), p: float=0.5,
+    def __init__(self, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS, p: float=0.5,
                  temperature: float=1.0, l_min: int=1,
                  dropout: float=0.0):
         self._files = files
+        self._specials = specials
         self.p = p
 
         self.t = temperature
@@ -389,15 +402,17 @@ class Factory_SwitchyGrampa_BPE(TokeniserFactory[StochasticTokeniserSwitch]):
 
     def buildTokeniser(self):
         global_preprocessor = Preprocessor(TruncateAndNormalise(1_000_000), IdentityMapper(), TraditionalPretokeniser())
-        sub_preprocessor = ModernEnglishPreprocessor(marker=detectBoundaryMarkerFromVocabulary(self._files.buildVocabulary()))
+        sub_preprocessor = ModernEnglishPreprocessor(marker=detectBoundaryMarkerFromVocabulary(self._files.getVocabulary()))
         build1 = Factory_BPE(
             preprocessor=sub_preprocessor,
             files=self._files,
+            specials=self._specials,
             dropout=self.dropout
         )
         build2 = Factory_GRaMPa(
             preprocessor=sub_preprocessor,
             vocab_file=self._files,
+            specials=self._specials,
             minimal_length=self.l,
             temperature=self.t
         )

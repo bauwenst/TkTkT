@@ -1,8 +1,7 @@
 """
 Evaluations that generate distributions, either across the vocabulary or the domain of segmentations.
 """
-from typing import Iterable, Tuple, Dict, Optional, List, TypeVar, Union
-from pathlib import Path
+from typing import Iterable, Tuple, Optional, List, TypeVar
 from dataclasses import dataclass
 from collections import Counter
 
@@ -10,11 +9,11 @@ from math import ceil
 import numpy as np
 from scipy.stats import entropy as _scipy_entropy
 
-from ..interfaces.tokenisers import Tokeniser
-from ..paths import TkTkTPaths
-from ..util.iterables import streamProgress, arePositive
+from .observing import Observer, FinallyObservableObserver, ImmediatelyObservableObserver
+from ..util.interfaces import SimpleCacheableDataclass, CacheableCounter
+from ..util.iterables import arePositive
 from ..util.combinatorics import getBitKey
-from ..util.dicts import argmax, normaliseCounter, jsonToDict, dictToJson, jsonToDataclass, dataclassToJson
+from ..util.dicts import argmax, normaliseCounter
 from ..util.types import Tokens
 
 SHANNON_RENYI_ALPHA = 1.0
@@ -113,41 +112,56 @@ def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_A
 ########################################################################################################################
 
 
+# @dataclass
+# class TokenDiversity(SimpleCacheableDataclass):
+#     V: int    # Amount of types in the corpus. In other words, the effective vocabulary size.
+#     ctc: int  # Amount of tokens in the corpus.
+#
+#     @property
+#     def ttr(self):
+#         """Type-token ratio."""
+#         return self.V/self.ctc
+#
+#     mattr: float
+#     mattr_window_size: int
+#     mattr_stride: int
+#
+#     renyi_entropy: float
+#     renyi_efficiency: float
+#     corpus_name: str
+
+
 @dataclass
-class TokenDiversity:
-    V: int    # Amount of types in the corpus. In other words, the effective vocabulary size.
-    ctc: int  # Amount of tokens in the corpus.
+class ReturnUnigramDistribution(CacheableCounter[str]):
 
-    @property
-    def ttr(self):
-        """Type-token ratio."""
-        return self.V/self.ctc
+    @classmethod
+    def _stringToKey(cls, s: str) -> str:
+        return s
 
-    mattr: float
-    mattr_window_size: int
-    mattr_stride: int
-
-    renyi_entropy: float
-    renyi_efficiency: float
-    corpus_name: str
+    @classmethod
+    def _keyToString(cls, k: str) -> str:
+        return k
 
 
-from .observing import Observer, ObservableTokeniser, FinallyObservableObserver, ImmediatelyObservableObserver, PrintingObserver
-
-
-class TokenUnigramDistribution(FinallyObservableObserver[Tokens,Counter[str]]):
+class TokenUnigramDistribution(FinallyObservableObserver[Tokens,ReturnUnigramDistribution]):
     """
     Computes, for each type that a tokeniser can produce, the fraction of produced tokens that belong to that type,
     a.k.a. the token unigram distribution.
     (A much more elaborate and caching version of this function can be found in the bpe_hell.eda.computation package.)
     """
 
-    def __init__(self, ensured_vocabulary: Iterable[str]=None, observers: List[Observer[Counter[str]]]=None):
+    def __init__(self, ensured_vocabulary: Iterable[str]=None, observers: List[Observer[ReturnUnigramDistribution]]=None):
         super().__init__(observers=observers)
-        self.frequencies = Counter()
+        self.frequencies = ReturnUnigramDistribution()
         if ensured_vocabulary is not None:
             for t in ensured_vocabulary:
                 self.frequencies[t] += 0
+
+    def _nodeIdentifier(self) -> str:
+        return ""
+
+    def _cacheType(self):
+        return ReturnUnigramDistribution
 
     def _initialiseAsObserver(self, identifier: str):
         self.frequencies.clear()
@@ -159,14 +173,8 @@ class TokenUnigramDistribution(FinallyObservableObserver[Tokens,Counter[str]]):
     def _compute(self):
         return self.frequencies
 
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
-        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["distribution"]) / (unambiguous_cache_identifier + ".json")
-
-    def _cacheLoad(self, cache_path: Path) -> Counter[str]:
-        return Counter(jsonToDict(cache_path))
-
-    def _cacheStore(self, cache_path: Path, result: Counter[str]):
-        dictToJson(dict(result), cache_path, do_indent=False)
+    def _cacheSubfolders(self) -> list[str]:
+        return ["distribution"]
 
 
 @dataclass
@@ -175,13 +183,17 @@ class ReturnTTR:
     CTC: int
 
 
-class TTR(ImmediatelyObservableObserver[Counter[str],ReturnTTR]):
-    def _transit(self, sample: Counter[str], weight: float) -> ReturnTTR:
+class TTR(ImmediatelyObservableObserver[ReturnUnigramDistribution,ReturnTTR]):
+
+    def _transit(self, sample: ReturnUnigramDistribution, weight: float) -> ReturnTTR:
         assert arePositive(sample.values())
         return ReturnTTR(
             V=sum(map(lambda x: x != 0, sample.values())),
             CTC=sample.total()
         )
+
+    def _nodeIdentifier(self) -> str:
+        return ""
 
 
 @dataclass
@@ -191,14 +203,17 @@ class ReturnRenyiEntropy:
     efficiency: float
 
 
-class RenyiEntropy(ImmediatelyObservableObserver[Counter[str],ReturnRenyiEntropy]):
+class RenyiEntropy(ImmediatelyObservableObserver[ReturnUnigramDistribution,ReturnRenyiEntropy]):
 
     def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: List[Observer[ReturnRenyiEntropy]]=None):
         super().__init__(observers)
         self.alpha = alpha
         self.theoretical_vocab_size = vocab_size_in_denominator
 
-    def _transit(self, sample: Counter[str], weight: float) -> ReturnRenyiEntropy:
+    def _nodeIdentifier(self) -> str:
+        return f"Renyi-alpha={self.alpha}"
+
+    def _transit(self, sample: ReturnUnigramDistribution, weight: float) -> ReturnRenyiEntropy:
         n_nonzero_counts = sum(map(lambda x: x != 0, sample.values()))
         return ReturnRenyiEntropy(
             alpha=self.alpha,
@@ -220,14 +235,17 @@ class ReturnRenyiEfficiencyWithBounds:
     efficiency_upper: float
 
 
-class RenyiEfficiencyWithBounds(ImmediatelyObservableObserver[Counter[str],ReturnRenyiEfficiencyWithBounds]):
+class RenyiEfficiencyWithBounds(ImmediatelyObservableObserver[ReturnUnigramDistribution,ReturnRenyiEfficiencyWithBounds]):
 
     def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: List[Observer[ReturnRenyiEfficiencyWithBounds]]=None):
         super().__init__(observers)
         self.alpha = alpha
         self.theoretical_vocab_size = vocab_size_in_denominator
 
-    def _transit(self, sample: Counter[str], weight: float) -> ReturnRenyiEfficiencyWithBounds:
+    def _nodeIdentifier(self) -> str:
+        return f"Renyi-alpha={self.alpha}"
+
+    def _transit(self, sample: ReturnUnigramDistribution, weight: float) -> ReturnRenyiEfficiencyWithBounds:
         n_nonzero_counts = sum(map(lambda x: x != 0, sample.values()))
         low, mid, high = renyiEfficiency(
             sample.values(), alpha=self.alpha,
@@ -244,7 +262,7 @@ class RenyiEfficiencyWithBounds(ImmediatelyObservableObserver[Counter[str],Retur
 
 
 @dataclass
-class ReturnMATTR:
+class ReturnMATTR(SimpleCacheableDataclass):
     mattr: float
     window_size: int
     stride: int
@@ -276,6 +294,15 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
         self.stride      = stride
         self.window_size = window_size
         self.flush       = flush_every_example
+
+    def _nodeIdentifier(self) -> str:
+        return f"window={self.window_size},stride={self.stride}"
+
+    def _cacheType(self):
+        return ReturnMATTR
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["mattr"]
 
     def _initialiseAsObserver(self, identifier: str):
         self.n_TTR   = 0
@@ -353,35 +380,53 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
             stride=self.stride,
         )
 
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
-        return TkTkTPaths.extend(TkTkTPaths.pathToEvaluations(), ["mattr"]) / (unambiguous_cache_identifier + ".json")
-
-    def _cacheLoad(self, cache_path: Path) -> ReturnMATTR:
-        return jsonToDataclass(ReturnMATTR, cache_path)
-
-    def _cacheStore(self, cache_path: Path, result: ReturnMATTR):
-        dataclassToJson(result, cache_path)
-
 
 ########################################################################################################################
 
 
-def bitKeyFromTokens(tokens: List[str]) -> int:
+def bitKeyFromTokens(tokens: Iterable[str]) -> int:
     return getBitKey(list(map(len, tokens)))
 
 
-SegmentationCounts = Counter[int]  # Maps segmentation ID to its count.
+@dataclass
+class SegmentationCounts(CacheableCounter[int]):  # Maps segmentation ID to its count.
 
-def segmentationDistributionFromWord(tokeniser: Tokeniser, word: str, n_samples: int) -> SegmentationCounts:
-    """Repeatedly segments a word to get a (unnormalised) distribution across its segmentations."""
-    segmentations = Counter()
-    for _ in streamProgress(range(n_samples), f"Tokenising: {word}", known_size=n_samples):
-        segmentations[bitKeyFromTokens(tokeniser.prepareAndTokenise(word))] += 1
-    return segmentations
+    @classmethod
+    def _keyToString(cls, k: int) -> str:
+        return str(k)
+
+    @classmethod
+    def _stringToKey(cls, s: str) -> int:
+        return int(s)
+
+
+class SegmentationDistribution(FinallyObservableObserver[Tokens,SegmentationCounts]):
+    """Expects many segmentations of a word and computes an (unnormalised) distribution across its segmentations."""
+
+    def __init__(self, observers: list[Observer[SegmentationCounts]]):
+        super().__init__(observers=observers)
+
+    def _nodeIdentifier(self) -> str:
+        return ""
+
+    def _cacheType(self):
+        return SegmentationCounts
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["segmentations"]
+
+    def _initialiseAsObserver(self, identifier: str):
+        self.segmentations = SegmentationCounts()
+
+    def _receive(self, sample: Tokens, _):
+        self.segmentations[bitKeyFromTokens(sample)] += 1
+
+    def _compute(self) -> SegmentationCounts:
+        return self.segmentations
 
 
 @dataclass
-class SegmentationDiversity:
+class ReturnSegmentationDiversity(SimpleCacheableDataclass):
     uniqueness: float  # Fraction of segmentations that remain when you filter out duplicates. ~precision
     coverage: float  # Fraction of possible segmentations that have been produced. ~recall
     max_coverage_uniqueness: float  # Equals uniqueness if you take less than the possible segmentations in samples, otherwise equals coverage. Equivalent to max(U,C).
@@ -394,12 +439,33 @@ class SegmentationDiversity:
     efficiency_no_deterministic: Optional[float]  # Same, but for the given segmentation.
 
 
+class SegmentationDiversity(ImmediatelyObservableObserver[SegmentationCounts,ReturnSegmentationDiversity]):
+
+    def __init__(self,
+        domain_size: int,
+        renyi_alpha: float=DEFAULT_RENYI_ALPHA,
+        deterministic_segmentation: Optional[List[str]]=None,
+        observers: list[Observer[ReturnSegmentationDiversity]]=None
+    ):
+        super().__init__(observers=observers)
+        self._domain_size = domain_size
+        self._renyi_alpha = renyi_alpha
+        self._reference = deterministic_segmentation
+
+    def _nodeIdentifier(self) -> str:
+        return f"Renyi-alpha={self._renyi_alpha}"
+
+    def _transit(self, sample: SegmentationCounts, _: float) -> ReturnSegmentationDiversity:
+        return analyseSegmentationDistribution(sample, domain_size=self._domain_size, renyi_alpha=self._renyi_alpha, deterministic_segmentation=self._reference)
+
+
 def analyseSegmentationDistribution(segmentations_counts: SegmentationCounts,
-                                    sample_size: int, domain_size: int, renyi_alpha: float=1.0,
-                                    deterministic_segmentation: Optional[List[str]]=None) -> SegmentationDiversity:
+                                    domain_size: int, renyi_alpha: float=1.0,
+                                    deterministic_segmentation: Optional[List[str]]=None) -> ReturnSegmentationDiversity:
     """
     Produces an analysis like Table 8 of the GRaMPa paper: https://aclanthology.org/2025.acl-long.1180
     """
+    sample_size = segmentations_counts.total()
     segmentation_probabilities = normaliseCounter(segmentations_counts)
 
     uniqueness = len(segmentation_probabilities) / sample_size
@@ -429,7 +495,7 @@ def analyseSegmentationDistribution(segmentations_counts: SegmentationCounts,
         regularisation_rate_deterministic    = None
         entropic_efficiency_no_deterministic = None
 
-    return SegmentationDiversity(
+    return ReturnSegmentationDiversity(
         coverage=coverage,
         uniqueness=uniqueness,
         max_coverage_uniqueness=max_coverage_uniqueness,

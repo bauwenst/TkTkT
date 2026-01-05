@@ -6,64 +6,55 @@ from collections import Counter
 from modest.formats.tsv import iterateTsv
 from modest.interfaces.datasets import ModestDataset
 
-from .identifiers import NoSpecials, UnidentifiedVocab, Vocab, WithSpecials
-from .preprocessors import Preprocessor
+from . import Preprocessor
+from .artifactories import CacheableArtifacts
+from .identifiers import NoSpecials, UnidentifiedVocab, Vocab, WithSpecials, SpecialsExtended
 from ..paths import TkTkTPaths
 from ..util.iterables import streamProgress
-from ..util.timing import datetimeDashed
-from ..util.types import Comparable, NamedIterable, HuggingfaceDataset, anypartial
+from ..util.strings import prefixIfNotEmpty
+from ..util.types import NamedIterable, HuggingfaceDataset, anypartial, generated
+from ..util.interfaces import Cacheable, Cache
 
 __all__ = ["Vocabulariser", "UnsupervisedVocabulariser", "SegmentationSupervisedVocabulariser",
            "Preprocessor", "NamedIterable", "UnidentifiedVocab"]
 
 
-class Vocabulariser(ABC):
+T_CacheableArtifact = TypeVar("T_CacheableArtifact", bound=CacheableArtifacts)
+
+class Vocabulariser(Cache[T_CacheableArtifact], ABC):
     """
     Builds subword vocabularies.
     """
 
-    def __init__(self, name: str):
-        self._name = name
+    def __init__(self, preprocessor: Preprocessor, disable_cache: bool=False):
+        super().__init__(disable_cache=disable_cache)
+        self.preprocessor = preprocessor
 
-    def _makeOutputFolder(self, extra_suffix: str="") -> Path:
+    @abstractmethod
+    def _identifier(self) -> str:
+        """A short string used for defining this Vocabulariser's output subdirectory."""
+        pass
+
+    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
         """
         Get a new folder in which to store any files you want to store during vocabularisation.
         """
-        return TkTkTPaths.pathToModels(self._name, self._name + f"_{extra_suffix}"*bool(extra_suffix) + f"_{datetimeDashed()}")
+        return TkTkTPaths.pathToModels(self._identifier(), self._identifier() + prefixIfNotEmpty("_", unambiguous_cache_identifier))
 
-    @classmethod
-    @abstractmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        """
-        Load a vocabulary trained with this vocabulariser from its save path.
-        Depending on the vocabulariser, this can be a file or folder.
-        """
-        pass
-
-    @classmethod
-    def load(cls, file_or_folder: Path, specials: WithSpecials=NoSpecials(), unk_type: Optional[int]=0, filtered_types: set[str]=None, type_sorting_key: Optional[Callable[[str], Comparable]]=None) -> Vocab[WithSpecials]:
-        """
-        Combines the Vocabulariser-specific knowledge of ._load() with the abilities to choose
-            1. which of the loaded types to remove;
-            2. the order of the remaining types;
-            3. which specials to add to them.
-        """
-        filtered_types = filtered_types or set()
-        types = sorted(cls._load(file_or_folder), key=type_sorting_key) if type_sorting_key is not None else cls._load(file_or_folder)
-        return Vocab(filter(lambda t: t not in filtered_types, types), specials, unk_id=unk_type)
+    def _cacheFinalise(self, loaded: T_CacheableArtifact) -> T_CacheableArtifact:
+        loaded.setPreprocessors(self.preprocessor)
+        return loaded
 
 
-class UnsupervisedVocabulariser(Vocabulariser):
+class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
     """
     Vocabulariser which consumes unlabelled text (either as sentences or as words) and produces a vocabulary out of it.
     """
 
-    def __init__(self, name: str, preprocessor: Preprocessor):
-        super().__init__(name=name)
-        self.preprocessor = preprocessor
+    # Core computation
 
     @abstractmethod
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> T_CacheableArtifact:
         """
         Construct a subword vocabulary based on contextless words and frequencies, and save it to disk.
 
@@ -73,7 +64,7 @@ class UnsupervisedVocabulariser(Vocabulariser):
         pass
 
     @abstractmethod
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> T_CacheableArtifact:
         """
         Construct a subword vocabulary based on corpus sentences, and save it to disk.
         """
@@ -97,9 +88,13 @@ class UnsupervisedVocabulariser(Vocabulariser):
 
     def _preprocessSentencesToPretokenCounts(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[Tuple[str,int]]:
         counter = Counter()
-        for word in streamProgress(sentence_iterable, "Counting pretokens"):
-            counter.update(self.preprocessor.do(word))
-        return NamedIterable(list(counter.items()), name=sentence_iterable.name)
+        def iterator():
+            if not counter:
+                for word in streamProgress(sentence_iterable, "Counting pretokens"):
+                    counter.update(self.preprocessor.do(word))
+
+            yield from counter.items()
+        return NamedIterable(generated(iterator), name=sentence_iterable.name)
 
     def _preprocessWordsToSentences(self, word_iterable: NamedIterable[Tuple[str, int]]) -> NamedIterable[str]:
         """
@@ -113,7 +108,7 @@ class UnsupervisedVocabulariser(Vocabulariser):
         """
         LARGEST_STRING_LEN = 1_000
 
-        def generate():
+        def iterator():
             for word, count in word_iterable:
                 word = " ".join(self.preprocessor.do(word))
 
@@ -125,7 +120,7 @@ class UnsupervisedVocabulariser(Vocabulariser):
                     count -= diff
                     yield diff * (" " + word)
 
-        return NamedIterable(generate(), name=word_iterable.name)
+        return NamedIterable(generated(iterator), name=word_iterable.name)
 
     def _preprocessWordsToTsv(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[str]:
         return word_iterable.map(lambda tup: f"{tup[0]}\t{tup[1]}\n")
@@ -144,36 +139,53 @@ class UnsupervisedVocabulariser(Vocabulariser):
         This requires loading all pretokens into memory.
         """
         counter = Counter()
-        for word,count in streamProgress(word_iterable, "Counting pretokens"):
-            for pretoken in self.preprocessor.do(word):
-                counter[pretoken] += count
-        return NamedIterable(list(counter.items()), name=word_iterable.name)
+        def iterator():
+            if not counter:
+                for word,count in streamProgress(word_iterable, "Counting pretokens"):
+                    for pretoken in self.preprocessor.do(word):
+                        counter[pretoken] += count
+            yield from counter.items()
+        return NamedIterable(generated(iterator), name=word_iterable.name)
 
-    # User-facing interface
+    # User-facing interface (all cached)
 
-    def vocabulariseFromTsv(self, word_frequency_tsv: Path, name_instead_of_stem: str="") -> Path:
-        return self._vocabulariseFromWords(NamedIterable(
-            [(word,int(count)) for word, count in iterateTsv(word_frequency_tsv, verbose=True)], name=name_instead_of_stem or word_frequency_tsv.stem
-        ))
-
-    def vocabulariseFromCounter(self, word_frequency_counter: Counter, name: str="[unnamed_counter]") -> Path:
-        return self._vocabulariseFromWords(NamedIterable(word_frequency_counter.items(), name=name))
-
-    def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]], name_if_not_named: str="[unnamed_iterable]") -> Path:
-        return self._vocabulariseFromSentences(string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name=name_if_not_named))
-
-    def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str, name_if_not_named: str="[unnamed_HF]") -> Path:
-        return self._vocabulariseFromSentences(
-            NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else name_if_not_named)
-                .map(anypartial(dict.get, ..., text_field))  # Equivalent to `lambda example: example[text_field]` but this one can be pickled.
+    def vocabulariseFromTsv(self, word_frequency_tsv: Path, name_instead_of_stem: str="") -> T_CacheableArtifact:
+        iterable = NamedIterable(
+            generated(lambda: ((word,int(count)) for word, count in iterateTsv(word_frequency_tsv, verbose=True))),
+            name=name_instead_of_stem or word_frequency_tsv.stem
         )
+        return self._cacheRun(iterable.name, lambda: self._vocabulariseFromWords(iterable))
+
+    def vocabulariseFromCounter(self, word_frequency_counter: Counter, name: str="[unnamed_counter]") -> T_CacheableArtifact:
+        iterable = NamedIterable(generated(lambda: word_frequency_counter.items()), name=name)
+        return self._cacheRun(iterable.name, lambda: self._vocabulariseFromWords(iterable))
+
+    def vocabulariseFromWordIterable(self, word_iterable: Union[NamedIterable[tuple[str,int]],Iterable[tuple[str,int]]], name_if_not_named: str="[unnamed_iterable]") -> T_CacheableArtifact:
+        iterable = word_iterable if isinstance(word_iterable, NamedIterable) else NamedIterable(word_iterable, name=name_if_not_named)
+        return self._cacheRun(iterable.name, lambda: self._vocabulariseFromWords(iterable))
+
+    def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]], name_if_not_named: str="[unnamed_iterable]") -> T_CacheableArtifact:
+        iterable = string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name=name_if_not_named)
+        return self._cacheRun(iterable.name, lambda: self._vocabulariseFromSentences(iterable))
+
+    def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str, name_if_not_named: str="[unnamed_HF]") -> T_CacheableArtifact:
+        iterable = NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else name_if_not_named) \
+            .map(anypartial(dict.get, ..., text_field))  # Equivalent to `lambda example: example[text_field]` but this one can be pickled.
+        return self._cacheRun(iterable.name, lambda: self._vocabulariseFromSentences(iterable))
 
 
-class SegmentationSupervisedVocabulariser(Vocabulariser):
+class SegmentationSupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
     """
     Vocabulariser which takes in a corpus of pre-segmented strings and builds a vocabulary based on that.
     """
 
+    # Core computation
+
     @abstractmethod
-    def vocabulariseFromModest(self, reference: ModestDataset) -> Path:
+    def _vocabulariseFromModest(self, reference: ModestDataset) -> T_CacheableArtifact:
         pass
+
+    # User-facing
+
+    def vocabulariseFromModest(self, reference: ModestDataset) -> T_CacheableArtifact:
+        return self._cacheRun(reference.identifier(), lambda: self._vocabulariseFromModest(reference))

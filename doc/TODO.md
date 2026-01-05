@@ -1,4 +1,6 @@
 # TODO
+- Known issue: `SpecialsExtended[WithSpecials]` doesn't actually detect its type variable. `SpecialsExtended` should
+  probably be removed for that reason.
 - Add as morphological tokenisation metrics: 
   - complete token match
   - complete affix token match
@@ -16,6 +18,8 @@
 - Nested tokeniser that protects some substrings from being segmented
   knowing that they exist fully in the vocabulary. Kind of like a pretokeniser except it only passes certain pretokens through
   (in fact, arguably, this is something that should be done before most pretokenisation) and aware of the tokeniser that follows it (I guess).
+  - A good example for why you want this is phone numbers and other PII, which is part of security.
+  - Another good example is the words "i.e." and "e.g." which will be destroyed by punctuation pretokenisers.
 - Acceleration: tokenisation of a dataset can be done in many threads. Would greatly help the slow tokenisers to be practical.
   - Refactor from one of Vilém Zouhar's scripts:
     ```python
@@ -25,7 +29,6 @@
             out = pool.map(self.prepareAndTokenise, streamProgress(corpus))
         return out
     ```
-  - The ReBPE project also had an interesting system, using futures.
 - BPE-breakdown:
   - Rather than randomly selecting the two-token decomposition out of all available ones, choose it
     deterministically like Koehn & Knight 2003 with a frequency product. :eyes:

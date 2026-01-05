@@ -7,7 +7,9 @@ I've reimplemented the LZW vocabulariser to support TkTkT's preprocessors and co
 """
 from pathlib import Path
 from typing import Tuple
+from typing_extensions import Self
 
+from ...interfaces import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
 from ...interfaces.tokenisers import Tokeniser, Preprocessor
 from ...models.greedy.directional import L2R_Greedy
@@ -15,27 +17,46 @@ from ...util.printing import wprint
 from ...util.iterables import streamProgress
 
 
-class LzwVocabulariser(UnsupervisedVocabulariser):
+class LzwArtifacts(Artifacts):
+    pass
 
-    def __init__(self, preprocessor: Preprocessor, vocab_size: int):
-        super().__init__(name="lzw", preprocessor=preprocessor)
-        self.vocab_size = vocab_size
+
+class CacheableLzwArtifacts(CacheableArtifacts):
+    def __init__(self, types: list[str]):
+        super().__init__()
+        self._types = types
+
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        return self._types
+
+    def store(self, cache_path: Path):
+        self._storeTypes(cache_path, self._types)
 
     @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        if file_or_folder.is_dir():
-            file_or_folder = file_or_folder / "vocab.txt"
+    def load(cls, cache_path: Path) -> Self:
+        return CacheableLzwArtifacts(types=cls._loadTypes(cache_path))
 
-        with open(file_or_folder, "r", encoding="utf-8") as handle:
-            for line in handle:
-                yield line.rstrip()
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return cls._existsTypes(cache_path)
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+
+class LzwVocabulariser(UnsupervisedVocabulariser[CacheableLzwArtifacts]):
+
+    def __init__(self, preprocessor: Preprocessor, vocab_size: int):
+        super().__init__(preprocessor=preprocessor)
+        self.vocab_size = vocab_size
+
+    def _identifier(self) -> str:
+        return "lzw"
+
+    def _cacheType(self):
+        return CacheableLzwArtifacts
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableLzwArtifacts:
         raise NotImplementedError
 
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
-        parent_folder = self._makeOutputFolder(extra_suffix=sentence_iterable.name)
-
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableLzwArtifacts:
         # Load the entire corpus into memory. Every sentence is split into pretokens, and each pretoken is split into characters.
         wprint(f"Loading and preprocessing '{sentence_iterable.name}' into memory...")
         tokens_of_pretokens = list(sentence_iterable.tqdm().flatmap(self.preprocessor.do).map(tuple))
@@ -99,13 +120,10 @@ class LzwVocabulariser(UnsupervisedVocabulariser):
                 print("Early termination because vocabulary did not increase in size.")
                 break
 
-        # Write out
-        vocab_path = parent_folder / "vocab.txt"
-        with open(vocab_path, "w", encoding="utf-8") as handle:
-            for typ in ordered_vocabulary:
-                handle.write(typ + "\n")
+        return CacheableLzwArtifacts(types=ordered_vocabulary)
 
-        return vocab_path
+
+########################################################################################################################
 
 
 class LzwTokeniser(L2R_Greedy):  # Lempel-Ziv is very explicitly a left-to-right algorithm.

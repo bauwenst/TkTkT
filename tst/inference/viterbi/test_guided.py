@@ -12,7 +12,7 @@ canine_viterbi = Factory_BoMMaSum().buildTokeniser()
 classifier: CharacterClassifier = canine_viterbi.objectives[0].score_generator.nested_generator.logprob_classifier
 
 def getVocab():
-    return BPE32ki_SlimPajama3M().buildVocabulary()
+    return BPE32ki_SlimPajama3M().getVocabulary()
 vocab = getVocab()  # Determines how you should format the below example.
 word = "Ġhorseshoe"
 # word = "Ġsupercalifragilistic"

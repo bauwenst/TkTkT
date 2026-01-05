@@ -3,7 +3,7 @@ from typing import Dict, List, Union
 from fiject import StreamingMultiHistogram, StreamingVariableGranularityHistogram, BinSpec, VariableGranularityHistogram, FIJECT_DEFAULTS, HistoBars, CacheMode
 
 from ...interfaces.tokenisers import Tokeniser, TokeniserWithVocabulary
-from ...interfaces.factories import Artifacts
+from ...interfaces.artifactories import Artifacts
 from ...util.timing import timeit
 from ...util.iterables import streamProgress, allEqual
 from ...util.combinatorics import getLOCKey
@@ -152,7 +152,7 @@ def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithVocabulary, Artif
         if isinstance(source, Tokeniser):
             type_iterator = source.types()
         elif isinstance(source, Artifacts):
-            type_iterator = source.buildVocabulary().keys()
+            type_iterator = source.getVocabulary().keys()
         else:
             raise TypeError
 

@@ -1,7 +1,7 @@
 from typing import List, Iterable
 
 from ...interfaces import Preprocessor, Vocab
-from ...interfaces.identifiers import WithSpecials
+from ...interfaces.identifiers import WithSpecials, SpecialsExtended
 from ...interfaces.tokenisers import TokeniserWithVocabulary
 
 
@@ -11,7 +11,7 @@ UNICODE_VALUES = 149_813 + 65
 class UnicodeTokeniser(TokeniserWithVocabulary[WithSpecials]):
 
     def __init__(self, preprocessor: Preprocessor, specials: WithSpecials):
-        super().__init__(preprocessor=preprocessor, vocab=Vocab([], specials=specials, unk_id=None))
+        super().__init__(preprocessor=preprocessor, vocab=Vocab([], specials=specials, unk_id=None))  # TODO: These specials currently don't affect the IDs of all the types...
 
     def tokenise(self, word: str) -> List[str]:
         return list(word)

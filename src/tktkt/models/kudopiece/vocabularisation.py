@@ -3,15 +3,19 @@ Pythonic wrapper around the SentencePiece package's KudoPiece trainer.
 Why not use `tokenizers`? Because I trust Kudo himself more than HuggingFace (since they can't even explain it),
 and at least he has documentation that exists.
 """
+from abc import abstractmethod
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Iterable, Tuple, Self
 from dataclasses import dataclass
 
+import json
+import shutil
 from modest.formats.tsv import iterateTsv
 
+from ...interfaces import Artifacts, CacheableArtifacts
 from ...preparation.boundaries import BoundaryMarkerLocation
 from ...interfaces.vocabularisers import *
-from ...util.iterables import streamPrint, streamProgress, T
+from ...util.iterables import streamPrint, streamProgress, T, fst
 
 
 def progress(iterable: Iterable[T]) -> Iterable[T]:
@@ -33,7 +37,68 @@ class KudoPieceArguments:
     num_sub_iterations: int=2
 
 
-class KudoPieceVocabulariser(UnsupervisedVocabulariser):
+class KudoPieceArtifacts(Artifacts):
+    @abstractmethod
+    def getModelFile(self) -> Path:
+        pass
+
+    @abstractmethod
+    def getUnigramLoglikelihoods(self) -> dict[str,float]:
+        pass
+
+
+class CacheableKudoPieceArtifacts(KudoPieceArtifacts, CacheableArtifacts):
+    def __init__(self, unigram_log_likelihoods: list[tuple[str,float]], existing_model_path: Path):
+        super().__init__()
+        self._types_and_logp = unigram_log_likelihoods
+        self._model = existing_model_path
+
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        return map(fst, self._types_and_logp)
+
+    def getUnigramLoglikelihoods(self) -> dict[str, float]:
+        return dict(self._types_and_logp)
+
+    def getModelFile(self) -> Path:
+        return self._model
+
+    def store(self, cache_path: Path):
+        # Store probabilities
+        with open(cache_path / "vocab.tsv", "w", encoding="utf-8") as handle:
+            for typ,logp in self._types_and_logp:
+                handle.write(f"{typ}\t{logp}\n")
+
+        # Copy model file
+        cached_model_path = cache_path / "spm.model"
+        if self._model != cached_model_path:
+            shutil.copy(self._model, cached_model_path)
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        return cls(
+            unigram_log_likelihoods=list(cls._loadLikelihoods(cache_path / "vocab.tsv")),
+            existing_model_path=cache_path / "spm.model"
+        )
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return (cache_path / "vocab.tsv").exists() and (cache_path / "spm.model").exists()
+
+    @classmethod
+    def _loadLikelihoods(cls, file_or_folder: Path) -> Iterable[tuple[str,float]]:
+        if file_or_folder.is_dir():
+            file_or_folder = file_or_folder / "spm.vocab"
+
+        with open(file_or_folder, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.rstrip()
+                if not line:
+                    continue
+                typ, logp = line.split("\t")
+                yield typ, float(logp)
+
+
+class KudoPieceVocabulariser(UnsupervisedVocabulariser[CacheableKudoPieceArtifacts]):
     """
     Wrapper around the SentencePiece trainer for KudoPiece.
     This trainer has quite a large memory footprint. Expect every million sentences to consume about 80 GiB of RAM
@@ -112,7 +177,7 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser):
             --split_digits (split all digits (0-9) into separate pieces)  type: bool default: false
         """
         import sentencepiece  # assert
-        super().__init__(name="kudopiece", preprocessor=preprocessor)
+        super().__init__(preprocessor=preprocessor)
 
         self._marker = preprocessor.getBoundaryMarker()
         if self._marker.location == BoundaryMarkerLocation.ISOLATED:
@@ -122,7 +187,13 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser):
         self._size = final_vocab_size
         self._stem = file_stem
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> Path:
+    def _identifier(self) -> str:
+        return "kudopiece"
+
+    def _cacheType(self):
+        return CacheableKudoPieceArtifacts
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableKudoPieceArtifacts:
         """
         FIXME: Currently suffers from https://github.com/google/sentencepiece/issues/967
         """
@@ -131,14 +202,14 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser):
             is_wordfile=True
         )
 
-    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> Path:
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableKudoPieceArtifacts:
         return self._withSentencepieceTrainer(
             self._preprocessSentencesToSentences(sentence_iterable, sep=EXOTIC_SCRIPT_PRETOKEN_SEPARATOR),
             is_wordfile=False
         )
 
-    def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> Path:
-        output_folder = self._makeOutputFolder(string_iterable.name)
+    def _withSentencepieceTrainer(self, string_iterable: NamedIterable[str], is_wordfile: bool=False) -> CacheableKudoPieceArtifacts:
+        output_folder = self._cachePath(string_iterable.name)
 
         required_characters = self.preprocessor.getAlphabet()
         KudoPieceVocabulariser._callSentencePieceTrainer(
@@ -165,16 +236,15 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser):
             num_sub_iterations=self._arguments.num_sub_iterations,
         )
 
-        return output_folder
+        vocab_path = output_folder / "spm.vocab"
+        model_path = output_folder / "spm.model"
+        return CacheableKudoPieceArtifacts(
+            unigram_log_likelihoods=list(CacheableKudoPieceArtifacts._loadLikelihoods(vocab_path)),
+            existing_model_path=model_path
+        )
 
     def _addSpace(self, word: str) -> str:
         return " " * (self._marker.location == BoundaryMarkerLocation.START) + word + " " * (self._marker.location == BoundaryMarkerLocation.END)
-
-    @classmethod
-    def _load(cls, file_or_folder: Path) -> UnidentifiedVocab:
-        if file_or_folder.is_dir():
-            file_or_folder = file_or_folder / "spm.vocab"
-        return [typ for typ,_ in iterateTsv(file_or_folder)]
 
     @staticmethod
     def _callSentencePieceTrainer(actual_vocab_size: int, **remaining_arguments):

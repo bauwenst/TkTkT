@@ -48,12 +48,16 @@ Currently work in progress:
 - Morfessor family
 - VOLT
 
-### Multiplexing
+#### Multiplexing
 TkTkT is the only package that supports **multiplexing** multiple tokenisers into one big tokeniser that alternates 
 between each of them. There are multiplexers that do this deterministically (e.g. choosing the tokeniser that compresses
 the input the most) or stochastically (e.g. choosing among a set of tokenisers uniformly).
 
 ### Evaluation metrics
+TkTkT's evaluation framework aims to do as little work as possible. It can dispatch tokens produced by a tokeniser
+to as many metrics as you need at once, and caches everything it can so you don't have to compute any metric twice.
+See [here](https://github.com/LAGoM-NLP/ConfoundingFactors/blob/2170fc0137fee2fda2705afeaf1931651c73f74c/scripts/perplexity/av.py#L116) for an example.
+
 TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
 - **Fertility** statistics: how many tokens the tokeniser produces per word, and how many segmentations its vocabulary could produce in theory.
 - **Morphological** boundary recognition: using the tokeniser as a binary classifier for whether two morphemes meet at each
@@ -63,9 +67,36 @@ TkTkT currently supports the following intrinsic tokeniser evaluation metrics:
 - **Bigram metrics** to quantify the richness of token contexts, like *accessor variety*.
 - **Comparisons** between two tokenisers: how much they tokenise words exactly the same, and how much their split points overlap.
 
+### Security
+It should be impossible for users to jailbreak a language model by forcing its tokeniser to produce a special token (e.g. `<|endoftext|>`, system prompt delimiters, ...).
+The reason other packages do not have this guarantee is that they represent special tokens as strings and then give the
+tokeniser access to these strings. In TkTkT, **subword vocabularies are objects** that hide special tokens from their
+tokeniser. In fact, **special tokens are defined as integers**, not as strings.
+
+When loading a tokeniser trained in another package that probably inserted specials into the vocabulary, TkTkT explicitly 
+requires the user to declare which strings are actually specials, and hides them from the tokeniser.
+
+### User-friendliness
+#### Caching
+When a tokeniser finishes training, you shouldn't be forced to mess with file paths to connect your training and
+testing scripts together. In TkTkT, training code caches its results. When you rerun it, it will load its
+results from disk and skip the waiting time.
+
+#### Type-checking
+I really f\*cking passionately hate when my IDE cannot perform autocompletion because of poor type annotation or design. 
+People have been suffering under the idiocy of `AutoTokenizer` for too long. In TkTkT, everything is as type-annotated as possible, which means:
+- There are no checkpoint strings in TkTkT. There are `Artifacts` objects, which not only declare how to get the results
+  of training, but also which `Preprocessor` was used, so that complex preprocessing objects are just known and never have to be stringified.
+- When loading a tokeniser using a `TokeniserFactory` and `Artifacts` (the equivalent of `AutoTokenizer` of a `str`),
+  the exact type of tokeniser is known.
+- The special tokens in a vocabulary appear in autocompletion. For example, for BERT's BPE tokeniser, `tokeniser.vocab.specials.`
+  will show `CLS`, `SEP`, `PAD`, `MASK` in your IDE.
+- After training a tokeniser, the results on disk are already parsed into an object for you. When you train a BPE tokeniser,
+  the `results` that come out aren't a dumb file path. It's an `Artifacts` object that has a `.getVocabulary()` and `.getMerges()` method.
+
 ### Preprocessing
 TkTkT has a rich set of text mappings and pretokenisers that preprocess text before it is tokenised, including
-support for stochastic perturbation. Unlike other libraries, preprocessors are objects, not regular expressions.
+support for stochastic perturbation. Unlike other libraries, **preprocessors are objects, not regular expressions.**
 This allows much more powerful processing than regex, whilst being more easy to read. See if you can understand 
 this arguably complicated transformation:
 
@@ -95,6 +126,21 @@ TkTkT also comes with language-specific pretokenisation like Japanese word segme
 ### Visualisers
 The following tokenisation procedures can be visualised:
 - BPE/BTE: the final merge tree (in regular LaTeX), as well as an animated progression of the merges (in LaTeX Beamer).
+
+### Opinionated
+Apart from the type-checking and caching described above, TkTkT enforces several truths about tokenisation which are not present in other packages:
+- Tokenisers produce string segments (_tokens_), not integer identifiers (_IDs_). There is no "BPE way" of mapping `["_un", "believ", "able"]`
+  to integers. That should be done by a separate object, the `Vocab`.
+- Preprocessors should not (only) be regular expressions. They should be chains of Python code.
+- Spaces should not be treated as word boundaries. If a word does not have a "prefix space", e.g. because it is the start of the sentence
+  or because it is preceded by a punctuation mark, it should _still_ receive a boundary character, and the user should be
+  able to decide if that boundary comes at the start or the end of the word.
+- Special tokens (`CLS`, `SEP`, `BOS`, ...) should not have a string representation (`"[CLS]", "[SEP]", "<s>", ...`), or at least they should not be in the vocabulary, 
+  or at least they should not be used by the tokeniser. All of these are violated by HuggingFace `transformers` (see the bottom of this README).
+- Preprocessing should not be baked into the tokeniser.
+  - Tokenisers should segment the given string, not transform it into some unpredictably other string thing and segment that one.
+  - Any parameters regarding preprocessing should not be in the tokeniser's constructor, except for the actual `Preprocessor` itself.
+- Preprocessors should not be pickled and base64'ed into opaque objects. They should be defined as Python code.
 
 ## Architecture
 ### Main interfaces
@@ -197,20 +243,28 @@ from tktkt.models.bpe.vocabularisation import BPEVocabulariser
 corpus        = load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train", streaming=True).take(100_000)
 preprocessor  = ModernEnglishPreprocessor(marker=KudoSpaceMarker)
 vocabulariser = BPEVocabulariser(preprocessor=preprocessor, vocab_size=32_768)
-bpe_folder = vocabulariser.vocabulariseFromHf(corpus, text_field="text")
+results       = vocabulariser.vocabulariseFromHf(corpus, text_field="text")
 ```
 That's _**just 7 lines of code to get a tokeniser from a corpus!**_ To load the result into a HuggingFace-accelerated tokeniser, we can call
+
 ```python
 from tktkt.models.huggingface.bpe import HuggingFaceBPETokeniser
 
 tokeniser = HuggingFaceBPETokeniser(
     preprocessor=preprocessor,
-    vocab=vocabulariser.load(bpe_folder), 
-    merges=vocabulariser.loadMerges(bpe_folder)
+    vocab=results.getVocabulary(),
+    merges=results.getMerges()
 )
 ```
-or, if we have made the results available in an `Artifacts` class, we can use a `TokeniserFactory` to do this for us in a one-liner.
-I once trained BPE across the first 3 million examples in SlimPajama, and thus we can run:
+The best part? You can put this in the same script as the `vocabulariser.vocabulariseFromHf`, right below it.
+All training methods are cached, which means that if the result was computed before, it will be loaded from disk immediately.
+
+If you want to load the result of training in a different project, the way to do it is to first write a `BPEArtifacts` class
+that knows which preprocessor you used and where to find your results. Once you have this, use the `Factory_BPE` to
+read the artifacts for you.
+
+As an example: I once trained BPE across the first 3 million examples in SlimPajama. The `BPEArtifacts` class for this
+specific training run are predefined in TkTkT:
 
 ```python
 from tktkt.factories.artifacts import BPE32ki_SlimPajama3M
@@ -218,7 +272,7 @@ from tktkt.factories.tokenisers import Factory_BPE
 
 tokeniser = Factory_BPE(files=BPE32ki_SlimPajama3M()).buildTokeniser()
 ```
-Note that the preprocessor comes with the artifacts, so the factory doesn't require that you specify it.
+Note again that the preprocessor comes with the artifacts, so the factory doesn't require that you specify it.
 
 ### Training and instantiating ULM (a.k.a. KudoPiece)
 Let's now say you want to train and load an English ULM tokeniser. You are, of course, scared of the `sentencepiece` library
@@ -306,18 +360,33 @@ First of all, note again that TkTkT has backwards compatibility with HuggingFace
 There are wrapper classes for tokenisers under `tktkt.models.huggingface` and for normalisers/pretokenisers under
 `tktkt.preparation.huggingface`.
 
+Note also that the `tokenizers` package actually lacks most of the logic which the HuggingFace ecosystem uses for tokenisation.
+Both the main tokenisation interface (`PretrainedTokenizer`/`PretrainedFastTokenizer`) as well as deserialisation (`AutoTokenizer`) 
+live in `transformers`, not `tokenizers`. So let's consider the union of both.
+
 Here's a non-exhaustive list of reasons:
-1. The HuggingFace `tokenizers` package has horrifically un(der)documented Python interfaces. Some classes even accept 
-  arguments that aren't in their signature. 
-2. The `tokenizers` package is implemented in Rust and hence there is no possibility of inspecting implementations in any Python IDE. And given that the implementations are buggy, this is a massive problem.
-3. The `transformers` package forces special tokens (`<|endoftext|>`, `[CLS]`, `[SEP]`, ...) to be treated as if they
+1. The `tokenizers` package offers very few core models (basically only BPE and KudoPiece, which [`sentencepiece`](github.com/google/sentencepiece) already offers
+   and actually keeps updated), yet there exist many more in the literature. The likelihood that someone who knows the 
+   literature comes along to implement all of them in Rust or C++ is rather low.
+2. The HuggingFace `tokenizers` package has horrifically un(der)documented Python interfaces.
+   - Some `tokenizers` classes even accept arguments that aren't in their signature. 
+   - Your IDE cannot know what type the result of `AutoTokenizer` is, and thus you can never have autocompletion on it.
+3. The `tokenizers` package is implemented in Rust. This has at least two big issues with it:
+   - There is no possibility of inspecting implementations in any Python IDE. 
+   - Some of the responsibilities of existing Python code in `transformers` for tokenisation are unfortunately delegated to the Rust
+     codebase when it is used, and thus re-implemented in `tokenizers`. This means HuggingFace should maintain parallel
+     implementations, but of course, Python and Rust engineers are different people, and thus the codebases have
+     become desynchronised. So, some constructor arguments do work for some tokenisers whilst doing nothing for others.
+   - One example of a bug: the `tokenizers` package's RoBERTa BPE implementation [removes the highest-priority merge from the tokeniser](https://github.com/huggingface/transformers/blob/9b5a6450d481b0f02834684ffd8b3ba4cbbd6fe0/src/transformers/models/roberta/tokenization_roberta.py#L194)
+     unless the merge file is preceded by a `#version` tag? This doesn't conform to [the BPE standard](https://github.com/rsennrich/subword-nmt/), and almost cost me a paper.
+4. The `transformers` package forces special tokens (`<|endoftext|>`, `[CLS]`, `[SEP]`, ...) to be treated as if they
    are user input. That's a security vulnerability.
    - Special tokens should _never_ be treated like text. They should be seen as IDs without a name. They are purely for
      adding extra embedding vectors to the input of a downstream language model.
    - Yet, in the `PreTrainedTokenizerBase` class, specials must be declared using _only a string_ with _no identifier_,
      and the point at which these strings receive their identifier is when they are run through the _exact same_ method
      that converts the tokens from user input to identifiers.
-4. The `tokenizers` interface does not allow separating preprocessing from the actual tokenisation algorithm.
+5. The `tokenizers` interface does not allow separating preprocessing from the actual tokenisation algorithm.
    - The `PreTrainedTokenizerBase` class, from which the "slow" (Pythonic) `PreTrainedTokenizer` and "fast" (Rustic) 
       `PreTrainedTokenizerFast` classes both inherit, only declares an end-to-end `.tokenize()` method (equivalent to TkTkT's
       `.prepareAndTokenise()`). The interface for these subclasses is different enough that both lack features of the other: 
@@ -336,10 +405,15 @@ Here's a non-exhaustive list of reasons:
    - Also, the `PreTrainedTokenizerBase` interface is not defined with `@abstractmethod` but with an ever-increasing 
       amount of `raise NotImplementedError` methods. In other words: it's hard to know which methods need to be implemented
       and there's no enforcement mechanism to ensure everything has been implemented.
-5. The `tokenizers.pre_tokenizers` submodule has technical debt that can't be patched. Some examples:
-      - The mapping from Unicode codepoints to UTF-8 bytes, as first used in GPT-2, is only implemented in the `ByteLevel` 
-        pretokeniser. Yet, it is concerned with more than this, since it splits on spaces and punctuation (optionally prefixed 
-        by a space) before applying the mapping. This is wrong for at least three reasons: 
+6. Some preprocessors are literally pickled (i.e. the Python object in memory is converted to bytes), encoded in base64, and
+   saved to `tokenizer.json`. The result is a completely opaque black-box preprocessor (which `tokenizers` just calls "`Precompiled`").
+   - You have no access to its internals in Python, it has no interface, and without the original training script and
+     the exact versions of all the packages involved, you will never find a description of what it does. This is probably 
+     a holdover from adapting the `sentencepiece` package to HuggingFace, but it doesn't have to be that way. TkTkT has transparent preprocessors.
+7. The `tokenizers.pre_tokenizers` submodule has weird technical debt.
+      - The one way to apply GPT-2's mapping from Unicode codepoints to UTF-8 bytes is to use the `ByteLevel` 
+        pretokeniser. What does it do? Much more than just the GPT-2 mapping: it first splits the text in front of each 
+        spaces and punctuation mark (optionally prefixed by a space). This is wrong for at least three reasons: 
         - Users of the byte mapping don't necessary want the string to be split;
         - It synonymises prefixed spaces (converted to `Ġ`) with start-of-word boundaries 
           whilst actually all words (even those directly preceded by punctuation) should be marked with such a boundary; 
@@ -349,26 +423,16 @@ Here's a non-exhaustive list of reasons:
         BPE paper used word boundaries at the *end* of words (`</w>`). Only supporting the start-of-word convention is bad 
         because this deteriorates downstream performance for e.g. Germanic languages, where a compound has its head at the
         end and hence it should be allowed to tokenise the head with the exact same tokens as it would be if it was isolated.
-      - There is literally a normaliser class called `Precompiled` which is just one big object stored in base64 in the tokeniser config JSON. No access
-        to it in Python, no interface, no description of what it does. A black box. Probably a holdover from adapting the
-        `sentencepiece` package to HuggingFace, yet TkTkT doesn't do it that way.
-6. Did you know that their RoBERTa BPE implementation [removes the highest-priority merge from the tokeniser](https://github.com/huggingface/transformers/blob/9b5a6450d481b0f02834684ffd8b3ba4cbbd6fe0/src/transformers/models/roberta/tokenization_roberta.py#L194)
-    unless the merge file is preceded by a `#version` tag? This doesn't conform to [the BPE standard](https://github.com/rsennrich/subword-nmt/), and almost cost me a paper.
-7. In the little documentation that does exist (e.g. for WordPiece and KudoPiece), there are so many 
+8. In the little documentation that does exist (e.g. for WordPiece and KudoPiece), there are so many 
     theoretical inaccuracies that we shouldn't even have confidence in anything that isn't a BPE tokeniser implemented by them. 
     Their [explanation for KudoPiece](https://huggingface.co/learn/nlp-course/chapter6/7), an algorithm which itself was 
     already poorly explained originally, is mathematically absurd.
-8. They offer very few core models (basically only BPE and KudoPiece, which [`sentencepiece`](github.com/google/sentencepiece) already offers
-    and keeps much more updated)
-    whilst there exist many more in the literature, and the likelihood that someone who knows the literature comes along to
-    implement all of them in C++ is rather low.
 
 There is also the [pyonmttok](https://github.com/OpenNMT/Tokenizer) package which has better design than `tokenizers`, but also sticks to
 BPE and KudoPiece.
 
 ## Pronunciation
-The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast, like a beatboxer mimicking hi-hats
-(kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this.
+The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast (kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this.
 
 If you are Brazilian, you may pronounce it "tuca tuca" while playing [the official TkTkT theme song](https://open.spotify.com/track/2aX7w5bdbES8A9H5FDydSA)
-(yes, the demented state of modern-day tokeniser implementations will leave you with an equally demented taste in music).
+(yes, the demented state of modern-day tokeniser implementations will leave you with an equally demented taste in music; but [I dance salsa](https://bauwenst.github.io/categories/tutorials/dancing/) on the weekends).

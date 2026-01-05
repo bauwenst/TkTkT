@@ -10,14 +10,14 @@ other metrics, and so on.
 It's kind of a pub/sub or callback or recursive map() system.
 Observables communicate with Observers through method calls. Observers communicate with Observables using exceptions.
 """
-from typing import List, TypeVar, Generic, Iterator, Any, Callable, Tuple, Union
+from typing import List, TypeVar, Generic, Any, Callable, Tuple, Union
 
 from ..interfaces import Preprocessor
 from ..interfaces.tokenisers import Tokeniser
-from ..interfaces.observers import Observer, ObservableObserver, ImmediatelyObservableObserver, Observable, ObservableMeta, ObserverEarlyExit, FinallyObservableObserver, ObservableRoot, Received, Sent
+from ..interfaces.observables import Observer, ObservableObserver, ImmediatelyObservableObserver, ObservableMeta, ObserverEarlyExit, ObservableRoot, Received, Sent
 from ..util.dicts import optionalDataclassToDict
 from ..util.iterables import dunion
-from ..util.types import NamedIterable, Tokens, HoldoutState
+from ..util.types import NamedIterable, Tokens, HoldoutState, generated
 
 
 class FutureObserver(Observer[Received]):
@@ -179,11 +179,27 @@ class ObservableIterable(ObservableRoot[Sent]):
                 yield sample, 1
 
 
+class ObservableWordCopies(ObservableIterable[str]):
+    def __init__(self, experiment_id: str, word: str, n: int, observers: List[Observer[Sent]]=None):
+        super().__init__(experiment_id=experiment_id, iterable=NamedIterable(generated(lambda: (word for _ in range(n))), name=f"{word}_{n}"), observers=observers)
+
+
+class ObservableIdentity(ImmediatelyObservableObserver[Sent,Sent]):
+    def _transit(self, sample: Received, weight: float) -> Sent:
+        return sample
+
+    def _nodeIdentifier(self) -> str:
+        return ""
+
+
 class ObservablePreprocessor(ObservableObserver[str,str]):
 
     def __init__(self, preprocessor: Preprocessor, observers: List[Observer[str]]):
         super().__init__(observers=observers)
         self.preprocessor = preprocessor
+
+    def _nodeIdentifier(self) -> str:
+        return str(hash(repr(self.preprocessor)))
 
     def _receive(self, sample: str, weight: float):
         for pretoken in self.preprocessor.do(sample):
@@ -196,15 +212,22 @@ class ObservableTokeniser(ImmediatelyObservableObserver[str,Tokens]):
         super().__init__(observers=observers)
         self.tokeniser = tokeniser
 
+    def _nodeIdentifier(self) -> str:
+        return self.tokeniser.getName()
+
     def _transit(self, sample: str, _) -> Tokens:
         return self.tokeniser.prepareAndTokenise(sample)
 
 
 class ObservableFunction(ImmediatelyObservableObserver[Received,Sent]):
 
-    def __init__(self, f: Callable[[Received,float],Sent], observers: List[Observer[Sent]]):
+    def __init__(self, f: Callable[[Received,float],Sent], name: str, observers: List[Observer[Sent]]):
         super().__init__(observers=observers)
         self._function = f
+        self._name = name
+
+    def _nodeIdentifier(self) -> str:
+        return self._name
 
     def _transit(self, sample: Received, weight: float) -> Sent:
         return self._function(sample, weight)
@@ -212,9 +235,13 @@ class ObservableFunction(ImmediatelyObservableObserver[Received,Sent]):
 
 class ObservableFilter(ObservableObserver[Received,Received]):
 
-    def __init__(self, predicate: Callable[[Received],bool], observers: List[Observer[Received]]):
+    def __init__(self, predicate: Callable[[Received],bool], name: str, observers: List[Observer[Received]]):
         super().__init__(observers=observers)
         self._predicate = predicate
+        self._name = name
+
+    def _nodeIdentifier(self) -> str:
+        return self._name
 
     def _receive(self, sample: Received, weight: float):
         if self._predicate(sample):
@@ -224,7 +251,7 @@ class ObservableFilter(ObservableObserver[Received,Received]):
 class HoldoutObserver(ObservableFilter[Received]):
 
     def __init__(self, holdout: HoldoutState, test_split: bool, observers: List[Observer[Received]]):
-        super().__init__(observers=observers, predicate=lambda sample: holdout.decide() != test_split)
+        super().__init__(observers=observers, predicate=lambda sample: holdout.decide() != test_split, name=f"holdout(p={holdout._p}, {'test' if test_split else 'train'})")
         self._holdout = holdout
 
     def _initialiseAsObserver(self, identifier: str):
@@ -239,10 +266,13 @@ class SplitObserver(Observer[Tuple[Received,_Received2]], ObservableMeta[Tuple[R
     """
 
     def __init__(self, observers1: List[Observer[Received]], observers2: List[Observer[_Received2]]):
-        self._observable1 = Observable(observers1)  # We use an observable (i.e. something without a ._receive() method) because we merely need to distribute across the observers, without extra behaviour. Basically equivalent to ImmediatelyObservableObserver with ._transit() being the identity function.
-        self._observable2 = Observable(observers2)
+        self._observable1 = ObservableIdentity(observers1)
+        self._observable2 = ObservableIdentity(observers2)
 
     # Observable methods (i.e. methods as something that has observers)
+
+    def _nodeIdentifier(self) -> str:
+        return ""
 
     def _logicalAndExceptions(self, call_observers1: Callable[[],None], call_observers2: Callable[[],None]):
         """
@@ -260,21 +290,21 @@ class SplitObserver(Observer[Tuple[Received,_Received2]], ObservableMeta[Tuple[R
 
     def _initialiseObservers(self, global_run_identifier: str):
         self._logicalAndExceptions(
-            lambda: self._observable1._initialiseObservers(global_run_identifier),
-            lambda: self._observable2._initialiseObservers(global_run_identifier)
+            lambda: self._observable1._initialise(global_run_identifier),
+            lambda: self._observable2._initialise(global_run_identifier)
         )
 
     def _send(self, sample: Tuple[Received,_Received2], weight: float):
         left, right = sample
         self._logicalAndExceptions(
-            lambda: self._observable1._send(left,  weight),  # ._receive() loop across the observers.
-            lambda: self._observable2._send(right, weight)
+            lambda: self._observable1._receive(left,  weight),  # -> ._send() on the observable -> ._receive() on all the observers.
+            lambda: self._observable2._receive(right, weight)
         )
 
     def _finishObservers(self):
         self._logicalAndExceptions(
-            lambda: self._observable1._finishObservers(),
-            lambda: self._observable2._finishObservers()
+            lambda: self._observable1._finish(),
+            lambda: self._observable2._finish()
         )
 
     def anyObserversAlive(self) -> bool:
@@ -333,6 +363,9 @@ class WirelessSplittingObserver(ObservableObserver[Tuple[Received,_Received2],Re
         self._n_receivers = 0
         connection._connectSender(self)
 
+    def _nodeIdentifier(self) -> str:
+        return ""
+
     def _registerReceiver(self):
         self._n_receivers += 1
 
@@ -362,6 +395,9 @@ class WirelessRecombiningObserver(ObservableObserver[Received,Tuple[Received, _R
 
         self._server = None
         connection._connectReceiver(self)
+
+    def _nodeIdentifier(self) -> str:
+        return ""
 
     def _receive(self, sample: Received, weight: float):
         self._send( (sample, self._server._request(self._index)), weight)
