@@ -8,7 +8,7 @@ TODO: In the original code, they don't sort by frequency, but by BPE priority, d
 
 TODO: I've added a FIXME in the code that shows a line that definitely can't be right.
 """
-from typing import List, Tuple, Optional
+from typing import Optional
 
 import numpy as np
 from tqdm import tqdm
@@ -96,7 +96,7 @@ def countMergeApplications(source_corpus: Path, target_corpus: Optional[Path], b
 ##########################################################################################################
 
 
-FixedOrderCounts = List[Tuple[str,int]]
+FixedOrderCounts = list[tuple[str,int]]
 
 def buildDistanceMatrix(chars_with_counts: FixedOrderCounts, merges_with_counts: FixedOrderCounts) -> np.ndarray:
     """
@@ -133,7 +133,7 @@ def getCharacterDistribution(strings_with_counts: FixedOrderCounts, denominator:
 
 
 def pruneMerges(candidate_merges: Counter[str], chars: Counter[str],
-                p_matrix: np.ndarray, threshold: float=0.0001) -> List[str]:
+                p_matrix: np.ndarray, threshold: float=0.0001) -> list[str]:
     """
     Conserve merges based on the optimal-transport matrix P.
 

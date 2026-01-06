@@ -6,7 +6,7 @@ Most of the class names use a prefix to indicate what they do:
     - "Isolate" means you look for strings to separate from their left and right context, but keep intact.
     - "Group" means you isolate despite your neighbouring context looking similar.
 """
-from typing import List, Optional, Union
+from typing import Optional, Union
 from enum import Enum
 import numpy as np
 
@@ -17,7 +17,7 @@ import re
 import regex  # Has \p{} classes
 
 from .boundaries import BoundaryMarker, BoundaryMarkerLocation
-from ..interfaces.preprocessors import Pretokeniser, InvertibleTextMapper, _PreprocessorComponentSequence
+from ..interfaces.preprocessors import Pretokeniser, InvertibleTextMapper, _PreprocessorComponentSequence, Pretokens
 from ..interfaces.tokenisers import Tokeniser
 from ..util.iterables import intercalate
 from ..util.strings import maskToTokens
@@ -25,10 +25,10 @@ from ..util.strings import maskToTokens
 
 class PretokeniserSequence(Pretokeniser, _PreprocessorComponentSequence):
 
-    def __init__(self, sub_pretokenisers: List[Pretokeniser]):
+    def __init__(self, sub_pretokenisers: list[Pretokeniser]):
         self.sequence = sub_pretokenisers
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         current_pretokens = [text]
         for pretokeniser in self.sequence:
             generated_pretokens = []
@@ -39,7 +39,7 @@ class PretokeniserSequence(Pretokeniser, _PreprocessorComponentSequence):
 
         return current_pretokens
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         for pretokeniser in reversed(self.sequence):
             pretokens = pretokeniser.invertTokens(pretokens)
         return pretokens
@@ -59,12 +59,12 @@ class PretokeniserSequence_Diagnostic(PretokeniserSequence):
     on the critical path of all preprocessors (either an empty method call or a conditional statement).
     """
 
-    def __init__(self, sub_pretokenisers: List[Pretokeniser]):
+    def __init__(self, sub_pretokenisers: list[Pretokeniser]):
         super().__init__(sub_pretokenisers)
         max_name_length =          max(map(len, (p._diagnosticName()  for p in sub_pretokenisers)))
         self._indents   = [max_name_length - len(p._diagnosticName()) for p in sub_pretokenisers]
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         current_pretokens = [text]
         print(current_pretokens)
         for pretokeniser, indent in zip(self.sequence, self._indents):
@@ -77,7 +77,7 @@ class PretokeniserSequence_Diagnostic(PretokeniserSequence):
 
         return current_pretokens
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         print(pretokens)
         for pretokeniser, indent in zip(reversed(self.sequence), reversed(self._indents)):
             pretokens = pretokeniser.invertTokens(pretokens)
@@ -87,10 +87,10 @@ class PretokeniserSequence_Diagnostic(PretokeniserSequence):
 
 class IdentityPretokeniser(Pretokeniser):
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return [text]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return pretokens
 
 
@@ -100,7 +100,7 @@ class TokeniserAsPretokeniser(Pretokeniser):
         self._tokeniser = tokeniser
         self._do_preprocess = do_preprocess
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         if self._do_preprocess:
             return self._tokeniser.prepareAndTokenise(text)
         else:
@@ -183,10 +183,10 @@ class IsolatePunctuation(Pretokeniser):
 
         return punctuation
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return [w for w, _ in self.core.pre_tokenize_str(text)]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Probably needs some kind of intelligent English punctuation rule.
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:  # TODO: Probably needs some kind of intelligent English punctuation rule.
         return pretokens
 
 
@@ -205,7 +205,7 @@ class GroupDistinctPunctuation(Pretokeniser):
         self.punctuation = IsolatePunctuation.buildPunctuationString(HyphenMode.INCLUDED)
         self.punctuation_group = re.compile(" ?[" + self.punctuation.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]").replace("-", "\\-") + "]+ ?")
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         if not self.punctuation_group.match(text):
             return [text]
         else:
@@ -219,7 +219,7 @@ class GroupDistinctPunctuation(Pretokeniser):
 
             return pretokens
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return pretokens
 
 
@@ -245,7 +245,7 @@ class OnWhitespaceAndAddMarker(Pretokeniser):
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return self.marker
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         if not text.strip():
             return [] if not(self.marker.location == BoundaryMarkerLocation.ISOLATED and text) else [self.marker.substitute]
 
@@ -275,7 +275,7 @@ class OnWhitespaceAndAddMarker(Pretokeniser):
     def invertToken(self, pretoken: str) -> str:
         return pretoken.replace(self.marker.substitute, " ")  # TODO: Technically should not do replacements in the middle.
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return [self.invertToken(p) for p in pretokens]
 
 
@@ -296,10 +296,10 @@ class OnRegex(Pretokeniser):
             separator_pattern = regex.compile("(" + separator_pattern.pattern + ")")
         self.pattern = separator_pattern
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return [t for t in self.pattern.split(text) if t]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # Should be overridden if possible.
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:  # Should be overridden if possible.
         return pretokens
 
 
@@ -310,10 +310,10 @@ class IntoRegexGroups(Pretokeniser):
     def __init__(self, pretoken_pattern: Union[re.Pattern,regex.Pattern]):
         self.pattern = pretoken_pattern
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return self.pattern.findall(text)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # Actually not invertible.
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:  # Actually not invertible.
         return pretokens
 
 
@@ -332,7 +332,7 @@ class OnWhitespace(OnRegex):
         self._keep_spaces = not destructive
         super().__init__(separator_pattern=re.compile(r"[\s​]+"), destructive=destructive)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: This is actually very wrong. If you start out with > 1 pretoken, and only one of them (or neither) is split on a space, then inverting by putting a space between EVERY pretoken is clearly wrong.
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:  # TODO: This is actually very wrong. If you start out with > 1 pretoken, and only one of them (or neither) is split on a space, then inverting by putting a space between EVERY pretoken is clearly wrong.
         if self._keep_spaces:
             return pretokens
         else:
@@ -357,7 +357,7 @@ class IntoWhitespacePrefixed(IntoRegexGroups):
         self._before_not_after = prefix_not_suffix
         super().__init__(pretoken_pattern=pattern)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         buffer = []
         new_pretokens = []
         if self._before_not_after:
@@ -392,10 +392,10 @@ class IntoSentences(Pretokeniser):
         if cuda:
             self._backend.half().to("cuda")
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return self._backend.split(text)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return ["".join(pretokens)]  # We're assuming this is basically the first thing being run. Note that spaces are included in SaT.
 
 
@@ -425,7 +425,7 @@ class IsolateDigits(OnRegex):
     def __init__(self):
         super().__init__(separator_pattern=regex.compile(r"\p{N}"), destructive=False)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Should actually look for adjacent digits and merge them. Careful merging sequences like "2024 10 02" to "20241002" though.
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:  # TODO: Should actually look for adjacent digits and merge them. Careful merging sequences like "2024 10 02" to "20241002" though.
         return pretokens
 
 
@@ -442,7 +442,7 @@ class GroupDigits(Pretokeniser):
         self.pattern_to_get_runs_of_numbers = regex.compile(r"(\d+)")
         self.pattern_to_split_numbers       = regex.compile(r"(\d{" + str(n) + r"})(?=\d)")
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         pretokens = []
 
         is_digit = True
@@ -455,7 +455,7 @@ class GroupDigits(Pretokeniser):
 
         return pretokens
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # TODO: Again, you could do some work to concatenate digits.
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:  # TODO: Again, you could do some work to concatenate digits.
         return pretokens
 
 
@@ -468,7 +468,7 @@ class IsolateConnectingHyphens(OnRegex):
         pattern = re.compile(r"((?<!-)(?<=\S)-+(?=\S)(?!-))")  # Maximally large spans of hyphens, but only take those that do have a character on both sides that is non-space, but not those cases where those characters are just hyphens.
         super().__init__(pattern, destructive=False)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         new_pretokens = []
         buffer = []
         active_hyphen = False
@@ -505,7 +505,7 @@ class PolariseApostrophes(Pretokeniser):
     def __init__(self, tiebreak_left: bool):
         self._left = tiebreak_left
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         pretokens = text.split("'")
         lengths = [len(pretoken) for pretoken in pretokens]
         for i in range(len(lengths)-1):
@@ -516,7 +516,7 @@ class PolariseApostrophes(Pretokeniser):
 
         return [pretoken for pretoken in pretokens if pretoken]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:  # You can't really know whether an apostrophe was already split off before this, and thus whether it should stay split off after.
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:  # You can't really know whether an apostrophe was already split off before this, and thus whether it should stay split off after.
         return pretokens
 
 
@@ -542,11 +542,11 @@ class IntoJapaneseWords(Pretokeniser):
         import ipadic  # IPAdic as dictionary makes MeCab behave like a word tokeniser. UniDic would make it behave like a morphological analyser.
         self.backend = MecabWrapper(ipadic.MECAB_ARGS + ' -Owakati')
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         nodes = self.backend.parseToNodeList(text)  # Produces a list of elements which have type  from fugashi import Node
         return [node.surface for node in nodes]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return pretokens
 
 
@@ -556,10 +556,10 @@ class IntoThaiWords(Pretokeniser):
         from pythainlp.tokenize import Tokenizer as ThaiWordTokenizer
         self.backend = ThaiWordTokenizer(engine="newmm", keep_whitespace=False, join_broken_num=True)
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return self.backend.word_tokenize(text)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return pretokens
 
 
@@ -583,7 +583,7 @@ class AddWordBoundary(Pretokeniser):
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return self.marker
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         if self.marker.location == BoundaryMarkerLocation.ISOLATED:
             return [self.marker.substitute, text]
         elif self.marker.location == BoundaryMarkerLocation.START:
@@ -596,7 +596,7 @@ class AddWordBoundary(Pretokeniser):
     def invertToken(self, pretoken: str) -> str:
         return self.marker.isolate(pretoken)[0]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         """
         Because we know that this pretokeniser adds exactly one word boundary, a sequence with multiple pretokens
         can be treated according to the rule that if a pretoken doesn't end with a boundary and the next pretoken
@@ -649,7 +649,7 @@ class AddCapitalMarker(Pretokeniser):
     def _modifyAlphabet(self, known: list[str]) -> list[str]:
         return known + ["⇧", "⇪"]
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         root, mark = self.marker.isolate(text)
         if not root:
             return [mark] if mark else []
@@ -660,7 +660,7 @@ class AddCapitalMarker(Pretokeniser):
         else:
             return [text]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         shift     = False
         caps_lock = False
         recased_pretokens = []
@@ -697,11 +697,11 @@ class OnBoundaryClassifier(Pretokeniser):
         self._classifier = classifier
         self._threshold = threshold
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         mask = np.exp(self._classifier.getPointLogProbabilities(text)) >= self._threshold
         return maskToTokens(text, mask[:-1])
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return pretokens
 
 
@@ -717,13 +717,13 @@ class MapperAsPretokeniser(Pretokeniser, _PreprocessorComponentSequence):
     def __iter__(self):
         yield from iter(self.core)
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return [self.core.convert(text)]
 
     def invertToken(self, pretoken: str) -> str:
         return self.core.invert(pretoken)
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return [self.invertToken(p) for p in pretokens]
 
     def _diagnosticName(self):
@@ -735,10 +735,10 @@ class InsertReverse(Pretokeniser):
     Given tokens [a, b, c], inserts their reverses as [a, rev(a), b, rev(b), c, rev(c)].
     """
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return [text, text[::-1]]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         last_pretoken = ""
         preserved = []
         for pretoken in pretokens:

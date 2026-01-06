@@ -1,4 +1,4 @@
-from typing import List, Iterable, Tuple
+from typing import Iterable
 
 import numpy.random as npr
 import itertools
@@ -33,9 +33,9 @@ class RandomVocabSegmentation_GenerateAll(TokeniserWithVocabulary[WithSpecials])
         return indicesToTokens(pretoken, next(drop(self.rng.integers(total_segmentations), segmentation_generator)))
 
 
-SegmentationIndices = List[int]
+SegmentationIndices = list[int]
 
-def generateSegmentationIndices_exponentialSpace(text: str, vocab: SubwordCollection) -> List[SegmentationIndices]:
+def generateSegmentationIndices_exponentialSpace(text: str, vocab: SubwordCollection) -> list[SegmentationIndices]:
     """
     We have a function countValidSegmentations() that gives the AMOUNT of possible segmentations, but not
     what they are. A very similar Viterbi algorithm works here, except the history you store is not an integer but
@@ -49,7 +49,7 @@ def generateSegmentationIndices_exponentialSpace(text: str, vocab: SubwordCollec
     if len(text) > 27:
         raise RuntimeWarning(f"You better not generate all segmentations of the string '{text}' (length {len(text)}): that's up to {intsep(2**(len(text)-1))} lists!")
 
-    unique_segmentations_up_to: List[List[List[int]]] = [[] for _ in range(len(text)+1)]  # Each element is a list of paths to get from "" to text[:index] (exclusive indexing).
+    unique_segmentations_up_to: list[list[list[int]]] = [[] for _ in range(len(text)+1)]  # Each element is a list of paths to get from "" to text[:index] (exclusive indexing).
     unique_segmentations_up_to[0].append([])
     for from_this_char in range(len(text)):  # The last index you can start from is the last character, len(pretoken)-1.
         for to_this_char in range(from_this_char+1, len(text)+1):  # The last index is len(pretoken), the exclusive upper bound for the entire string.
@@ -92,7 +92,7 @@ def generateSegmentationIndices_fixedSpace(text: str, vocab: SubwordCollection, 
     # Part 1: Quadratic
     text = original_text[:max_prefix_length]
 
-    unique_segmentations_up_to: List[List[List[int]]] = [[] for _ in range(len(text)+1)]  # Each element is a list of paths to get from "" to text[:index] (exclusive indexing).
+    unique_segmentations_up_to: list[list[list[int]]] = [[] for _ in range(len(text)+1)]  # Each element is a list of paths to get from "" to text[:index] (exclusive indexing).
     unique_segmentations_up_to[0].append([])
     for from_this_char in range(len(text)):  # The last index you can start from is the last character, len(pretoken)-1.
         for to_this_char in range(from_this_char+1, len(text)+1):  # The last index is len(pretoken), the exclusive upper bound for the entire string.

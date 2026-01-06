@@ -1,7 +1,6 @@
 """
 HuggingFace-compliant character-N-gram and byte-N-gram tokenisers.
 """
-from typing import List
 import re
 
 from .base import NgramTokeniser, NgramByteBasedMode
@@ -53,7 +52,7 @@ class NgramTokeniser_Hf(HuggingFaceTokeniserInterface):
             return 1 + sum(len(self.alphabet[0]) ** (4*i) for i in range(1, self.N+1)) \
                      + sum(len(self.alphabet[1]) ** (4*i) for i in range(1, self.N+1))
 
-    def convert_tokens_to_string(self, tokens: List[str]) -> str:
+    def convert_tokens_to_string(self, tokens: list[str]) -> str:
         return re.sub(r"(?<! ) ", "", self.backend.preprocessor.undo(tokens))
 
 

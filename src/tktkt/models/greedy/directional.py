@@ -8,8 +8,6 @@ I add a right-to-left version and lazy variants of both (explained below). Also 
 
 Implementations adapted from my master's thesis (Bauwens, 2023). https://bauwenst.github.io/cdn/doc/pdf/2023/masterthesis.pdf
 """
-from typing import List
-
 from math import inf
 
 from ...interfaces.tokenisers import *
@@ -27,7 +25,7 @@ class L2R_Greedy(TokeniserWithVocabulary[WithSpecials]):
     even if that means you pass the first match to go look for longer matches while meanwhile passing over strings that don't match.
     """
 
-    def tokenise(self, word: str) -> List[str]:
+    def tokenise(self, word: str) -> Tokens:
         tokens = []
         token_length = len(word)
         while word:
@@ -58,7 +56,7 @@ class L2R_Lazy(TokeniserWithVocabulary[WithSpecials]):
     exist inside bigger types.)
     """
 
-    def tokenise(self, word: str) -> List[str]:
+    def tokenise(self, word: str) -> Tokens:
         tokens = []
 
         token_start  = 0
@@ -80,7 +78,7 @@ class L2R_Lazy(TokeniserWithVocabulary[WithSpecials]):
 
 class R2L_Greedy(TokeniserWithVocabulary[WithSpecials]):
 
-    def tokenise(self, word: str) -> List[str]:
+    def tokenise(self, word: str) -> Tokens:
         tokens = []
         token_length = len(word)
         while word:
@@ -99,7 +97,7 @@ class R2L_Greedy(TokeniserWithVocabulary[WithSpecials]):
 
 class R2L_Lazy(TokeniserWithVocabulary[WithSpecials]):
 
-    def tokenise(self, word: str) -> List[str]:
+    def tokenise(self, word: str) -> Tokens:
         tokens = []
 
         token_end    = len(word)  # exclusive
@@ -233,7 +231,7 @@ class Xu(TokeniserWithVocabulary[WithSpecials]):
     Quite similar to left-to-right smallest-first.
     """
 
-    def tokenise(self, word: str) -> List[str]:
+    def tokenise(self, word: str) -> Tokens:
         tokens = list(word)
         changed = True
         while changed:

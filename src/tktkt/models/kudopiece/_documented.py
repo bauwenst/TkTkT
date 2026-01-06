@@ -2,7 +2,6 @@
 For documentation purposes only, the Python equivalent of
 https://github.com/google/sentencepiece/blob/master/src/model_interface.cc#L153
 """
-from typing import List
 from dataclasses import dataclass
 
 @dataclass
@@ -11,7 +10,7 @@ class View:
     span_length: int
 
 
-def splitIntoWords(text: str, whitespace_suffix_not_prefix: bool, allow_whitespace_pieces: bool) -> List[View]:
+def splitIntoWords(text: str, whitespace_suffix_not_prefix: bool, allow_whitespace_pieces: bool) -> list[View]:
     # Pointers to the start and end of the input
     begin = 0
     end   = begin + len(text)
@@ -63,7 +62,7 @@ def splitIntoWords(text: str, whitespace_suffix_not_prefix: bool, allow_whitespa
     return result
 
 
-def tokeniseFromViews(text: str, views: List[View]) -> List[str]:
+def tokeniseFromViews(text: str, views: list[View]) -> list[str]:
     return [text[view.span_start:view.span_start+view.span_length] for view in views]
 
 

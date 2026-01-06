@@ -1,6 +1,6 @@
 import shutil
 from abc import abstractmethod
-from typing import Iterator, Tuple, Iterable, Self
+from typing import Iterator, Iterable, Self
 from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
@@ -114,7 +114,7 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
     def _cacheType(self):
         return CacheableWordFrequencyList
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableWordFrequencyList:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableWordFrequencyList:
         raise NotImplementedError
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableWordFrequencyList:

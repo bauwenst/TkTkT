@@ -2,7 +2,7 @@
 Evaluations that involve comparing the outputs of two tokenisers per input before aggregating, rather than
 aggergating the outputs and then comparing per dataset (which is all other evaluations).
 """
-from typing import Tuple, Iterable, List, TypeVar, Generic
+from typing import Iterable, TypeVar, Generic
 from collections import Counter
 from abc import ABC, abstractmethod
 
@@ -50,7 +50,7 @@ class ComparisonMetric(ABC, Generic[R]):
         return self._compute()
 
 
-class ExactMatches(ComparisonMetric[Tuple[float,int,int]]):
+class ExactMatches(ComparisonMetric[tuple[float,int,int]]):
     """
     Count how many out of a given amount of texts is tokenised into exactly the same tokens by the two tokenisers.
     """
@@ -67,7 +67,7 @@ class ExactMatches(ComparisonMetric[Tuple[float,int,int]]):
         return self._n_matches / self._n_total if self._n_total else 1, self._n_matches, self._n_total
 
 
-class TokenJaccard(ComparisonMetric[Tuple[float, float]]):
+class TokenJaccard(ComparisonMetric[tuple[float, float]]):
     """
     Gives the micro-average and macro-average of Jaccard similarity of the token sequences produced by the given tokenisers.
     """
@@ -83,7 +83,7 @@ class TokenJaccard(ComparisonMetric[Tuple[float, float]]):
         return self._stats.compute()
 
 
-def jaccard(tokens1: Tokens, tokens2: Tokens) -> Tuple[float,int,int]:
+def jaccard(tokens1: Tokens, tokens2: Tokens) -> tuple[float,int,int]:
     """
     Generalised Jaccard similarity, which is based on multi-sets.
     https://en.wikipedia.org/wiki/Jaccard_index#Weighted_Jaccard_similarity_and_distance
@@ -111,7 +111,7 @@ def jaccard(tokens1: Tokens, tokens2: Tokens) -> Tuple[float,int,int]:
     return numerator/denominator if denominator else 1, numerator, denominator
 
 
-class MultiplicityRatio(ComparisonMetric[Tuple[float, float, float, float]]):
+class MultiplicityRatio(ComparisonMetric[tuple[float, float, float, float]]):
     """
     Rather than computing similarity of the tokens, computes similarity of the amount of tokens produced by the given
     tokenisers by computing their ratio. This ratio has also been called "parity" in literature.

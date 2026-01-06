@@ -26,7 +26,7 @@ class DelTrainer:
                         to any of the words in a given corpus are valid stems.
     """
 
-    def __init__(self, derivator_class: Type[Derivator], base_tokeniser: TokeniserWithVocabulary):
+    def __init__(self, derivator_class: type[Derivator], base_tokeniser: TokeniserWithVocabulary):
         self.model_class = derivator_class
         self.tokeniser = base_tokeniser
 

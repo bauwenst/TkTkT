@@ -10,11 +10,11 @@ other metrics, and so on.
 It's kind of a pub/sub or callback or recursive map() system.
 Observables communicate with Observers through method calls. Observers communicate with Observables using exceptions.
 """
-from typing import List, TypeVar, Generic, Any, Callable, Tuple, Union
+from typing import Union
 
 from ..interfaces import Preprocessor
 from ..interfaces.tokenisers import Tokeniser
-from ..interfaces.observables import Observer, ObservableObserver, ImmediatelyObservableObserver, ObservableMeta, ObserverEarlyExit, ObservableRoot, Received, Sent
+from ..interfaces.observables import *
 from ..util.dicts import optionalDataclassToDict
 from ..util.iterables import dunion
 from ..util.types import NamedIterable, Tokens, HoldoutState, generated
@@ -103,7 +103,7 @@ class DataclassObserver(Observer[Any]):
         self._completed_lists.append(self._current_list)
         self._current_list = []
 
-    def assemble(self) -> List[dict]:
+    def assemble(self) -> list[dict]:
         """For each collection that has been fenced, pool together all the dataclasses/dictionaries."""
         if self._is_proxy_for is not None:
             raise RuntimeError(f"Cannot assemble proxy. You can only assemble the original observer, {self._is_proxy_for}.")
@@ -163,7 +163,7 @@ class ObservableIterable(ObservableRoot[Sent]):
     Equivalently, a reverse iterable, which rather than client code iterating over it, iterates over client code.
     """
 
-    def __init__(self, experiment_id: str, iterable: Union[NamedIterable[Sent], NamedIterable[Tuple[Sent,float]]], already_contains_weights: bool=False, observers: List[Observer[Sent]]=None):
+    def __init__(self, experiment_id: str, iterable: Union[NamedIterable[Sent], NamedIterable[tuple[Sent,float]]], already_contains_weights: bool=False, observers: list[Observer[Sent]]=None):
         super().__init__(cache_disambiguator=experiment_id, observers=observers)
         self.iterable = iterable
         self._is_tuple_with_weight = already_contains_weights
@@ -180,7 +180,7 @@ class ObservableIterable(ObservableRoot[Sent]):
 
 
 class ObservableWordCopies(ObservableIterable[str]):
-    def __init__(self, experiment_id: str, word: str, n: int, observers: List[Observer[Sent]]=None):
+    def __init__(self, experiment_id: str, word: str, n: int, observers: list[Observer[Sent]]=None):
         super().__init__(experiment_id=experiment_id, iterable=NamedIterable(generated(lambda: (word for _ in range(n))), name=f"{word}_{n}"), observers=observers)
 
 
@@ -194,7 +194,7 @@ class ObservableIdentity(ImmediatelyObservableObserver[Sent,Sent]):
 
 class ObservablePreprocessor(ObservableObserver[str,str]):
 
-    def __init__(self, preprocessor: Preprocessor, observers: List[Observer[str]]):
+    def __init__(self, preprocessor: Preprocessor, observers: list[Observer[str]]):
         super().__init__(observers=observers)
         self.preprocessor = preprocessor
 
@@ -208,7 +208,7 @@ class ObservablePreprocessor(ObservableObserver[str,str]):
 
 class ObservableTokeniser(ImmediatelyObservableObserver[str,Tokens]):
 
-    def __init__(self, tokeniser: Tokeniser, observers: List[Observer[Tokens]]):
+    def __init__(self, tokeniser: Tokeniser, observers: list[Observer[Tokens]]):
         super().__init__(observers=observers)
         self.tokeniser = tokeniser
 
@@ -221,7 +221,7 @@ class ObservableTokeniser(ImmediatelyObservableObserver[str,Tokens]):
 
 class ObservableFunction(ImmediatelyObservableObserver[Received,Sent]):
 
-    def __init__(self, f: Callable[[Received,float],Sent], name: str, observers: List[Observer[Sent]]):
+    def __init__(self, f: Callable[[Received,float],Sent], name: str, observers: list[Observer[Sent]]):
         super().__init__(observers=observers)
         self._function = f
         self._name = name
@@ -235,7 +235,7 @@ class ObservableFunction(ImmediatelyObservableObserver[Received,Sent]):
 
 class ObservableFilter(ObservableObserver[Received,Received]):
 
-    def __init__(self, predicate: Callable[[Received],bool], name: str, observers: List[Observer[Received]]):
+    def __init__(self, predicate: Callable[[Received],bool], name: str, observers: list[Observer[Received]]):
         super().__init__(observers=observers)
         self._predicate = predicate
         self._name = name
@@ -250,7 +250,7 @@ class ObservableFilter(ObservableObserver[Received,Received]):
 
 class HoldoutObserver(ObservableFilter[Received]):
 
-    def __init__(self, holdout: HoldoutState, test_split: bool, observers: List[Observer[Received]]):
+    def __init__(self, holdout: HoldoutState, test_split: bool, observers: list[Observer[Received]]):
         super().__init__(observers=observers, predicate=lambda sample: holdout.decide() != test_split, name=f"holdout(p={holdout._p}, {'test' if test_split else 'train'})")
         self._holdout = holdout
 
@@ -259,13 +259,13 @@ class HoldoutObserver(ObservableFilter[Received]):
 
 
 _Received2 = TypeVar("_Received2")
-class SplitObserver(Observer[Tuple[Received,_Received2]], ObservableMeta[Tuple[Received,_Received2]]):
+class SplitObserver(Observer[tuple[Received,_Received2]], ObservableMeta[tuple[Received,_Received2]]):
     """
     Really, this is an ObservableObserver (it is an observer because it can be sent stuff, and it is an observable because
     it can send stuff), but we can't extend the traditional Observable interface because it expects only one list of observers.
     """
 
-    def __init__(self, observers1: List[Observer[Received]], observers2: List[Observer[_Received2]]):
+    def __init__(self, observers1: list[Observer[Received]], observers2: list[Observer[_Received2]]):
         self._observable1 = ObservableIdentity(observers1)
         self._observable2 = ObservableIdentity(observers2)
 
@@ -294,7 +294,7 @@ class SplitObserver(Observer[Tuple[Received,_Received2]], ObservableMeta[Tuple[R
             lambda: self._observable2._initialise(global_run_identifier)
         )
 
-    def _send(self, sample: Tuple[Received,_Received2], weight: float):
+    def _send(self, sample: tuple[Received,_Received2], weight: float):
         left, right = sample
         self._logicalAndExceptions(
             lambda: self._observable1._receive(left,  weight),  # -> ._send() on the observable -> ._receive() on all the observers.
@@ -318,7 +318,7 @@ class SplitObserver(Observer[Tuple[Received,_Received2]], ObservableMeta[Tuple[R
     def _initialise(self, global_run_identifier: str):
         self._initialiseObservers(global_run_identifier)
 
-    def _receive(self, sample: Tuple[Received,_Received2], weight: float):
+    def _receive(self, sample: tuple[Received,_Received2], weight: float):
         self._send(sample, weight)
 
     def _finish(self):
@@ -333,7 +333,7 @@ class WirelessObserverConnection(Generic[_Received2]):
 
     def __init__(self):
         self._sender: WirelessSplittingObserver[Any,_Received2] = None
-        self._pending_receivers: List[WirelessRecombiningObserver] = []
+        self._pending_receivers: list[WirelessRecombiningObserver] = []
 
     def _connectSender(self, splitter: "WirelessSplittingObserver[Any,_Received2]"):
         self._sender = splitter
@@ -349,15 +349,15 @@ class WirelessObserverConnection(Generic[_Received2]):
             self._sender._registerReceiver()
 
 
-class WirelessSplittingObserver(ObservableObserver[Tuple[Received,_Received2],Received]):
+class WirelessSplittingObserver(ObservableObserver[tuple[Received,_Received2],Received]):
     """
     Takes in tuple samples (e.g. text and frequency) and sends the first half to its observers, while the second
     half is stored in a buffer until all recombiners on the same connection as the splitter have requested it.
     """
-    def __init__(self, connection: WirelessObserverConnection[_Received2], observers: List[Observer[Received]]):
+    def __init__(self, connection: WirelessObserverConnection[_Received2], observers: list[Observer[Received]]):
         super().__init__(observers=observers)
-        self._buffer: List[_Received2]      = []
-        self._remaining_requests: List[int] = []
+        self._buffer: list[_Received2]      = []
+        self._remaining_requests: list[int] = []
         self._min_index   = 0
 
         self._n_receivers = 0
@@ -369,7 +369,7 @@ class WirelessSplittingObserver(ObservableObserver[Tuple[Received,_Received2],Re
     def _registerReceiver(self):
         self._n_receivers += 1
 
-    def _receive(self, sample: Tuple[Received,_Received2], weight: float):
+    def _receive(self, sample: tuple[Received,_Received2], weight: float):
         left, right = sample
         self._buffer.append(right)  # Important that this comes before the call to send, because that call will likely trigger all the requests to get the value back.
         self._remaining_requests.append(self._n_receivers)
@@ -387,9 +387,9 @@ class WirelessSplittingObserver(ObservableObserver[Tuple[Received,_Received2],Re
         return result
 
 
-class WirelessRecombiningObserver(ObservableObserver[Received,Tuple[Received, _Received2]]):
+class WirelessRecombiningObserver(ObservableObserver[Received,tuple[Received, _Received2]]):
 
-    def __init__(self, connection: WirelessObserverConnection[_Received2], observers: List[Observer[Tuple[Received, _Received2]]]):
+    def __init__(self, connection: WirelessObserverConnection[_Received2], observers: list[Observer[tuple[Received, _Received2]]]):
         super().__init__(observers=observers)
         self._index = 0
 

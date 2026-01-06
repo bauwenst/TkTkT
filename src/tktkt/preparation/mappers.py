@@ -1,5 +1,5 @@
 from __future__ import annotations  # To support TYPE_CHECKING
-from typing import List, Iterable, Dict, Union, Set, Optional, TYPE_CHECKING
+from typing import Iterable, Union, Optional, TYPE_CHECKING
 from collections import OrderedDict
 from abc import abstractmethod
 
@@ -15,7 +15,7 @@ from ..util.dicts import invertdict, insertKeyAlias
 
 class MapperSequence(TextMapper, _PreprocessorComponentSequence):
 
-    def __init__(self, submappers: List[TextMapper]):
+    def __init__(self, submappers: list[TextMapper]):
         self.sequence = submappers
 
     def convert(self, text: str) -> str:
@@ -192,7 +192,7 @@ class AsPhonemes(_UniversalAlphabet):
         self.model = TeetwoPiece.Text2PhonemeSequence(language="", pretrained_g2p_model='charsiu/g2p_multilingual_byT5_small_100', is_cuda=True)
         self._initialiseLanguageDictionary(language=dictionary_language)
 
-    def _universalAlphabet(self) -> Set[str]:  # FIXME: I actually have no clue where to even find the IPA. Best I can find is https://github.com/rhasspy/gruut-ipa which has _VOWELS and _CONSONANTS, but I don't know if that's enough.
+    def _universalAlphabet(self) -> set[str]:  # FIXME: I actually have no clue where to even find the IPA. Best I can find is https://github.com/rhasspy/gruut-ipa which has _VOWELS and _CONSONANTS, but I don't know if that's enough.
         raise NotImplementedError
 
     def convert(self, text: str) -> str:
@@ -242,7 +242,7 @@ class PerturbWithNLPAug(TextMapper):
 
 class InvertibleMapperSequence(InvertibleTextMapper, _PreprocessorComponentSequence):
 
-    def __init__(self, submappers: List[InvertibleTextMapper]):
+    def __init__(self, submappers: list[InvertibleTextMapper]):
         self.sequence = submappers
 
     def convert(self, text: str) -> str:
@@ -379,8 +379,8 @@ class ByteMapping(InvertibleTextMapper, _UniversalAlphabet):
     a unique byte, even though they in turn don't necessarily have any relationship to that byte.
     """
 
-    BYTE_TO_PSEUDO: Dict[int,str] = dict()
-    PSEUDO_TO_BYTE: Dict[str,int] = dict()
+    BYTE_TO_PSEUDO: dict[int,str] = dict()
+    PSEUDO_TO_BYTE: dict[str,int] = dict()
     SPACING_BYTES = [9, 10, 13, 32]
 
     def convert(self, text: str) -> str:
@@ -399,7 +399,7 @@ class PseudoByteMapping(ByteMapping):
     """
 
     @staticmethod
-    def bytes_to_unicode_documented() -> Dict[int, str]:
+    def bytes_to_unicode_documented() -> dict[int, str]:
         r"""
         An implementation of `transformers.models.gpt2.tokenization_gpt2.bytes_to_unicode` that's actually readable.
         Has been tested for equivalence.
@@ -440,7 +440,7 @@ class PseudoByteMapping(ByteMapping):
         return dict(zip(bytes_with_mapping, codepoints_of_mappings))
 
     @staticmethod
-    def bytes_to_unicode_softcoded() -> Dict[int, str]:
+    def bytes_to_unicode_softcoded() -> dict[int, str]:
         """
         Same mapping except without any hardcoding.
         """
@@ -456,7 +456,7 @@ class PseudoByteMapping(ByteMapping):
 
         return mappings
 
-    def _universalAlphabet(self) -> List[str]:
+    def _universalAlphabet(self) -> list[str]:
         return list(PseudoByteMapping.bytes_to_unicode_softcoded().values())
 
     BYTE_TO_PSEUDO = bytes_to_unicode_softcoded()
@@ -480,7 +480,7 @@ class LatinPseudoByteMapping(ByteMapping):
     """
 
     @staticmethod
-    def bytes_to_unicode() -> Dict[int,str]:
+    def bytes_to_unicode() -> dict[int,str]:
         LATINISED_PUNCTUATIONS = {"-", "'", "_"}
 
         mapping = PseudoByteMapping.bytes_to_unicode_softcoded()
@@ -507,7 +507,7 @@ class LatinPseudoByteMapping(ByteMapping):
 
         return mapping | remaps
 
-    def _universalAlphabet(self) -> List[str]:
+    def _universalAlphabet(self) -> list[str]:
         return list(LatinPseudoByteMapping.bytes_to_unicode().values())
 
     BYTE_TO_PSEUDO = bytes_to_unicode()

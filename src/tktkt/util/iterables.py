@@ -8,7 +8,7 @@ Also -- but this is not part of Python's typing -- iterators are consumable only
 The outputs of all the functions below are explicitly iterables with __next__ method that are consumable only once,
 hence why the output is marked as an Iterator.
 """
-from typing import Any, List, Iterable, Callable, Generator, TypeVar, Union, Optional, Iterator, Tuple, Set, Dict
+from typing import Any, Iterable, Callable, Generator, Union, Optional, Iterator
 from pathlib import Path
 from tqdm.auto import tqdm
 import numpy.random as npr
@@ -162,7 +162,7 @@ def cumsum(iterable: Iterable[Number]) -> Iterator[Number]:
         yield total
 
 
-def zipSelf(iterable: Iterable[T], offset: int=1) -> Iterator[Tuple[T,T]]:
+def zipSelf(iterable: Iterable[T], offset: int=1) -> Iterator[tuple[T,T]]:
     """
     Zip an iterable with an offset copy of itself.
     The lagged copy will be first. For example,
@@ -232,15 +232,15 @@ def last(iterable: Iterable[T]) -> T:
     return last_thing
 
 
-def fst(t: Tuple[T,T2]) -> T:
+def fst(t: tuple[T,T2]) -> T:
     return t[0]
 
 
-def snd(t: Tuple[T,T2]) -> T2:
+def snd(t: tuple[T,T2]) -> T2:
     return t[1]
 
 
-def indexSpan(subiterable: Iterable[T], iterable: Iterable[T]) -> Optional[Tuple[int,int]]:
+def indexSpan(subiterable: Iterable[T], iterable: Iterable[T]) -> Optional[tuple[int,int]]:
     """
     Find the first occurrence of the given subiterable in the other iterable. Also returns the exclusive end index.
 
@@ -269,7 +269,7 @@ def count(iterable: Iterable[T]) -> int:
     return total
 
 
-def maxargmax(iterable: Iterable[CT]) -> Tuple[CT, int]:
+def maxargmax(iterable: Iterable[CT]) -> tuple[CT, int]:
     max_element    = None
     argmax_element = None
     for index, thing in enumerate(iterable):
@@ -283,7 +283,7 @@ def maxargmax(iterable: Iterable[CT]) -> Tuple[CT, int]:
     return max_element, argmax_element
 
 
-def minargmin(iterable: Iterable[CT]) -> Tuple[CT, int]:
+def minargmin(iterable: Iterable[CT]) -> tuple[CT, int]:
     min_element    = None
     argmin_element = None
     for index, thing in enumerate(iterable):
@@ -310,11 +310,11 @@ def allEqual(iterable: Iterable[T]) -> bool:
     return True
 
 
-def sunion(iterable: Iterable[Set[T]]) -> Set[T]:
+def sunion(iterable: Iterable[set[T]]) -> set[T]:
     return reduce(set.__or__, iterable, set())
 
 
-def dunion(iterable: Iterable[Dict[T,T2]]) -> Dict[T,T2]:
+def dunion(iterable: Iterable[dict[T,T2]]) -> dict[T,T2]:
     return reduce(dict.__or__, iterable, dict())
 
 
@@ -338,7 +338,7 @@ def areContiguous(iterable: Iterable[int]) -> bool:
     return areEquidistant(iterable, distance=1)
 
 
-def transpose(matrix: Iterable[Iterable[T]]) -> List[List[T]]:
+def transpose(matrix: Iterable[Iterable[T]]) -> list[list[T]]:
     new_matrix = []
     for row in matrix:
         for y,e in enumerate(row):

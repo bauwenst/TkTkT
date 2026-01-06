@@ -1,4 +1,4 @@
-from typing import Callable, Iterable, Tuple, Optional, Union, List, TypeVar, Generic
+from typing import Iterable, Union, TypeVar
 from abc import ABC, abstractmethod
 from pathlib import Path
 from collections import Counter
@@ -7,13 +7,13 @@ from modest.formats.tsv import iterateTsv
 from modest.interfaces.datasets import ModestDataset
 
 from . import Preprocessor
-from .artifactories import CacheableArtifacts
-from .identifiers import NoSpecials, UnidentifiedVocab, Vocab, WithSpecials, SpecialsExtended
+from .artifactories import Artifacts, CacheableArtifacts
+from .identifiers import UnidentifiedVocab
 from ..paths import TkTkTPaths
 from ..util.iterables import streamProgress
 from ..util.strings import prefixIfNotEmpty
 from ..util.types import NamedIterable, HuggingfaceDataset, anypartial, generated
-from ..util.interfaces import Cacheable, Cache
+from ..util.interfaces import Cache
 
 __all__ = ["Vocabulariser", "UnsupervisedVocabulariser", "SegmentationSupervisedVocabulariser",
            "Preprocessor", "NamedIterable", "UnidentifiedVocab"]
@@ -54,7 +54,7 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
     # Core computation
 
     @abstractmethod
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> T_CacheableArtifact:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> T_CacheableArtifact:
         """
         Construct a subword vocabulary based on contextless words and frequencies, and save it to disk.
 
@@ -72,7 +72,7 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
 
     # Pre-implemented backend methods
 
-    def _preprocessSentencesToPretokens(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[List[str]]:
+    def _preprocessSentencesToPretokens(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[list[str]]:
         """
         Run the preprocessor to get pretokens from sentences.
         """
@@ -86,7 +86,7 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
         """
         return sentence_iterable.map(self.preprocessor.do).map(sep.join)
 
-    def _preprocessSentencesToPretokenCounts(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[Tuple[str,int]]:
+    def _preprocessSentencesToPretokenCounts(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[tuple[str,int]]:
         counter = Counter()
         def iterator():
             if not counter:
@@ -96,7 +96,7 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
             yield from counter.items()
         return NamedIterable(generated(iterator), name=sentence_iterable.name)
 
-    def _preprocessWordsToSentences(self, word_iterable: NamedIterable[Tuple[str, int]]) -> NamedIterable[str]:
+    def _preprocessWordsToSentences(self, word_iterable: NamedIterable[tuple[str, int]]) -> NamedIterable[str]:
         """
         Converts an iterable
             apple 5
@@ -122,10 +122,10 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
 
         return NamedIterable(generated(iterator), name=word_iterable.name)
 
-    def _preprocessWordsToTsv(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[str]:
+    def _preprocessWordsToTsv(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[str]:
         return word_iterable.map(lambda tup: f"{tup[0]}\t{tup[1]}\n")
 
-    def _preprocessWordsToPretokenCounts_approx(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
+    def _preprocessWordsToPretokenCounts_approx(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[tuple[str,int]]:
         """
         Apply the preprocessor onto the given words, CONCATENATE the resulting pretokens, and return the result with
         the given counts. Loses the pretoken boundaries, but unlike _preprocessWordsToPretokens_counter, you don't have
@@ -133,7 +133,7 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
         """
         return word_iterable.map(lambda tup: ("".join(self.preprocessor.do(tup[0])), tup[1]))
 
-    def _preprocessWordsToPretokenCounts(self, word_iterable: NamedIterable[Tuple[str,int]]) -> NamedIterable[Tuple[str,int]]:
+    def _preprocessWordsToPretokenCounts(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[tuple[str,int]]:
         """
         Apply the preprocessor to each word, count the pretokens separately, and return the pretoken counts.
         This requires loading all pretokens into memory.

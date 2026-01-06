@@ -2,7 +2,6 @@
 Tokenisers that have flags attached to types in the vocabulary and recursively decompose the results of BPE merging
 until no token has a flag.
 """
-from typing import List, Set, Tuple
 from typing_extensions import Self
 from pathlib import Path
 from abc import abstractmethod
@@ -27,8 +26,8 @@ class RecursivelyDecomposingBPE(_DeterministicBPETokeniser):
     """
 
     def __init__(self, preprocessor: Preprocessor,
-                 expanded_vocab: Vocab, merges: List[str],  # TODO: Although you need the expanded vocabulary in the constructor (you need the full BPE graph), you should report a smaller vocabulary size and have a compacted ID mapping for downstream models, lest you have unused embeddings. The same is true for BPE-knockout and PickyBPE.
-                 disabled_set: Set[str]):
+                 expanded_vocab: Vocab, merges: MergeList,  # TODO: Although you need the expanded vocabulary in the constructor (you need the full BPE graph), you should report a smaller vocabulary size and have a compacted ID mapping for downstream models, lest you have unused embeddings. The same is true for BPE-knockout and PickyBPE.
+                 disabled_set: set[str]):
         """
         :param expanded_vocab: Vocabulary including both the types that remain accessible AND the types to be disabled.
         """
@@ -51,7 +50,7 @@ class RecursivelyDecomposingBPE(_DeterministicBPETokeniser):
             new_tokens.extend(self._recursivelyDecompose(token))
         return new_tokens
 
-    def _recursivelyDecompose(self, token: str) -> List[str]:
+    def _recursivelyDecompose(self, token: str) -> Tokens:
         if token not in self.vocab:  # Might be a problem considering that BTE doesn't automatically convert unknown characters to [UNK].
             raise ValueError(f"Cannot decompose token that doesn't have a type in the vocabulary: {token}")
 
@@ -134,13 +133,13 @@ class _FrequencyBasedRecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabula
         return CacheableAblatedBPEArtifacts
 
     @abstractmethod
-    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> Set[str]:
+    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> set[str]:
         pass
 
-    def _getNonAlphabet(self) -> Set[str]:
+    def _getNonAlphabet(self) -> set[str]:
         return {t for t in self._tokeniser.vocab if not self._tokeniser.merge_graph.inAlphabet(t)}
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableAblatedBPEArtifacts:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableAblatedBPEArtifacts:
         # Get counts and find types
         type_counts = Counter()
         for word, count in word_iterable:
@@ -176,7 +175,7 @@ class TrimmedBPEVocabulariser(_FrequencyBasedRecursivelyDecomposingBPEVocabulari
     def _identifier(self) -> str:
         return "trimmedbpe"
 
-    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> Set[str]:
+    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> set[str]:
         return {t for t in self._tokeniser.vocab if type_distribution[t] <= self._threshold}
 
 
@@ -201,7 +200,7 @@ class RandomDropBPE(_FrequencyBasedRecursivelyDecomposingBPEVocabulariser):
     def _identifier(self) -> str:
         return "randomdropbpe"
 
-    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> List[str]:
+    def _selectTypesToTrim(self, type_distribution: Counter[str]) -> list[str]:
         subcounter = Counter()  # Contains only the counts for non-alphabet types (even if not part of the given counter).
         for t in self._getNonAlphabet():
             subcounter[t] = type_distribution[t]

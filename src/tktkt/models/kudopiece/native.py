@@ -3,7 +3,7 @@ Native implementation of KudoPiece segmentation in TkTkT.
 
 TODO: Has not been tested for equivalence to SentencePiece.
 """
-from typing import Dict, MutableSequence
+from typing import MutableSequence
 
 from ...interfaces.tokenisers import Preprocessor
 from ...models.predictive.viterbi.framework import ViterbiTokeniser, ViterbiObjective, INFTY
@@ -13,7 +13,7 @@ from ...models.predictive.viterbi.accumulators import ScoreSum
 
 class UnigramClassifier(SubstringClassifier):
 
-    def __init__(self, log_probabilities: Dict[str, float]):
+    def __init__(self, log_probabilities: dict[str, float]):
         self.logp = log_probabilities
 
     def getSegmentLogProbabilities(self, pretoken: str, max_k: int) -> MutableSequence[MutableSequence[float]]:
@@ -23,7 +23,7 @@ class UnigramClassifier(SubstringClassifier):
 
 class KudoPieceTokeniser(ViterbiTokeniser):
 
-    def __init__(self, preprocessor: Preprocessor, log_probabilities: Dict[str,float]):
+    def __init__(self, preprocessor: Preprocessor, log_probabilities: dict[str,float]):
         super().__init__(preprocessor, max_stepsize=max(map(len, log_probabilities)), objectives=[
             ViterbiObjective(
                 initial_score=0,

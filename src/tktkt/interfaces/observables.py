@@ -4,7 +4,7 @@ You should import from this file only when you are developing new observers/obse
 the tktkt.evaluation.observing submodule.
 """
 from abc import ABC, abstractmethod
-from typing import List, TypeVar, Generic, Iterator, Any, Callable, Tuple
+from typing import TypeVar, Generic, Iterator, Any, Callable
 from pathlib import Path
 
 import numpy.random as npr
@@ -14,7 +14,7 @@ import colorama
 from ..paths import TkTkTPaths
 from ..util.interfaces import C
 from ..util.strings import indent, suffixIfNotEmpty, prefixIfNotEmpty
-from ..interfaces.vocabularisers import Cache, Cacheable
+from ..util.interfaces import Cache, Cacheable
 
 
 Received = TypeVar("Received")
@@ -106,7 +106,7 @@ class Observable(ObservableMeta[Sent]):
     samples of the type given by the type parameter.
     """
 
-    def __init__(self, observers: List[Observer[Sent]]):
+    def __init__(self, observers: list[Observer[Sent]]):
         assert observers, "An observable must have at least one observer."
         self.observers = observers
         self.done = []
@@ -192,7 +192,7 @@ class Observable(ObservableMeta[Sent]):
 class ObservableRoot(Observable[Sent]):
     """Observable with a method that opens a constant stream of samples."""
 
-    def __init__(self, cache_disambiguator: str, observers: List[Observer[Sent]]):
+    def __init__(self, cache_disambiguator: str, observers: list[Observer[Sent]]):
         """
         :param cache_disambiguator: disambiguates runs whose root instances are otherwise identical.
                                     TODO: A smarter way to do this would be to instead have nodes in the tree
@@ -204,7 +204,7 @@ class ObservableRoot(Observable[Sent]):
         self._cache_disambiguator = cache_disambiguator
 
     @abstractmethod
-    def _stream(self) -> Iterator[Tuple[Sent,float]]:
+    def _stream(self) -> Iterator[tuple[Sent,float]]:
         pass
 
     def _globalRunIdentifier(self) -> str:
@@ -283,7 +283,7 @@ class FinallyObservableObserver(ObservableObserver[Received, CacheableSent], Cac
     This is the one type of Observer that has caching.
     """
 
-    def __init__(self, cache_disambiguator: str= "", disable_cache: bool=False, observers: List[Observer[CacheableSent]]=None):
+    def __init__(self, cache_disambiguator: str= "", disable_cache: bool=False, observers: list[Observer[CacheableSent]]=None):
         """
         :param cache_disambiguator: If you have two observers that would use the same cache given the same run identifier,
                                     this argument allows separating their two caches.

@@ -1,4 +1,3 @@
-from typing import List
 from math import prod
 import numpy.random as npr
 
@@ -40,7 +39,7 @@ def rejectionSampling(text: str, vocab: SubwordCollection, rng: npr.Generator):
 
 
 def rejectionSamplingBiased(text: str, vocab: SubwordCollection, rng: npr.Generator,
-                            max_tries: int=5_000) -> List[str]:
+                            max_tries: int=5_000) -> list[str]:
     """
     Sample random segmentations until one is valid, where single-character tokens are disincentivised by having split
     positions be less likely than non-split positions.

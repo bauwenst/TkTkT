@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 import tokenizers.normalizers as tn
@@ -8,7 +8,7 @@ import tokenizers.decoders as td
 from .mappers import MapperSequence, Stripper, AppendSpace, TextMapper, Pretokeniser
 from .boundaries import BoundaryMarkerLocation
 from .splitters import PretokeniserSequence, BoundaryMarker, MapperAsPretokeniser
-from ..interfaces.preprocessors import Preprocessor
+from ..interfaces.preprocessors import Preprocessor, Pretokens
 
 
 class HuggingFaceNormaliser(TextMapper):
@@ -42,10 +42,10 @@ class HuggingFacePretokeniser(Pretokeniser):
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return self.marker
 
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         return [w for w, _ in self.encode.pre_tokenize_str(text)]
 
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         return [self.decode.decode(pretokens)]
 
     @staticmethod

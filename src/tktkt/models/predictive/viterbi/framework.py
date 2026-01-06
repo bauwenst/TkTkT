@@ -27,7 +27,7 @@ Deciding whether a substring doesn't belong to the vocabulary, and hence a step 
 the Viterbi decoder, but rather in the scoring grid. The grid might map the step to a different string, e.g.
 """
 from dataclasses import dataclass
-from typing import List, Tuple, Iterable
+from typing import Iterable
 from typing_extensions import Self
 from abc import abstractmethod
 import numpy as np
@@ -157,13 +157,13 @@ class ViterbiObjective:
     score_combiner: ViterbiAccumulator
 
 
-ViterbiObjectives = List[ViterbiObjective]
+ViterbiObjectives = list[ViterbiObjective]
 
 
 @dataclass
 class ViterbiTrellis:
-    best_objectives: List[Tuple[float,...]]  # character -> objective value (and tiebreakers) of best path that has reached it so far.
-    backpointers: List[int]                  # character -> index of where that path stepped from.
+    best_objectives: list[tuple[float,...]]  # character -> objective value (and tiebreakers) of best path that has reached it so far.
+    backpointers: list[int]                  # character -> index of where that path stepped from.
 
     def __init__(self, N: int, objectives: ViterbiObjectives):
         self.best_objectives = [tuple((o.initial_score if n == 0 else -INFTY) for o in objectives) for n in range(N)]

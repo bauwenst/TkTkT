@@ -6,7 +6,7 @@ Reimplementation of the source code found at
     https://github.com/valentinhofmann/superbizarre
 """
 from pathlib import Path
-from typing import Union, List, Tuple, Optional, Type, Iterable
+from typing import Union, Optional, Iterable
 from abc import ABC, abstractmethod
 
 from ...interfaces.tokenisers import *
@@ -31,7 +31,7 @@ class Derivator(ABC):
 
     @classmethod  # Output doesn't differ between instances of the same class, but superclass needs to be able to call "whatever implementation the class overrides this method with" which you can't do with a static method (since ParentClass.method() won't call the overriding implementation).
     @abstractmethod
-    def _pathToDefaultPreficesAndSuffices(cls) -> Tuple[Path,Path]:
+    def _pathToDefaultPreficesAndSuffices(cls) -> tuple[Path,Path]:
         pass
 
     @classmethod
@@ -57,7 +57,7 @@ class Derivator(ABC):
         return cls(prefices, suffices, stems)
 
     @abstractmethod
-    def invertDerivation(self, word: str) -> Tuple[List[str], str, List[str]]:
+    def invertDerivation(self, word: str) -> tuple[list[str], str, list[str]]:
         """
         Go from derivation back to prefices, root and suffices.
         For example, go from the derivation "animation" back to ([], "animate", ["ion"]).
@@ -71,10 +71,10 @@ class EnglishDerivator(Derivator):
     """
 
     @classmethod
-    def _pathToDefaultPreficesAndSuffices(cls) -> Tuple[Path,Path]:
+    def _pathToDefaultPreficesAndSuffices(cls) -> tuple[Path,Path]:
         return (DEL_DATA / "english_prefices.txt", DEL_DATA / "english_suffices.txt")
 
-    def segment(self, word: str) -> Optional[Tuple[List[str], str, List[str]]]:
+    def segment(self, word: str) -> Optional[tuple[list[str], str, list[str]]]:
         """
         Core method.
         Produces prefices, root and suffices when applicable.
@@ -142,7 +142,7 @@ class EnglishDerivator(Derivator):
 
         return None
 
-    def invertDerivation(self, word: str) -> Tuple[List[str], str, List[str]]:
+    def invertDerivation(self, word: str) -> tuple[list[str], str, list[str]]:
         """
         Wrapper around .segment() that handles the None case.
 
@@ -155,7 +155,7 @@ class EnglishDerivator(Derivator):
         except ValueError:
             return [], word, []
 
-    def invertDerivation_bundled(self, word: str) -> Tuple[str, str, str]:
+    def invertDerivation_bundled(self, word: str) -> tuple[str, str, str]:
         try:
             prefices, root, suffices = self.segment(word)
             return "".join(p + "_" for p in prefices), root, "".join("_" + s for s in suffices)
@@ -169,7 +169,7 @@ class EnglishDerivator(Derivator):
         except ValueError:
             return word
 
-    def derive(self, word: str, mode: str) -> Union[Tuple[List[str], str, List[str]], Tuple[str, str, str], str]:
+    def derive(self, word: str, mode: str) -> Union[tuple[list[str], str, list[str]], tuple[str, str, str], str]:
         if mode == "morphemes":
             return self.invertDerivation(word)
         elif mode == "bundles":
@@ -179,7 +179,7 @@ class EnglishDerivator(Derivator):
         else:
             raise ValueError("Derivative mode unrecognised:", mode)
 
-    # def tokenize(self, word_list: Union[str, List[str]], mode="bundles"):
+    # def tokenize(self, word_list: Union[str, list[str]], mode="bundles"):
     #     """
     #     Serialises the output of .derive() for many words into one big list.
     #     This isn't actually used anywhere.

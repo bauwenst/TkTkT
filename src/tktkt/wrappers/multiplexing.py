@@ -17,7 +17,7 @@ That means we really only need support for yes-no-yes and yes-no-no. Hence, ther
 (sometimes an identity) which determines the pretokens over which we multiplex tokenisers. Whether the subtokeniser
 preprocesses extra is then just a boolean decision.
 """
-from typing import List, Iterable
+from typing import Iterable
 from abc import abstractmethod
 from dataclasses import dataclass
 
@@ -37,7 +37,7 @@ class MultiplexedPreprocessor:
 
 class TokeniserMultiplexer(Tokeniser):
 
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[Tokeniser]):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[Tokeniser]):
         assert subtokenisers
         super().__init__(preprocessor=preprocessor.global_preprocessor)
         self.subtokenisers = subtokenisers
@@ -67,7 +67,7 @@ class TokeniserMultiplexer_SameDomains(TokeniserMultiplexer, TokeniserWithVocabu
     Calls the super constructor of TokeniserMultiplexer while keeping its select() method abstract;
     implements all the abstract methods of TokeniserWithVocabulary.
     """
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary]):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[TokeniserWithVocabulary]):
         super().__init__(preprocessor, subtokenisers)
 
         # Check whether the first tokeniser's domain<->range mapping can be used as a stand-in for all others.
@@ -107,9 +107,9 @@ class TokeniserMultiplexer_DifferentDomains(TokeniserMultiplexer, TokeniserWithV
     obtained by offsetting the IDs of subtokeniser i by the size of the domain of subtokenisers 1 to i-1.
     """
 
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary]):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[TokeniserWithVocabulary]):
         super().__init__(preprocessor, subtokenisers)
-        self.subtokenisers: List[TokeniserWithVocabulary] = self.subtokenisers  # (type casting)
+        self.subtokenisers: list[TokeniserWithVocabulary] = self.subtokenisers  # (type casting)
 
         # Verify that all IDs in the subtokenisers run from 0 to |V_i|-1.
         vocab_sizes = []
@@ -163,7 +163,7 @@ class TokeniserMultiplexer_DifferentDomains_Stateful(TokeniserMultiplexer):
     the vocabulary is hence available as input data.
     """
 
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary], assert_matching_specials: bool=False):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[TokeniserWithVocabulary], assert_matching_specials: bool=False):
         """
         :param assert_matching_specials: Do a check that makes sure all subtokenisers have the same specials with the
                                          same IDs. This is necessary in an application as follows: imagine a system that
@@ -205,7 +205,7 @@ class StochasticTokeniserMultiplexer(TokeniserMultiplexer):
     Sample tokenisers proportional according to a given probability mass.
     """
     def __init__(self, preprocessor: MultiplexedPreprocessor,
-                 subtokenisers: List[Tokeniser], probabilities: List[float]=None, seed: int=0):
+                 subtokenisers: list[Tokeniser], probabilities: list[float]=None, seed: int=0):
         super().__init__(preprocessor=preprocessor, subtokenisers=subtokenisers)
 
         if probabilities is None:
@@ -233,8 +233,8 @@ class StochasticTokeniserMultiplexer_SameDomains(StochasticTokeniserMultiplexer,
     Takes its .select() implementation from StochasticTokeniserMultiplexer, and implementations for methods that have to
     do with the token domain from TokeniserMultiplexer_SameDomains.
     """
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary],
-                 probabilities: List[float]=None, seed: int=0):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[TokeniserWithVocabulary],
+                 probabilities: list[float]=None, seed: int=0):
         super().__init__(preprocessor, subtokenisers, probabilities, seed)
         TokeniserMultiplexer_SameDomains.__init__(self, preprocessor, subtokenisers)
 
@@ -244,8 +244,8 @@ class StochasticTokeniserMultiplexer_DifferentDomains(StochasticTokeniserMultipl
     Takes its .select() implementation from StochasticTokeniserMultiplexer, and implementations for methods that have to
     do with the token domain from TokeniserMultiplexer_DifferentDomains.
     """
-    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: List[TokeniserWithVocabulary],
-                 probabilities: List[float]=None, seed: int=0):
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[TokeniserWithVocabulary],
+                 probabilities: list[float]=None, seed: int=0):
         super().__init__(preprocessor, subtokenisers, probabilities, seed)
         TokeniserMultiplexer_DifferentDomains.__init__(self, preprocessor, subtokenisers)
 
@@ -298,7 +298,7 @@ class TokeniserSequence(Tokeniser):
     The preprocessors of the tokenisers in the tail are NOT used, nor are their _initialTokens() methods!
     """
 
-    def __init__(self, global_preprocessor: Preprocessor, head: Tokeniser, tail: List[SuccessionalTokeniser]):
+    def __init__(self, global_preprocessor: Preprocessor, head: Tokeniser, tail: list[SuccessionalTokeniser]):
         assert tail
         super().__init__(preprocessor=global_preprocessor)
         self._head = head

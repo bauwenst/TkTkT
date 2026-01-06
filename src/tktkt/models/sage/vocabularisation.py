@@ -6,7 +6,7 @@ During vocabulary building, words are kept in the context of their sentences rat
 list. The resulting vocabulary is just a set of subwords without context, however.
 """
 from pathlib import Path
-from typing import Tuple, List, Self
+from typing import Self
 
 import warnings
 
@@ -71,10 +71,10 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
 
         import sage_tokenizer  # Just to check that you have it.
 
-        self.vocabulary_points: List[int] = [
+        self.vocabulary_points: list[int] = [
             round(vocabulary_schedule.get(i/(n_vocab_samples-1))) for i in range(n_vocab_samples)  # This round() produces vocabulary sizes in the thousands. The -1 is because we want to normalise the N samples 0, 1, ..., N-1 such that the extrema are 0.0 and 1.0.
         ]
-        self.recompute_embeddings_at: List[int] = [self.vocabulary_points[j] for j in sorted({
+        self.recompute_embeddings_at: list[int] = [self.vocabulary_points[j] for j in sorted({
             round(embedding_schedule.get(i/(n_embedding_samples-1)) * (n_vocab_samples - 2)) for i in range(n_embedding_samples)  # This round produces integers between 0 and len(self.vocabulary_points)-2, i.e. all possible indices into self.vocabulary_points except the last one (since SaGe STOPS at the last vocab size, so it's pointless to recompute embeddings at that point).
         })]
 
@@ -102,7 +102,7 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
     def _toHexString(cls, typ: str) -> str:
         return typ.encode(encoding="utf-8").hex()
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableSageArtifacts:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableSageArtifacts:
         raise RuntimeError("SaGe operates on contextual corpora, not on word lists.")
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableSageArtifacts:

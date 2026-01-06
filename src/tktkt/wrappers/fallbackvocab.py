@@ -1,4 +1,4 @@
-from typing import List, Any, Tuple, Iterable
+from typing import Iterable
 
 from ..interfaces.tokenisers import *
 from ..util.iterables import foldSpans
@@ -66,7 +66,7 @@ class TokeniserWithByteFallback(TokeniserWithVocabulary[WithSpecials]):
                     final_tokens.append(token)
             return final_tokens
 
-    def decodeUnks(self, pretoken: str, tokens: List[str]) -> Tuple[Iterable[str], Iterable[bool]]:
+    def decodeUnks(self, pretoken: str, tokens: list[str]) -> tuple[Iterable[str], Iterable[bool]]:
         tokens = list(foldSpans(tokens, self.unk))
 
         # Align tokens with string to find out where the UNK(s) are.

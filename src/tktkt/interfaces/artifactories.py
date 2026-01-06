@@ -1,5 +1,4 @@
-from typing import TypeVar, Generic, Union, List, Optional, Callable, Iterable
-from typing_extensions import Self
+from typing import TypeVar, Generic, Union, Optional, Callable, Iterable
 from abc import ABC, abstractmethod
 from pathlib import Path
 

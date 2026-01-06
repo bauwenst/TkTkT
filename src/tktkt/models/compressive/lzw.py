@@ -6,7 +6,6 @@ and first implemented in
 I've reimplemented the LZW vocabulariser to support TkTkT's preprocessors and corpora, and also made stuff faster and correcter.
 """
 from pathlib import Path
-from typing import Tuple
 from typing_extensions import Self
 
 from ...interfaces import Artifacts, CacheableArtifacts
@@ -53,7 +52,7 @@ class LzwVocabulariser(UnsupervisedVocabulariser[CacheableLzwArtifacts]):
     def _cacheType(self):
         return CacheableLzwArtifacts
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableLzwArtifacts:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableLzwArtifacts:
         raise NotImplementedError
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableLzwArtifacts:

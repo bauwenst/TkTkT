@@ -1,6 +1,4 @@
-from typing import Tuple, List, Dict
 from dataclasses import dataclass
-from pathlib import Path
 
 from .printing import wprint
 
@@ -64,7 +62,7 @@ class ConfusionMatrix:
         return 2*(precision*recall)/(precision+recall)
 
     @staticmethod
-    def computeMatrixMacroAverage(matrices: List["ConfusionMatrix"]) -> Tuple[float, float, float]:
+    def computeMatrixMacroAverage(matrices: list["ConfusionMatrix"]) -> tuple[float, float, float]:
         """
         Computes the macro-average Pr, Re, F1 for a list of confusion matrices.
 
@@ -105,7 +103,7 @@ class MicroMacro:
         self._macro_num += num / den
         self._macro_den += 1
 
-    def compute(self) -> Tuple[float, float]:
+    def compute(self) -> tuple[float, float]:
         return self._micro_num/self._micro_den if self._micro_den else float("inf") if self._micro_num else 1.0, \
                self._macro_num/self._macro_den if self._macro_den else float("inf") if self._macro_num else 1.0
 

@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Union
 
 from fiject import StreamingMultiHistogram, StreamingVariableGranularityHistogram, BinSpec, VariableGranularityHistogram, FIJECT_DEFAULTS, HistoBars, CacheMode
 
@@ -13,8 +13,8 @@ from ...util.strings import tokensToBitstring
 
 @timeit
 def visualiseCharsVersusTokensRelationships(
-    tokenisers: List[TokeniserWithVocabulary],
-    raw_words: NamedIterable[str], counts: Dict[str, float]=None,
+    tokenisers: list[TokeniserWithVocabulary],
+    raw_words: NamedIterable[str], counts: dict[str, float]=None,
     n_samples_per_word: int=1, do_progressbar: bool=False,
     do_measure_original_word_length: bool=False, exclude_words_over_length: int=100
 ):
@@ -135,7 +135,7 @@ def visualiseCharsVersusTokensRelationships(
     return histo_segmentality.getSummaries(), histo_chars_across_tokens.getSummaries().popitem()[1]
 
 
-def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithVocabulary, Artifacts]], names: List[str]=None):
+def visualiseTypes(vocabulary_sources: list[Union[TokeniserWithVocabulary, Artifacts]], names: list[str]=None):
     """
     Visualises the amount of characters in types of one or more subword vocabularies.
     """
@@ -175,7 +175,7 @@ def visualiseTypes(vocabulary_sources: List[Union[TokeniserWithVocabulary, Artif
     FIJECT_DEFAULTS.GLOBAL_STEM_PREFIX = ""
 
 
-def visualiseSingleWordSegmentationDistribution(tokenisers: List[Tokeniser], word: str, samples: int=1_000_000,
+def visualiseSingleWordSegmentationDistribution(tokenisers: list[Tokeniser], word: str, samples: int=1_000_000,
                                                 segmentation_histogram_max_bins: int=2**16, do_bitbased_ordering: bool=False):
     """
     Produces the following histograms:

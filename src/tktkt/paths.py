@@ -1,7 +1,6 @@
 from pathlib import Path
 import os
 import re
-from typing import List
 
 PATH_PACKAGE = Path(__file__).resolve().parent
 PATH_ROOT    = PATH_PACKAGE.parent.parent  # Can only be accessed if the package was installed in editable mode.
@@ -83,7 +82,7 @@ class PathManager:
         return full_path
 
     @staticmethod
-    def extend(base_path: Path, parts: List[str]) -> Path:
+    def extend(base_path: Path, parts: list[str]) -> Path:
         full_path = base_path
         for part in parts:
             full_path /= pathSafe(part)
@@ -91,7 +90,7 @@ class PathManager:
         return full_path
 
     @staticmethod
-    def files(base_path: Path) -> List[Path]:
+    def files(base_path: Path) -> list[Path]:
         try:
             _, _, filenames = next(base_path.walk())
         except AttributeError:  # Python < 3.12
@@ -100,7 +99,7 @@ class PathManager:
         return [base_path / filename for filename in sorted(filenames)]
 
     @staticmethod
-    def folders(base_path: Path) -> List[Path]:
+    def folders(base_path: Path) -> list[Path]:
         try:
             _, subfolders, _ = next(base_path.walk())
         except AttributeError:  # Python < 3.12
@@ -135,7 +134,7 @@ class PathManager:
         out.mkdir(parents=True, exist_ok=True)
         return out
 
-    def _extendOutput(self, parts: List[str]) -> Path:
+    def _extendOutput(self, parts: list[str]) -> Path:
         return PathManager.extend(self._homeDirectory(), parts)
 
 

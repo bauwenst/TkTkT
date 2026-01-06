@@ -133,7 +133,7 @@ Apart from the type-checking and caching described above, TkTkT enforces several
   to integers. That should be done by a separate object, the `Vocab`.
 - Preprocessors should not (only) be regular expressions. They should be chains of Python code.
 - Spaces should not be treated as word boundaries. If a word does not have a "prefix space", e.g. because it is the start of the sentence
-  or because it is preceded by a punctuation mark, it should _still_ receive a boundary character, and the user should be
+  or because it is preceded by a punctuation mark, it should _still_ receive a boundary character, and the developer should be
   able to decide if that boundary comes at the start or the end of the word.
 - Special tokens (`CLS`, `SEP`, `BOS`, ...) should not have a string representation (`"[CLS]", "[SEP]", "<s>", ...`), or at least they should not be in the vocabulary, 
   or at least they should not be used by the tokeniser. All of these are violated by HuggingFace `transformers` (see the bottom of this README).
@@ -251,7 +251,7 @@ That's _**just 7 lines of code to get a tokeniser from a corpus!**_ To load the 
 from tktkt.models.huggingface.bpe import HuggingFaceBPETokeniser
 
 tokeniser = HuggingFaceBPETokeniser(
-    preprocessor=preprocessor,
+    preprocessor=results.preprocessorEffective(),
     vocab=results.getVocabulary(),
     merges=results.getMerges()
 )
@@ -279,7 +279,8 @@ Let's now say you want to train and load an English ULM tokeniser. You are, of c
 because its Python interface is a thin wrapper around a command-line call, not allowing autocompletion in your IDE.
 In TkTkT, you would proceed as follows (note that ULM is called "KudoPiece" in TkTkT because many tokenisers are based on a language model of unigrams).
 
-First we instantiate a preprocessor, and call the trainer with relevant training arguments:
+First we instantiate a preprocessor, and call the trainer with relevant training arguments. Then, we load the saved
+results into a tokeniser.
 
 ```python
 from tktkt.factories.preprocessors import ModernEnglishPreprocessor_SentencePieceCompatible, BoundaryMarkerLocation
@@ -299,19 +300,12 @@ trainer = KudoPieceVocabulariser(
     arguments=KudoPieceArguments(character_coverage=0.9995),
     file_stem="tutorial"
 )
-model_path = trainer.vocabulariseFromStringIterable(sentence_corpus)
-```
-Once the final model is stored to disk, we can load it as an object (and give it a basic preprocessor).
-Note that all models are stored under `tktkt.paths.TkTkTPaths.pathToModels()`.
-```python
+results = trainer.vocabulariseFromStringIterable(sentence_corpus)
+
+
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
 
-# # If you need to recover the path:
-# from tktkt.paths import TkTkTPaths
-# model_path = TkTkTPaths.pathToModels() / "kudopiece" / "tutorial_xxxx-yy-zz_aa-bb-cc.model"
-
-tokeniser = KudoPieceTokeniser(preprocessor=preprocessor, model_file=model_path)
-
+tokeniser = KudoPieceTokeniser(preprocessor=results.preprocessorNative(), model_file=results.getModelFile())
 print(tokeniser.prepareAndTokenise("Hello there, my good friend!"))
 ```
 
@@ -423,13 +417,13 @@ Here's a non-exhaustive list of reasons:
         BPE paper used word boundaries at the *end* of words (`</w>`). Only supporting the start-of-word convention is bad 
         because this deteriorates downstream performance for e.g. Germanic languages, where a compound has its head at the
         end and hence it should be allowed to tokenise the head with the exact same tokens as it would be if it was isolated.
-8. In the little documentation that does exist (e.g. for WordPiece and KudoPiece), there are so many 
-    theoretical inaccuracies that we shouldn't even have confidence in anything that isn't a BPE tokeniser implemented by them. 
+8. In the little HuggingFace tokeniser documentation that does exist, there are so many 
+    theoretical inaccuracies (e.g. for WordPiece and KudoPiece/ULM) that we shouldn't even have confidence in anything 
+    that isn't a BPE tokeniser implemented by them. 
     Their [explanation for KudoPiece](https://huggingface.co/learn/nlp-course/chapter6/7), an algorithm which itself was 
     already poorly explained originally, is mathematically absurd.
 
-There is also the [pyonmttok](https://github.com/OpenNMT/Tokenizer) package which has better design than `tokenizers`, but also sticks to
-BPE and KudoPiece.
+There is also the [pyonmttok](https://github.com/OpenNMT/Tokenizer) package which has better design than `tokenizers`, but also sticks to BPE and KudoPiece.
 
 ## Pronunciation
 The acronym stands for ToKeniser ToolKiT and is supposed to be pronounced fast (kind of like "tuh-kuh-tuh-kuh-ts" but as fast as you can). It is mandatory that you do this.

@@ -2,7 +2,7 @@
 Mathematical computations that have to do with the combinatorics of string segmentation.
 No connection with any tokeniser.
 """
-from typing import List, Tuple, Dict, Sequence, Generator, Iterable, Iterator
+from typing import Sequence, Generator, Iterable, Iterator
 from itertools import permutations, combinations
 from functools import reduce
 from collections import Counter
@@ -69,7 +69,7 @@ def integerPartitions_k(n: int, k: int, prefix: TokenLengths=()) -> Iterator[Tok
         yield from integerPartitions_k(n-step, k-1, prefix=prefix + (step,))
 
 
-def _integerPartitions_k_highMemory(n: int, k: int, upper_limit: int=None, memoisation: Dict[Tuple[int,int],List[TokenLengths]]=None) -> List[TokenLengths]:
+def _integerPartitions_k_highMemory(n: int, k: int, upper_limit: int=None, memoisation: dict[tuple[int,int],list[TokenLengths]]=None) -> list[TokenLengths]:
     """Deprecated high-memory implementation of integerPartitions_k that constructs all results in memory
        simultaneously, and sorts the partitions right-to-left, both unlike integerPartitions_k."""
     assert not(n < 0 or k < 0 or (n == 0 and k != 0) or (n != 0 and k == 0)), f"Illegal pair of (n,k): {n,k}"

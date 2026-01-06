@@ -2,7 +2,7 @@
 Constructs the set of most common character N-grams in pretokens.
 (Has nothing to do with segmentation into N-grams since that's vocabulary-agnostic.)
 """
-from typing import Tuple, Optional, Self
+from typing import Optional, Self
 from pathlib import Path
 
 import json
@@ -68,7 +68,7 @@ class NgramVocabulariser(UnsupervisedVocabulariser[CacheableNgramArtifacts]):
     def _cacheType(self):
         return CacheableNgramArtifacts
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableNgramArtifacts:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableNgramArtifacts:
         # Step 1: Count ALL N-grams.
         ngram_counter = Counter()  # TODO: This is obviously a super naive way to do it. You probably want to periodically flush this to disk, like CountWords.
         N_range = range(self._n_min, self._n_max+1)

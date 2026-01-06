@@ -2,7 +2,6 @@
 Implements random sampling from the segmentation graph with objects.
 Generalisation of the logic in GRaMPa.
 """
-from typing import List, Tuple
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
@@ -16,8 +15,8 @@ from ...util.arrays import *
 
 @dataclass
 class SegmentationGraph:
-    pointers: List[List[int]]
-    probabilities: List[List[float]]
+    pointers: list[list[int]]
+    probabilities: list[list[float]]
 
 
 class SegmentationGraphSampler(ABC):
@@ -27,15 +26,15 @@ class SegmentationGraphSampler(ABC):
         self.renormalisation = probabilities_to_probabilities
 
     @abstractmethod
-    def samplePath(self, graph: SegmentationGraph) -> List[int]:
+    def samplePath(self, graph: SegmentationGraph) -> list[int]:
         pass
 
     @abstractmethod
-    def samplePathAndProb(self, graph: SegmentationGraph) -> Tuple[List[int], float]:
+    def samplePathAndProb(self, graph: SegmentationGraph) -> tuple[list[int], float]:
         pass
 
     @abstractmethod
-    def pathToProb(self, graph: SegmentationGraph, path: List[int]) -> float:
+    def pathToProb(self, graph: SegmentationGraph, path: list[int]) -> float:
         pass
 
     @abstractmethod
@@ -45,7 +44,7 @@ class SegmentationGraphSampler(ABC):
 
 class ForwardGraphSampler(SegmentationGraphSampler):
 
-    def samplePath(self, graph: SegmentationGraph) -> List[int]:
+    def samplePath(self, graph: SegmentationGraph) -> list[int]:
         indices = []
         current_node = 0
         while current_node < len(graph.pointers) - 1:  # The last node in every path is len(graph.pointers) - 1 and it has no outbound arcs.
@@ -53,7 +52,7 @@ class ForwardGraphSampler(SegmentationGraphSampler):
             current_node = self.rng.choice(graph.pointers[current_node], p=self.renormalisation.normalise(np.array(graph.probabilities[current_node])))
         return indices
 
-    def samplePathAndProb(self, graph: SegmentationGraph) -> Tuple[List[int], float]:
+    def samplePathAndProb(self, graph: SegmentationGraph) -> tuple[list[int], float]:
         indices     = []
         probability = 1
 
@@ -69,7 +68,7 @@ class ForwardGraphSampler(SegmentationGraphSampler):
 
         return indices, probability
 
-    def pathToProb(self, graph: SegmentationGraph, path: List[int]) -> float:
+    def pathToProb(self, graph: SegmentationGraph, path: list[int]) -> float:
         path = path + [len(graph.pointers)-1]  # If path already includes the final index, this doesn't hurt. Otherwise, it allows current_node to actually run until the final node.
         probability = 1
 
@@ -99,7 +98,7 @@ class ForwardGraphSampler(SegmentationGraphSampler):
 
 class BackwardGraphSampler(SegmentationGraphSampler):
 
-    def samplePath(self, graph: SegmentationGraph) -> List[int]:
+    def samplePath(self, graph: SegmentationGraph) -> list[int]:
         indices = []
         current_node = len(graph.pointers) - 1
         while current_node > 0:  # The last node in every path is 0 and it has no outbound arcs.
@@ -107,7 +106,7 @@ class BackwardGraphSampler(SegmentationGraphSampler):
             indices.append(current_node)
         return indices[::-1]
 
-    def samplePathAndProb(self, graph: SegmentationGraph) -> Tuple[List[int], float]:
+    def samplePathAndProb(self, graph: SegmentationGraph) -> tuple[list[int], float]:
         indices     = []
         probability = 1
 
@@ -123,7 +122,7 @@ class BackwardGraphSampler(SegmentationGraphSampler):
 
         return indices[::-1], probability
 
-    def pathToProb(self, graph: SegmentationGraph, path: List[int]) -> float:
+    def pathToProb(self, graph: SegmentationGraph, path: list[int]) -> float:
         if path[-1] != len(graph.pointers)-1:
             path = path + [len(graph.pointers)-1]
         probability = 1

@@ -1,7 +1,7 @@
 """
 Parallelisation functions.
 """
-from typing import TypeVar, Callable, ParamSpec
+from typing import TypeVar, Callable, ParamSpec, Sequence
 
 K = TypeVar("K")
 P = ParamSpec("P")
@@ -39,7 +39,7 @@ def batchItems(callables: dict[K, tuple[Callable[P, R], tuple[P]]], n_parallel_p
         return {id: f(*args) for id, (f, args) in callables.items()}
 
 
-def batchElements(callables: list[tuple[Callable[P, R], tuple[P]]], n_parallel_processes: int) -> list[R]:
+def batchElements(callables: Sequence[tuple[Callable[P, R], tuple[P]]], n_parallel_processes: int) -> list[R]:
     """Same as batchItems() except using an ordered list rather than a dictionary with keys."""
     results = batchItems({i: tuples for i, tuples in enumerate(callables)}, n_parallel_processes=n_parallel_processes)
     return [results[key] for key in sorted(results.keys())]

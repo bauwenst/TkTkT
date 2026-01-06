@@ -1,4 +1,3 @@
-from typing import List, Tuple
 import numpy as np
 import numpy.random as npr
 
@@ -56,7 +55,7 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabulary[WithSpecials]
 
         return indicesToTokens(pretoken, starts_of_tokens=indices)
 
-    def constructMarkovGraphForwards(self, pretoken: str) -> Tuple[List[List[int]],List[List[float]]]:  # Separate method so that it can be cached.
+    def constructMarkovGraphForwards(self, pretoken: str) -> tuple[list[list[int]],list[list[float]]]:  # Separate method so that it can be cached.
         """
         Produces two lists:
             - For each position in the string, the prior positions in the string that can reach it with 1 token.
@@ -78,7 +77,7 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabulary[WithSpecials]
                          for node in range(len(pretoken)+1)]
         return backpointers, probabilities
 
-    def constructMarkovGraphBackwards(self, pretoken: str) -> Tuple[List[List[int]],List[List[float]]]:
+    def constructMarkovGraphBackwards(self, pretoken: str) -> tuple[list[list[int]],list[list[float]]]:
         """
         Produces two lists:
             - For each position in the string, the future positions in the string that can reach it with 1 token.
@@ -100,7 +99,7 @@ class RandomVocabSegmentation_GreedyMarkov(TokeniserWithVocabulary[WithSpecials]
                          for node in range(len(pretoken)+1)]
         return backpointers, probabilities
 
-    def getJointProbability(self, tokens: List[str]) -> float:
+    def getJointProbability(self, tokens: list[str]) -> float:
         probability = 1
 
         pretoken = "".join(tokens)

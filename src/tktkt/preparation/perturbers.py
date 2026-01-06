@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, List, Iterable
+from typing import Iterable
 from abc import abstractmethod, ABC
 
 from functools import reduce
@@ -209,7 +209,7 @@ class SubstituteKeyboardTypo(CharacterPerturber):
            if n perturbable characters exist. That means you should sample from those characters, rather than ignoring bad samples without resampling.
     """
 
-    PMF = Tuple[np.ndarray,List[str]]
+    PMF = tuple[np.ndarray,list[str]]
 
     def __init__(self, p: float, sampler: StringIndexSampler, temperature: float=1.0):
         """
@@ -222,7 +222,7 @@ class SubstituteKeyboardTypo(CharacterPerturber):
         import clavier_lib
         self.keyboard = clavier_lib.load_qwerty()
         self.supported_keys = {k for k in self.keyboard.keys() if k.isalpha()}
-        self.probability_mass_cache: Dict[str, SubstituteKeyboardTypo.PMF] = dict()
+        self.probability_mass_cache: dict[str, SubstituteKeyboardTypo.PMF] = dict()
         self.temperature = temperature
 
     def _pmfFromDistances(self, distances: Iterable[float]) -> np.ndarray:

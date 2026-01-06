@@ -1,7 +1,7 @@
 """
 Some examples of common Viterbi objectives.
 """
-from typing import Type, Optional
+from typing import Optional
 from typing_extensions import Self
 
 from . import *
@@ -58,7 +58,7 @@ class BoMMa(ViterbiTokeniser):
 
     def __init__(self, preprocessor: Preprocessor, max_step: Optional[int],
                  score_generator: ScoreGeneratorUsingCharacterClassifier,
-                 vocabulary_constraint_class: Type[VocabularyConstraint], vocab: SubwordCollection):
+                 vocabulary_constraint_class: type[VocabularyConstraint], vocab: SubwordCollection):
         max_step = max_step or max(len(t) for t in vocab)
 
         self._score_generator = score_generator
@@ -88,7 +88,7 @@ class BoMMa(ViterbiTokeniser):
         self._score_generator.setBackend(classifier)
         return self
 
-    def from_pretrained_hf(self, huggingface_checkpoint: str, tokeniser_kwargs: dict=None) -> Self:  # model_class: Type[PreTrainedModel], tokeniser_class: Type[PreTrainedTokenizer],
+    def from_pretrained_hf(self, huggingface_checkpoint: str, tokeniser_kwargs: dict=None) -> Self:  # model_class: type[PreTrainedModel], tokeniser_class: type[PreTrainedTokenizer],
         """
         Set the backend probability model to a HuggingFace checkpoint.
         """

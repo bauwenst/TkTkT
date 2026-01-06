@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union, List, Iterable, Self, Optional, Callable
+from typing import Union, Iterable, Self
 from abc import abstractmethod
 from pathlib import Path
 from enum import Enum
@@ -8,22 +8,18 @@ from tqdm.auto import tqdm
 
 from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase
 from bpe_knockout.model.graph import MergeOnDisk
-from bpe_knockout.util.storage import SennrichTokeniserPath, HuggingFaceTokeniserPath
+from bpe_knockout.util.storage import HuggingFaceTokeniserPath
 from modest.formats.tsv import iterateTsv
-
-from ...interfaces import Vocab
-from ...interfaces.identifiers import SpecialsExtended, WithSpecials, NoSpecials
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
 from ...factories.preprocessors import KudoSpaceMarker
 from ...interfaces.artifactories import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
-from ...interfaces.vocabularisers import T_CacheableArtifact, C
+from ...interfaces.vocabularisers import T_CacheableArtifact
 from ...util.dicts import substituteKey, argmax
 from ...util.iterables import streamProgress, deduplicate
 from ...util.printing import logger, pluralise
-from ...util.types import Comparable
 
 
 class BpeTrainerImplementation(Enum):
@@ -144,7 +140,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
     def _cacheType(self):
         return CacheableBPEArtifacts
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableBPEArtifacts:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableBPEArtifacts:
         # Note: The cases that preprocess beforehand do this because the trainers only accept sentences. The other cases do preprocessing internally.
         if self._mode == BpeTrainerImplementation.HUGGINGFACE:
             return self._withHfTrainer(self._preprocessWordsToSentences(word_iterable))
@@ -186,7 +182,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
         # Learn vocabulary.
         PRETOKEN_SEPARATOR = "🂠"  # Normally you can use spaces to separate pretokens, but here we need spaces to act as boundary markers, and while all pretokens are separated, not all pretokens have a boundary marker, hence you can't use spaces.
         PRETOKEN_REGEX     = " ?"*(self._marker.location == BoundaryMarkerLocation.START) + "[^" + PRETOKEN_SEPARATOR + "]+" + " ?"*(self._marker.location == BoundaryMarkerLocation.END)
-        bytes_vocab: Dict[bytes,int] = bpeasy.train_bpe(
+        bytes_vocab: dict[bytes,int] = bpeasy.train_bpe(
             iterator=streamProgress(self._preprocessSentencesToSentences(sentence_iterable, sep=PRETOKEN_SEPARATOR)).__iter__(),
             python_regex=PRETOKEN_REGEX,  # This regex is not the regex of what to split on, but the regex of pretokens.
             vocab_size=self._size,
@@ -199,7 +195,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
 
         return CacheableBPEArtifacts(types=types, merges=merges)
 
-    def _standardiseBPEasyVocab(self, bytes_vocab: Dict[bytes,int]) -> Dict[str,int]:
+    def _standardiseBPEasyVocab(self, bytes_vocab: dict[bytes,int]) -> dict[str,int]:
         # Convert the byte-level vocabulary to pseudo-byte characters so that it can be written to a text file.
         # The byte for spaces is converted to a space because of the assumption that the preprocessor wipes all spaces
         # except those it wants as a boundary marker.
@@ -221,7 +217,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
         vocab = {typ.replace(" ", self._replacement_marker.substitute): vocab.get(typ) for typ in vocab}
         return vocab
 
-    def _withSBPETrainer(self, iterable: Union[NamedIterable[Tuple[str,int]], NamedIterable[str]], words_not_sentences: bool=False) -> CacheableBPEArtifacts:
+    def _withSBPETrainer(self, iterable: Union[NamedIterable[tuple[str,int]], NamedIterable[str]], words_not_sentences: bool=False) -> CacheableBPEArtifacts:
         import bpe_knockout._lib.sbpe.learn_bpe as sbpe
 
         # Learn merges
@@ -323,7 +319,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
         merges = self.deduceMergesFromVocab(sorted(vocab, key=vocab.get), boundary_marker=self._replacement_marker)
         return CacheableBPEArtifacts(types=sorted(vocab, key=vocab.get), merges=merges)
 
-    def _standardiseSpmVocab(self, spm_vocab: Path, required_chars: Iterable[str]) -> Dict[str,int]:
+    def _standardiseSpmVocab(self, spm_vocab: Path, required_chars: Iterable[str]) -> dict[str,int]:
         from ..kudopiece.vocabularisation import EXOTIC_SCRIPT_PRETOKEN_SEPARATOR
         required_chars = list(required_chars)
 
@@ -429,7 +425,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
     ####################################################################################################################
 
     @staticmethod
-    def deduceVocabFromMerges(mergefile: Path, partial_alphabet: List[str]=None) -> Dict[str, int]:
+    def deduceVocabFromMerges(mergefile: Path, partial_alphabet: list[str]=None) -> dict[str, int]:
         # Summarise merges
         with open(mergefile, "r", encoding="utf-8") as in_handle:
             merges = [line.strip() for line in in_handle if line != "#version: 0.2\n"]
@@ -455,7 +451,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
         return vocab
 
     @staticmethod
-    def deduceMergesFromVocab(types: UnidentifiedVocab, boundary_marker: BoundaryMarker) -> List[Tuple[str,str]]:
+    def deduceMergesFromVocab(types: UnidentifiedVocab, boundary_marker: BoundaryMarker) -> list[tuple[str,str]]:
         """
         If the types are given in the order they were learnt by the BPE vocabulariser, you can actually reconstruct
         the merge of type i by constructing the BPE tokeniser for types 1 ... i-1 and then tokenising type i with it.
@@ -583,12 +579,12 @@ class _VocabulariserWithChizhovBackend(UnsupervisedVocabulariser[T_CacheableArti
     def _dumpToArtifacts(self, dump_path: Path) -> T_CacheableArtifact:
         pass
 
-    def _vocabulariseFromPretokenCounts(self, pretoken_iterable: NamedIterable[Tuple[str,int]]) -> T_CacheableArtifact:
+    def _vocabulariseFromPretokenCounts(self, pretoken_iterable: NamedIterable[tuple[str,int]]) -> T_CacheableArtifact:
         """Does no preprocessing."""
         dump_path = self._backend._fit_from_counts(Counter(dict(pretoken_iterable)), self._cachePath(pretoken_iterable.name), logging_step=100)
         return self._dumpToArtifacts(dump_path)
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> T_CacheableArtifact:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> T_CacheableArtifact:
         return self._vocabulariseFromPretokenCounts(self._preprocessWordsToPretokenCounts(word_iterable))
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> T_CacheableArtifact:

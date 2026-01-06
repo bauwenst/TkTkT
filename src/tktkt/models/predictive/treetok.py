@@ -4,8 +4,6 @@ character, and you check if the current string is in the vocabulary, where you s
 on the halves separated by the largest probability if no.
 https://aclanthology.org/2025.findings-acl.1146.pdf
 """
-from typing import List
-
 from .viterbi import CharacterClassifier
 from ...interfaces.tokenisers import *
 from ...util.iterables import maxargmax
@@ -35,7 +33,7 @@ class TopDownTree(TokeniserWithVocabulary[WithSpecials]):
 
         return tokens
 
-    def _tokeniseRecursively(self, string: str, probabilities: List[float]) -> List[str]:
+    def _tokeniseRecursively(self, string: str, probabilities: list[float]) -> list[str]:
         if string in self.vocab:
             return [string]
 

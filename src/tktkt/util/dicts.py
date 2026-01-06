@@ -1,4 +1,4 @@
-from typing import TypeVar, Dict, List, Generic, Callable, Union, Iterator, Tuple, Any
+from typing import TypeVar, Generic, Callable, Union, Iterator, Any
 from typing_extensions import Self
 from collections import OrderedDict, Counter
 from pathlib import Path
@@ -10,7 +10,7 @@ import numpy as np
 import numpy.random as npr
 
 from .timing import datetimeDashed
-from .printing import inequality, warn
+from .printing import inequality
 from .types import Number
 
 K = TypeVar("K")
@@ -25,7 +25,7 @@ def intersect_dicts(d1: dict[K,V], d2: Union[dict[K,Any],set[K]]) -> dict[K,V]:
     return {k: v for k,v in d1.items() if k in d2}
 
 
-def invertdict(d: Dict[K,V], noninjective_ok=True) -> Dict[V,K]:
+def invertdict(d: dict[K,V], noninjective_ok=True) -> dict[V,K]:
     """
     Keys become values, values become keys.
     Values must be hashable in that case.
@@ -51,7 +51,7 @@ def invertdict(d: Dict[K,V], noninjective_ok=True) -> Dict[V,K]:
     return d_inv
 
 
-def insertKeyAlias(d: Dict[K,V], existing_key: K, alias_key: K) -> Dict[K,V]:
+def insertKeyAlias(d: dict[K,V], existing_key: K, alias_key: K) -> dict[K,V]:
     """
     In-place, but still returns the given dictionary.
     """
@@ -60,7 +60,7 @@ def insertKeyAlias(d: Dict[K,V], existing_key: K, alias_key: K) -> Dict[K,V]:
     return d
 
 
-def substituteKey(d: Dict[K,V], existing_key: K, new_key: K) -> Dict[K,V]:
+def substituteKey(d: dict[K,V], existing_key: K, new_key: K) -> dict[K,V]:
     """
     In-place, but still returns the given dictionary.
     """
@@ -69,16 +69,16 @@ def substituteKey(d: Dict[K,V], existing_key: K, new_key: K) -> Dict[K,V]:
     return d
 
 
-def getByValue(d: Dict[K,V], value: V) -> List[K]:
+def getByValue(d: dict[K,V], value: V) -> list[K]:
     return [k for k,v in d.items() if v == value]
 
 
-def argmax(d: Dict[K,V]) -> List[K]:
+def argmax(d: dict[K,V]) -> list[K]:
     """Finds the keys belonging to the largest value in the dictionary. Could be ~n. I do it in ~2n."""
     return getByValue(d, max(d.values()))
 
 
-def kargmax(d: Dict[K,V], k: int) -> List[List[K]]:
+def kargmax(d: dict[K,V], k: int) -> list[list[K]]:
     """Finds the keys belonging to the k unique largest values in the dictionary. Could be O(k). I do it in O(n log(n))."""
     if k < 0:
         raise ValueError(f"k-argmax only exists for positive integers k. Received {k}.")
@@ -98,7 +98,7 @@ def kargmax(d: Dict[K,V], k: int) -> List[List[K]]:
     return key_buckets
 
 
-def normaliseCounter(counts: Union[Counter[K], Dict[K,Union[int,float]]]) -> Dict[K,float]:
+def normaliseCounter(counts: Union[Counter[K], dict[K,Union[int,float]]]) -> dict[K,float]:
     total = sum(counts.values())
     return {t: c/total for t,c in counts.items()}
 
@@ -166,7 +166,7 @@ class ChainedCounter(Counter[K], Generic[K]):
 
     def __init__(self, max_subcounter_size: int, seed: int=0):
         super().__init__()  # Because this is a subclass of Counter, the super class has a "master data structure".
-        self._counters: List[Counter[K]] = []
+        self._counters: list[Counter[K]] = []
         self._size_of_last_counter = max_subcounter_size
 
         self._max_size = max_subcounter_size
@@ -176,7 +176,7 @@ class ChainedCounter(Counter[K], Generic[K]):
     def subcounterAmount(self) -> int:
         return len(self._counters)
 
-    def subcounterSizes(self) -> List[int]:
+    def subcounterSizes(self) -> list[int]:
         return list(self.mapCounters(lambda c: c.total()))
 
     def mapCounters(self, counter_function: Callable[[Counter],V]) -> Iterator[V]:
@@ -193,11 +193,11 @@ class ChainedCounter(Counter[K], Generic[K]):
         values = list(map(counter_function, range(len(self._counters)), self._counters))
         return sum(w*v for w,v in zip(weights,values))/sum(weights) if weights else 0
 
-    def serialise(self) -> Tuple[List[Dict[K,int]], int]:
+    def serialise(self) -> tuple[list[dict[K,int]], int]:
         return [dict(c.items()) for c in self._counters], self._max_size
 
     @classmethod
-    def deserialise(cls, serialised: List[Dict[K,int]], max_size: int, seed: int) -> "ChainedCounter[K]":
+    def deserialise(cls, serialised: list[dict[K,int]], max_size: int, seed: int) -> "ChainedCounter[K]":
         supercounter = ChainedCounter(max_size, seed)
         for subcounter in serialised:
             for k,v in subcounter.items():

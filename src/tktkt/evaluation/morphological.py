@@ -1,9 +1,8 @@
 """
 Taken from the BPE knockout repo.
 """
-from typing import Dict, List, Self
+from typing import Self
 from dataclasses import dataclass
-from pathlib import Path
 
 import json
 
@@ -13,7 +12,6 @@ from modest.interfaces.datasets import ModestDataset, M
 from ..util.aggregates import ConfusionMatrix, NestedAverage, NestedMicroMacro
 from ..util.interfaces import Cacheable, C
 from ..util.iterables import cumsum
-from ..paths import TkTkTPaths
 from .observing import *
 
 
@@ -50,7 +48,7 @@ def compareSplits_cursors(candidate: str, reference: str):
     return tp, predicted, relevant, total - 1  # The `total` variable counts the amount of characters, not splits.
 
 
-def morphFraction(morphs: List[str], tokens: List[str], output: NestedMicroMacro):
+def morphFraction(morphs: list[str], tokens: list[str], output: NestedMicroMacro):
     """
     For each morph, find the token which contains most of its characters and compute the fraction of its total length
     that is present in that token. Then micro- or macro-average this across morphs in the corpus.
@@ -119,7 +117,7 @@ def morphFraction(morphs: List[str], tokens: List[str], output: NestedMicroMacro
     output.fence()
 
 
-def alignedSegmentationScore(morphs: List[str], tokens: List[str], adversarial: bool, output: NestedAverage):
+def alignedSegmentationScore(morphs: list[str], tokens: list[str], adversarial: bool, output: NestedAverage):
     """
     For each reference split, compute the distance to the nearest candidate split. Normalise these distances somehow,
     then again micro- or macro-average.
@@ -252,9 +250,9 @@ class ConfusionMatrices(Cacheable):
             return ConfusionMatrices(cm=dictToMatrix(d["unweighted"]), cm_weighted=dictToMatrix(d["weighted"]))
 
 
-class MorphologyIterable(ObservableRoot[Tuple[str,M]]):
+class MorphologyIterable(ObservableRoot[tuple[str,M]]):
 
-    def __init__(self, experiment_id: str, dataset: ModestDataset[M], word_weights: Dict[str,float]=None, observers: List[Observer[Tuple[str,M]]]=None):
+    def __init__(self, experiment_id: str, dataset: ModestDataset[M], word_weights: dict[str,float]=None, observers: list[Observer[tuple[str,M]]]=None):
         super().__init__(cache_disambiguator=experiment_id, observers=observers)
         self._dataset = dataset
         self._weights = word_weights or dict()
@@ -262,17 +260,17 @@ class MorphologyIterable(ObservableRoot[Tuple[str,M]]):
     def _nodeIdentifier(self) -> str:
         return self._dataset.identifier()
 
-    def _stream(self) -> Iterator[Tuple[Tuple[str,M],float]]:
+    def _stream(self) -> Iterator[tuple[tuple[str,M],float]]:
         for obj in self._dataset.generate():
             word = obj.word
             yield (word, obj), self._weights.get(word, 1)
 
 
-class MorphologyAsClassification(FinallyObservableObserver[Tuple[Tokens,M],ConfusionMatrices]):
+class MorphologyAsClassification(FinallyObservableObserver[tuple[Tokens,M],ConfusionMatrices]):
 
     def __init__(self, visitor: MorphologyVisitor, effective_preprocessor: Preprocessor,
                  do_log_false_negatives: bool=False,
-                 observers: List[Observer[ConfusionMatrices]]=None):
+                 observers: list[Observer[ConfusionMatrices]]=None):
         super().__init__(cache_disambiguator=visitor.__class__.__name__, observers=observers)
         self._visitor      = visitor
         self._preprocessor = effective_preprocessor
@@ -292,7 +290,7 @@ class MorphologyAsClassification(FinallyObservableObserver[Tuple[Tokens,M],Confu
         self._cm_w = ConfusionMatrix()
         self._log  = None if not self._do_log_fusions else open(TkTkTPaths.pathToEvaluations() / "" / f"{self._cacheIdentifier()}_morpheme-fusions.txt", "w", encoding="utf-8")
 
-    def _receive(self, sample: Tuple[Tokens,M], weight: float):
+    def _receive(self, sample: tuple[Tokens,M], weight: float):
         tokens, obj = sample
         tokeniser_segmentation = " ".join(self._preprocessor.undo_per_token(tokens)).strip()
         reference_segmentation = " ".join(self._visitor(obj))

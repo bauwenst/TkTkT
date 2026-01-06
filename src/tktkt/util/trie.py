@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Optional
 
 from .strings import indent
 
@@ -14,9 +14,9 @@ class PrefixTrieNode:
 
         self.root = root
         self.count = 0
-        self.branches: Dict[str, PrefixTrieNode] = dict()
+        self.branches: dict[str, PrefixTrieNode] = dict()
 
-        self.lexicographic_branch_keys: List[str] = []  # Branch keys with a definite order independent of when which branch was added. The order is from short to long and then alphabetic.
+        self.lexicographic_branch_keys: list[str] = []  # Branch keys with a definite order independent of when which branch was added. The order is from short to long and then alphabetic.
 
     def add(self, word: str, count: int=1):
         """
@@ -99,11 +99,11 @@ class PrefixTrieNode:
 
         return None
 
-    def getTopChildNodes(self, n: int=-1) -> List["PrefixTrieNode"]:
+    def getTopChildNodes(self, n: int=-1) -> list["PrefixTrieNode"]:
         nodes = sorted(self.branches.values(), key=lambda node: node.count, reverse=True)
         return nodes if n <= 0 else nodes[:n]
 
-    def getNodesOfPrefices(self, word: str) -> List["PrefixTrieNode"]:
+    def getNodesOfPrefices(self, word: str) -> list["PrefixTrieNode"]:
         """
         Get the list of existing trie nodes that correspond to a prefix of the given word.
         For example, "abcde" can return the nodes for "a", "ab", "abc", "abcd" and "abcde".
@@ -115,7 +115,7 @@ class PrefixTrieNode:
                 nodes.append(node)
         return nodes
 
-    def getNodesWithPrefix(self, word: str, only_first: bool=False) -> List["PrefixTrieNode"]:
+    def getNodesWithPrefix(self, word: str, only_first: bool=False) -> list["PrefixTrieNode"]:
         """
         Return the nodes that start with the given string.
         For example, if "abc" is given, the node for "abcd" and "abce" might be returned, even if "abc" itself doesn't
@@ -142,7 +142,7 @@ class PrefixTrieNode:
 
         return nodes
 
-    def getDescendantNodes(self) -> List["PrefixTrieNode"]:
+    def getDescendantNodes(self) -> list["PrefixTrieNode"]:
         """
         Return the list of strict descendants of this node.
         """
@@ -191,10 +191,10 @@ class SuffixTrieNode:
     def __repr__(self, sort_alphabetically: bool=False):
         return self._node.__repr__(sort_alphabetically)
 
-    def getTopChildNodes(self, n: int=-1) -> List["SuffixTrieNode"]:
+    def getTopChildNodes(self, n: int=-1) -> list["SuffixTrieNode"]:
         return [SuffixTrieNode(node) for node in self._node.getTopChildNodes(n)]
 
-    def getNodesOfSuffices(self, word: str) -> List["SuffixTrieNode"]:
+    def getNodesOfSuffices(self, word: str) -> list["SuffixTrieNode"]:
         nodes = []
         for i in range(len(word)):
             node = self.get(word[len(word)-(i+1):])
@@ -202,7 +202,7 @@ class SuffixTrieNode:
                 nodes.append(node)
         return nodes
 
-    def getNodesWithSuffix(self, word: str, only_first: bool=False) -> List["SuffixTrieNode"]:
+    def getNodesWithSuffix(self, word: str, only_first: bool=False) -> list["SuffixTrieNode"]:
         """
         Return the nodes that end with the given string.
         For example, if "abc" is given, the node for "dabc" and "eabc" might be returned, even if "abc" itself doesn't
@@ -211,7 +211,7 @@ class SuffixTrieNode:
         nodes = self._node.getNodesWithPrefix(word[::-1], only_first=only_first)
         return [SuffixTrieNode(node) for node in nodes]
 
-    def getDescendantNodes(self) -> List["SuffixTrieNode"]:
+    def getDescendantNodes(self) -> list["SuffixTrieNode"]:
         nodes = self._node.getDescendantNodes()
         return [SuffixTrieNode(node) for node in nodes]
 

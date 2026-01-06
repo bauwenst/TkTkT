@@ -1,4 +1,4 @@
-from typing import List, Callable
+from typing import Callable
 from dataclasses import dataclass
 
 from ....interfaces.tokenisers import *
@@ -43,8 +43,7 @@ class UnguidedViterbi(TokeniserWithVocabulary[WithSpecials]):
     """
 
     def __init__(self, pretrained_vocabulary: Vocab, space_marker: BoundaryMarker):
-        super().__init__(preprocessor=OnWhitespaceAndAddMarker(space_marker))
-        self.vocab = pretrained_vocabulary
+        super().__init__(preprocessor=OnWhitespaceAndAddMarker(space_marker), vocab=pretrained_vocabulary)
 
         self.updater = ViterbiLossUpdater(
             loss_update=lambda prev_loss, step_string: prev_loss.loss + 1,
@@ -121,7 +120,7 @@ class RA_Product(TokeniserWithVocabulary[WithSpecials]):
         So the ordering of a product is... weird.
     """
 
-    def tokenise(self, word: str) -> List[str]:
+    def tokenise(self, word: str) -> Tokens:
         scores = [0 for _ in range(len(word) + 1)]
         scores[0] = 1
         backpointer = [None for _ in range(len(word) + 1)]

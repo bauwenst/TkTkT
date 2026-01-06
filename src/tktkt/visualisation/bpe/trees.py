@@ -1,4 +1,4 @@
-from typing import List, Union, Tuple, Iterable
+from typing import Iterable
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -9,19 +9,19 @@ from ...models.bpe.base import BTE
 class NormalisationFunction(ABC):
 
     @abstractmethod
-    def normalise(self, value: float, all_values: List[float]):
+    def normalise(self, value: float, all_values: list[float]):
         pass
 
 
 class IdentityNormalisation(NormalisationFunction):
 
-    def normalise(self, value: float, all_values: List[float]):
+    def normalise(self, value: float, all_values: list[float]):
         return value
 
 
 class LinearNormalisation(NormalisationFunction):
 
-    def normalise(self, value: float, all_values: List[float]):
+    def normalise(self, value: float, all_values: list[float]):
         return value / sum(all_values)
 
 
@@ -31,7 +31,7 @@ class SoftmaxNormalisation(NormalisationFunction):
         self.tau = temperature
         self.do_scale = scale_beforehand
 
-    def normalise(self, value: float, all_values: List[float]):
+    def normalise(self, value: float, all_values: list[float]):
         all_values = np.array(all_values)
         if self.do_scale:
             denominator = np.sum(all_values)
@@ -62,7 +62,7 @@ class VisualWeightingFunction(ABC):
         """
         pass
 
-    def getTokenWeightGivenAll(self, all_tree_weights: List[float], token: str, depth: int, is_leaf: bool) -> float:
+    def getTokenWeightGivenAll(self, all_tree_weights: list[float], token: str, depth: int, is_leaf: bool) -> float:
         """
         Get the weight given all weights in whatever tree this token is visualised inside of.
         """
@@ -88,9 +88,9 @@ class ExponentialDepthWeighting(VisualWeightingFunction):
 class BpeTree:
     """Tracker for historically applied merges."""
 
-    def __init__(self, token: str, children: List["BpeTree"]=None):
+    def __init__(self, token: str, children: list["BpeTree"]=None):
         self.token: str = token
-        self.children: List[BpeTree] = children or []
+        self.children: list[BpeTree] = children or []
         self.weight = 1
 
 
@@ -118,7 +118,7 @@ class AssignWeightsFromFlattenedTree(BpeTreeWeightAssigner):
             frontier = new_frontier
 
     @abstractmethod
-    def getFlattenedWeights(self, tree: BpeTree) -> List[float]:
+    def getFlattenedWeights(self, tree: BpeTree) -> list[float]:
         pass
 
 
@@ -127,7 +127,7 @@ class AssignWeightsUsingTokenFunction(BpeTreeWeightAssigner):
     def __init__(self, token_weighting_function: VisualWeightingFunction):
         self.weighter = token_weighting_function
 
-    def getFlattenedWeights(self, tree: BpeTree) -> List[float]:
+    def getFlattenedWeights(self, tree: BpeTree) -> list[float]:
         weights = []
 
         # Step 1: Collect unnormalised weights.
@@ -157,14 +157,14 @@ class AssignWeightsUsingTokenFunction(BpeTreeWeightAssigner):
         return normalised_weights
 
 
-MergeTrace = List[BpeTree]
+MergeTrace = list[BpeTree]
 
 class BpeVisualiser:
 
     def __init__(self, tokeniser: BTE):
         self.tokeniser = tokeniser
 
-    def _applyMerges_visualised(self, characters: Iterable[str]) -> Tuple[List[str], List[MergeTrace]]:
+    def _applyMerges_visualised(self, characters: Iterable[str]) -> tuple[list[str], list[MergeTrace]]:
         """
         Quick-and-dirty implementation of BPE merging, where we keep track of each merge as we go.
 
@@ -173,7 +173,7 @@ class BpeVisualiser:
         """
         buffer = list(characters)
         current_mergetree_sequence: MergeTrace = [BpeTree(c) for c in buffer]
-        all_mergetree_sequences: List[MergeTrace] = [current_mergetree_sequence.copy()]
+        all_mergetree_sequences: list[MergeTrace] = [current_mergetree_sequence.copy()]
 
         merges_to_ranks = {tuple(m.parts): m.priority for m in self.tokeniser.merge_graph.merges}
         merges = set(merges_to_ranks.keys())
@@ -199,11 +199,11 @@ class BpeVisualiser:
 
         return buffer, all_mergetree_sequences
 
-    def tokenise_visualised(self, pretoken: str) -> Tuple[List[str], MergeTrace]:
+    def tokenise_visualised(self, pretoken: str) -> tuple[list[str], MergeTrace]:
         tokens, traces = self._applyMerges_visualised(self.tokeniser._boundary_marker.atomise(pretoken))
         return tokens, traces[-1]
 
-    def prepareAndTokenise_visualised(self, s: str) -> Tuple[List[str], str]:
+    def prepareAndTokenise_visualised(self, s: str) -> tuple[list[str], str]:
         # Run the visualiser on every pretoken in the string
         tokens = []
         trees  = []
@@ -215,10 +215,10 @@ class BpeVisualiser:
         # Convert to LaTeX
         return tokens, r"\resizebox{\linewidth}{!}{" + "\n" + self._treesToLatex(trees) + "}"
 
-    def tokenise_visualised_animated(self, pretoken: str) -> Tuple[List[str], List[MergeTrace]]:
+    def tokenise_visualised_animated(self, pretoken: str) -> tuple[list[str], list[MergeTrace]]:
         return self._applyMerges_visualised(self.tokeniser._boundary_marker.atomise(pretoken))
 
-    def prepareAndTokenise_visualised_animated(self, s: str) -> Tuple[str, str]:
+    def prepareAndTokenise_visualised_animated(self, s: str) -> tuple[str, str]:
         """
         Same as above but for Beamer.
         We concatenate the pretokens before tokenising, so that the global order of merges also holds among the

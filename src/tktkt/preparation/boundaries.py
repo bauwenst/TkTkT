@@ -3,7 +3,6 @@ One contract for all forms of start-of-word (SoW) and end-of-word (EoW).
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import Tuple
 
 
 class BoundaryMarkerLocation(str, Enum):  # The str parent allows JSON serialisation: https://stackoverflow.com/a/51976841/9352077
@@ -18,7 +17,7 @@ class BoundaryMarker:
     detached: bool
     location: BoundaryMarkerLocation
 
-    def isolate(self, pretoken: str) -> Tuple[str, str]:
+    def isolate(self, pretoken: str) -> tuple[str, str]:
         """
         Retrieve the part of a pretoken that isn't a space marker.
         """
@@ -54,7 +53,7 @@ class BoundaryMarker:
         else:
             return root
 
-    def atomise(self, pretoken: str) -> Tuple[str,...]:
+    def atomise(self, pretoken: str) -> tuple[str,...]:
         """
         Method for algorithms like BPE that require a word to start out as being split into characters.
 

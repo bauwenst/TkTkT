@@ -4,7 +4,7 @@ Interface for tokenisers that want to be compatible with the HuggingFace suite.
 Indeed, this has nothing to do with having a tokeniser that runs on HuggingFace internally, because that would be just
 another member of tktkt.models. Rather, this is about needs to be implemented in order to become a HuggingFace tokeniser.
 """
-from typing import List, Optional, Tuple, Mapping, Iterable, Callable
+from typing import Optional, Mapping, Iterable, Callable
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -28,7 +28,7 @@ class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
     """
 
     @abstractmethod
-    def _tokenize(self, text, **kwargs) -> List[str]:
+    def _tokenize(self, text, **kwargs) -> list[str]:
         pass
 
     # The following three methods are for interfacing with the vocabulary.
@@ -53,21 +53,21 @@ class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
         pass
 
     @abstractmethod
-    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> Tuple[str]:
+    def save_vocabulary(self, save_directory: str, filename_prefix: Optional[str] = None) -> tuple[str]:
         pass
 
     # The following methods are technically already implemented in HF, but it's important to define them explicitly.
 
     @abstractmethod
-    def tokenize(self, text: str, **kwargs) -> List[str]:
+    def tokenize(self, text: str, **kwargs) -> list[str]:
         pass
 
     @abstractmethod
-    def convert_tokens_to_string(self, tokens: List[str]) -> str:
+    def convert_tokens_to_string(self, tokens: list[str]) -> str:
         pass
 
     @abstractmethod
-    def build_inputs_with_special_tokens(self, token_ids_0: List[int], token_ids_1: Optional[List[int]]=None) -> List[int]:
+    def build_inputs_with_special_tokens(self, token_ids_0: list[int], token_ids_1: Optional[list[int]]=None) -> list[int]:
         """
         Takes over the role of tokenizers.processors (adding [CLS] and [SEP]) in PreTrainedTokenizer, where it is called by:
             ._encode_plus()
@@ -170,7 +170,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
 
             return (file_path.as_posix(),)
 
-    def build_inputs_with_special_tokens(self, token_ids_0: List[int], token_ids_1: Optional[List[int]]=None) -> list[int]:
+    def build_inputs_with_special_tokens(self, token_ids_0: list[int], token_ids_1: Optional[list[int]]=None) -> list[int]:
         if token_ids_1 is None:
             return self.backend.vocab.specials._singleSentenceTemplate(token_ids_0)
         else:

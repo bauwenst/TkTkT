@@ -9,7 +9,7 @@ TODO: Another idea:
       allowed as a step at the current position) whilst if you use boundary probabilities, you're only going to be normalised for each of the 2^k boundary configurations of
       a fixed length k.
 """
-from typing import List, MutableSequence
+from typing import MutableSequence
 from abc import abstractmethod, ABC
 
 import numpy as np
@@ -311,7 +311,7 @@ class ScoreGeneratorUsingCharacterClassifierForTransform(ScoreGeneratorUsingChar
         super().__init__()
         self.T = transform
 
-    def getBoundaryScores(self, string: str) -> List[float]:
+    def getBoundaryScores(self, string: str) -> list[float]:
         boundary_scores = list(map(self.T.probabilityToScore, map(exp, self.logprob_classifier.getPointLogProbabilities(string))))  # one entry for each character
         boundary_scores[-1] = self.T.probabilityToScore(0.5)  # Score you get from walking straight to the end is indifferent. I.e.: doing it is not punished so much you take other bad splits, but it's not rewarded so much you don't go looking for better splits.
         return boundary_scores
@@ -458,7 +458,7 @@ class ScoreGeneratorUsingCharacterClassifierForHardBoundaries(ScoreGeneratorUsin
         self.punishment = -abs(punishment)  # User can give positive or negative values, doesn't matter.
         self.do_normalise = do_normalise
 
-    def getHardBoundaryIndices(self, string: str) -> List[int]:
+    def getHardBoundaryIndices(self, string: str) -> list[int]:
         """
         Returns the INDICES of which characters are preceded by a boundary with probability > 0.5.
         Always includes index 0 and len(string), which are imaginary boundaries.

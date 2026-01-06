@@ -7,7 +7,7 @@ from ..evaluation.entropy import *
 from ..interfaces import TokeniserWithVocabulary
 
 
-def evaluateTokeniser(experiment_id: str, corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
+def evaluateTokeniser(experiment_id: str, corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: list[Observer[Tokens]]):
     """
     Functional shorthand for one specific instance of the general object-oriented Observable/Observer approach,
     for cases where you want to tokenise strings in a corpus and compute metrics over the tokeniser's token outputs.
@@ -24,7 +24,7 @@ def evaluateTokeniser(experiment_id: str, corpus: NamedIterable[str], tokeniser:
     ).run()
 
 
-def evaluateTokeniserOnWords(experiment_id: str, corpus: NamedIterable[str], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: List[Observer[Tokens]]):
+def evaluateTokeniserOnWords(experiment_id: str, corpus: NamedIterable[str], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: list[Observer[Tokens]]):
     """
     Same as evaluateTokeniser except now you split the strings into "words" beforehand.
     """

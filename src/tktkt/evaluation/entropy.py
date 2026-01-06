@@ -1,7 +1,7 @@
 """
 Evaluations that generate distributions, either across the vocabulary or the domain of segmentations.
 """
-from typing import Iterable, Tuple, Optional, List, TypeVar
+from typing import Iterable, Optional, TypeVar
 from dataclasses import dataclass
 from collections import Counter
 
@@ -51,7 +51,7 @@ def renyiEntropy(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPH
 
 
 def renyiEfficiency(probabilities: Iterable[float], alpha: float=DEFAULT_RENYI_ALPHA,
-                    domain_size: int=None, sample_size: int=None) -> Tuple[float,float,float]:
+                    domain_size: int=None, sample_size: int=None) -> tuple[float,float,float]:
     """
     Rényi efficiency of a probability distribution equals the fraction which its Rényi entropy is of the Shannon entropy
     of a uniform distribution of the same size.
@@ -150,7 +150,7 @@ class TokenUnigramDistribution(FinallyObservableObserver[Tokens,ReturnUnigramDis
     (A much more elaborate and caching version of this function can be found in the bpe_hell.eda.computation package.)
     """
 
-    def __init__(self, ensured_vocabulary: Iterable[str]=None, observers: List[Observer[ReturnUnigramDistribution]]=None):
+    def __init__(self, ensured_vocabulary: Iterable[str]=None, observers: list[Observer[ReturnUnigramDistribution]]=None):
         super().__init__(observers=observers)
         self.frequencies = ReturnUnigramDistribution()
         if ensured_vocabulary is not None:
@@ -205,7 +205,7 @@ class ReturnRenyiEntropy:
 
 class RenyiEntropy(ImmediatelyObservableObserver[ReturnUnigramDistribution,ReturnRenyiEntropy]):
 
-    def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: List[Observer[ReturnRenyiEntropy]]=None):
+    def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: list[Observer[ReturnRenyiEntropy]]=None):
         super().__init__(observers)
         self.alpha = alpha
         self.theoretical_vocab_size = vocab_size_in_denominator
@@ -237,7 +237,7 @@ class ReturnRenyiEfficiencyWithBounds:
 
 class RenyiEfficiencyWithBounds(ImmediatelyObservableObserver[ReturnUnigramDistribution,ReturnRenyiEfficiencyWithBounds]):
 
-    def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: List[Observer[ReturnRenyiEfficiencyWithBounds]]=None):
+    def __init__(self, alpha: float=DEFAULT_RENYI_ALPHA, vocab_size_in_denominator: int=None, observers: list[Observer[ReturnRenyiEfficiencyWithBounds]]=None):
         super().__init__(observers)
         self.alpha = alpha
         self.theoretical_vocab_size = vocab_size_in_denominator
@@ -288,7 +288,7 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
                                 can spill from one into the other. The TTR inside a window will be higher if it
                                 contains tokens from more than one document, especially if they are on different topics.
     """
-    def __init__(self, window_size: int=2000, stride: int=1000, flush_every_example: bool=False, observers: List[Observer[ReturnMATTR]]=None):
+    def __init__(self, window_size: int=2000, stride: int=1000, flush_every_example: bool=False, observers: list[Observer[ReturnMATTR]]=None):
         super().__init__(observers=observers)
         assert 0 < stride <= window_size
         self.stride      = stride
@@ -310,7 +310,7 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
 
         self.window_type_frequencies       = Counter()
         self.n_tokens_in_window            = 0
-        self.stride_history: List[Counter] = [Counter()]
+        self.stride_history: list[Counter] = [Counter()]
         self.n_tokens_in_last_stride       = 0
 
     def _receive(self, sample: Tokens, _):
@@ -365,7 +365,7 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
 
             self.window_type_frequencies = Counter()
             self.n_tokens_in_window      = 0
-            self.stride_history: List[Counter] = [Counter()]
+            self.stride_history: list[Counter] = [Counter()]
             self.n_tokens_in_last_stride       = 0
 
     def _compute(self) -> ReturnMATTR:
@@ -444,7 +444,7 @@ class SegmentationDiversity(ImmediatelyObservableObserver[SegmentationCounts,Ret
     def __init__(self,
         domain_size: int,
         renyi_alpha: float=DEFAULT_RENYI_ALPHA,
-        deterministic_segmentation: Optional[List[str]]=None,
+        deterministic_segmentation: Optional[list[str]]=None,
         observers: list[Observer[ReturnSegmentationDiversity]]=None
     ):
         super().__init__(observers=observers)
@@ -461,7 +461,7 @@ class SegmentationDiversity(ImmediatelyObservableObserver[SegmentationCounts,Ret
 
 def analyseSegmentationDistribution(segmentations_counts: SegmentationCounts,
                                     domain_size: int, renyi_alpha: float=1.0,
-                                    deterministic_segmentation: Optional[List[str]]=None) -> ReturnSegmentationDiversity:
+                                    deterministic_segmentation: Optional[list[str]]=None) -> ReturnSegmentationDiversity:
     """
     Produces an analysis like Table 8 of the GRaMPa paper: https://aclanthology.org/2025.acl-long.1180
     """

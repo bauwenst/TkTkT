@@ -2,7 +2,7 @@
 Contains type aliases and classes which are mainly a type of data -- something you could see in a type annotation of
 a method/function -- rather than being focused on operations, as well as lowercase classes that mimic extra builtins.
 """
-from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Dict, Sequence, Mapping
+from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Sequence
 from abc import abstractmethod, ABC
 from datasets import Dataset, IterableDataset
 from functools import partial
@@ -19,7 +19,7 @@ from langcodes import Language
 Tokens            = Sequence[str]
 TokenLengths      = Sequence[int]
 TokenStartIndices = Sequence[int]
-SplitMask         = Sequence[bool]
+SplitMask         = Union[Sequence[bool],Sequence[int]]
 
 HuggingfaceDataset = Union[Dataset, IterableDataset]
 Number = TypeVar("Number", bound=Union[int,float])
@@ -197,7 +197,7 @@ class dictget:
     def __init__(self, key: T):
         self._partial = anypartial(dict.get, ..., key)
 
-    def __call__(self, d: Dict[T,T2]) -> T2:
+    def __call__(self, d: dict[T,T2]) -> T2:
         return self._partial(d)
 
 

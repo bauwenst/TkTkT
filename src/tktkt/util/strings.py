@@ -1,4 +1,4 @@
-from typing import List, Iterable, Set
+from typing import Iterable
 from enum import Enum
 import numpy as np
 
@@ -45,7 +45,7 @@ def anySubstringIn(substrings: Iterable[str], string: str) -> bool:
     return any(sub in string for sub in substrings)
 
 
-def getAlphabet(strings: Iterable[str]) -> Set[str]:
+def getAlphabet(strings: Iterable[str]) -> set[str]:
     alphabet = set()
     for s in strings:
         alphabet.update(s)
@@ -140,23 +140,25 @@ def convertCase(text: str, from_case: Case, to_case: Case) -> str:
 ########################################################################################################################
 
 
-def indicesToTokens(text: str, starts_of_tokens: List[int]) -> List[str]:
+from .types import Tokens, TokenStartIndices, SplitMask
+
+def indicesToTokens(text: str, starts_of_tokens: TokenStartIndices) -> Tokens:
     return [text[start_idx:end_idx] for start_idx, end_idx in zip(starts_of_tokens, starts_of_tokens[1:] + [len(text)])]
 
-def maskToTokens(text: str, mask: List[int]) -> List[str]:
+def maskToTokens(text: str, mask: SplitMask) -> Tokens:
     return indicesToTokens(text, [0] + (np.nonzero(mask)[0] + 1).tolist())
 
-def bitstringToTokens(text: str, bitmap: str) -> List[str]:
+def bitstringToTokens(text: str, bitmap: str) -> Tokens:
     return indicesToTokens(text, starts_of_tokens=[0] + [i+1 for i,c in enumerate(bitmap) if c == "1"])
 
 
-def tokensToIndices(tokens: List[str]) -> List[int]:
+def tokensToIndices(tokens: Tokens) -> TokenStartIndices:
     return [0] + list(cumsum(map(len, tokens)))[:-1]
 
-def tokensToMask(tokens: List[str]) -> List[int]:
+def tokensToMask(tokens: Tokens) -> SplitMask:
     return sum(intercalate(map(lambda i: (i-1)*[0], map(len, tokens)), [1]), start=[])
     # return list(map(int, tokensToBitstring(tokens)))
 
-def tokensToBitstring(tokens: List[str]) -> str:
+def tokensToBitstring(tokens: Tokens) -> str:
     return "".join(intercalate(map(lambda i: (i-1)*"0", map(len, tokens)), "1"))
     # return "".join(map(str, tokensToMask(tokens)))

@@ -1,10 +1,13 @@
-from typing import List, Optional, Iterator, Set
+from typing import Optional, Iterator
 from abc import abstractmethod, ABC
 
 from ..preparation.boundaries import BoundaryMarker
 from ..util.iterables import deduplicate
 from ..util.strings import indent
 
+
+Pretoken = str
+Pretokens = list[Pretoken]
 
 class _PreprocessorComponent(ABC):
     """
@@ -95,7 +98,7 @@ class Pretokeniser(_PreprocessorComponent):
     """
 
     @abstractmethod
-    def split(self, text: str) -> List[str]:
+    def split(self, text: str) -> Pretokens:
         """
         Split an entire text (e.g. a sentence) into smaller pre-token strings.
         It is these pre-token strings that will SEPARATELY be passed to the tokeniser.
@@ -103,7 +106,7 @@ class Pretokeniser(_PreprocessorComponent):
         pass
 
     @abstractmethod
-    def invertTokens(self, pretokens: List[str]) -> List[str]:
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
         """
         Invert any string transformations applied in the process of splitting a string into pretokens.
         May also apply a merging operation into a smaller list if that is appropriate.
@@ -118,7 +121,7 @@ class Pretokeniser(_PreprocessorComponent):
         """
         return "".join(self.invertTokens([pretoken]))
 
-    def unsplit(self, tokens: List[str]) -> str:
+    def unsplit(self, tokens: Pretokens) -> str:
         """
         Inverts the splitting operation.
         """
@@ -158,13 +161,13 @@ class Preprocessor(_PreprocessorComponentSequence):
     def __call__(self):  # Just in case you accidentally add parentheses to an already-instantiated Preprocessor object.
         return self
 
-    def do(self, text: str) -> List[str]:
+    def do(self, text: str) -> Pretokens:
         return self.splitter.split(self.reversible.convert(self.irreversible.convert(text)))
 
-    def undo(self, tokens: List[str]) -> str:
+    def undo(self, tokens: Pretokens) -> str:
         return self.reversible.invert(self.splitter.unsplit(tokens))
 
-    def undo_per_token(self, tokens: List[str]) -> List[str]:
+    def undo_per_token(self, tokens: Pretokens) -> list[str]:
         return [self.reversible.invert(self.splitter.invertToken(token)) for token in tokens]
 
     def __iter__(self) -> Iterator[_PreprocessorComponent]:

@@ -1,7 +1,7 @@
 """
 Evaluation of the context around tokens.
 """
-from typing import Iterable, Dict, Union, Tuple, Optional, Callable, List, Self
+from typing import Iterable, Union, Optional, Callable, Self
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass, field, fields
@@ -25,7 +25,7 @@ from ..util.types import Tokens
 
 VocabRef = int  # To avoid storing token strings over and over, we construct a vocab on-the-fly (even with tokenisers that have no vocab).
 
-def getIterableWithCounts(iterable: Union[Iterable[str], Iterable[Tuple[str,int]]]) -> Iterable[Tuple[str,int]]:
+def getIterableWithCounts(iterable: Union[Iterable[str], Iterable[tuple[str,int]]]) -> Iterable[tuple[str,int]]:
     for thing in iterable:
         if isinstance(thing, tuple):
             word, frequency = thing
@@ -37,8 +37,8 @@ def getIterableWithCounts(iterable: Union[Iterable[str], Iterable[Tuple[str,int]
 
 @dataclass
 class AccessorDistribution:
-    accessors:  Dict[VocabRef, ChainedCounter[VocabRef]]
-    boundaries: Dict[VocabRef, int]
+    accessors:  dict[VocabRef, ChainedCounter[VocabRef]]
+    boundaries: dict[VocabRef, int]
 
     def countOccurrences(self, accessor_id: VocabRef) -> int:
         return self.accessors.get(accessor_id, Counter()).total() + self.boundaries.get(accessor_id, 0)
@@ -66,7 +66,7 @@ class AccessorDistribution:
 
 @dataclass
 class AccessorDistributions(Cacheable):
-    vocab: Dict[str,VocabRef]
+    vocab: dict[str,VocabRef]
     left_of:  AccessorDistribution
     right_of: AccessorDistribution
 
@@ -135,7 +135,7 @@ class AccessorDistributions(Cacheable):
 
         return distributions
 
-    def filter(self, remove_if: Callable[[str, "AccessorDistributions"], bool]) -> List[str]:
+    def filter(self, remove_if: Callable[[str, "AccessorDistributions"], bool]) -> list[str]:
         # Remove
         removed = [t for t in self.vocab if remove_if(t, self)]
         for t in streamProgress(removed, show_as="Removing types"):  # NOTE: The reason this loop is so slow is because it is practically O(|V|² x |D|): |V| because you remove some fraction of the vocabulary proportional to it, |V| because for every type you have to look through the neighbours, and |D| because those neighbours are stored in buckets whose amount grows proportionally to the corpus.
@@ -253,7 +253,7 @@ AGGREGATE_PREFIX = "$$$ "
 
 @dataclass
 class DistributionAccessorSummaries:
-    per_type: Dict[str, TypeAccessorSummary]
+    per_type: dict[str, TypeAccessorSummary]
     aggregates: MetaSummaries
 
     def save(self, path: Path) -> Path:
@@ -331,7 +331,7 @@ class AllAccessorSummaries(Cacheable):
 
 class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
 
-    def __init__(self, bucket_samples_every: int, disable_cache: bool=False, observers: List[Observer[AccessorDistributions]]=None):
+    def __init__(self, bucket_samples_every: int, disable_cache: bool=False, observers: list[Observer[AccessorDistributions]]=None):
         """
         :param bucket_samples_every: Every type in the vocabulary has a left and right counter associated with it that counts
                              how many tokens of each type are left resp. right of it. Those counts are bucketed in
@@ -351,13 +351,13 @@ class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
 
     def _initialiseAsObserver(self, identifier: str):
         self.max_id: VocabRef           = 0
-        self.vocab: Dict[str, VocabRef] = dict()
+        self.vocab: dict[str, VocabRef] = dict()
 
         # Everything you have seen to the left and right of a given type.
-        self.left_of:  Dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(self._bucket_size))
-        self.right_of: Dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(self._bucket_size))
-        self.left_bounds:  Dict[VocabRef, int] = defaultdict(int)
-        self.right_bounds: Dict[VocabRef, int] = defaultdict(int)
+        self.left_of:  dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(self._bucket_size))
+        self.right_of: dict[VocabRef, ChainedCounter[VocabRef]] = defaultdict(lambda: ChainedCounter(self._bucket_size))
+        self.left_bounds:  dict[VocabRef, int] = defaultdict(int)
+        self.right_bounds: dict[VocabRef, int] = defaultdict(int)
 
     def _receive(self, sample: Tokens, weight: float):
         tokens, frequency = sample, weight
@@ -403,7 +403,7 @@ class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
 
 class AccessorVariety(FinallyObservableObserver[AccessorDistributions,AllAccessorSummaries]):
 
-    def __init__(self, predefined_vocab_size: Optional[int]=None, cache_disambiguator: str= "", disable_cache: bool=False, observers: List[Observer[AllAccessorSummaries]]=None):
+    def __init__(self, predefined_vocab_size: Optional[int]=None, cache_disambiguator: str= "", disable_cache: bool=False, observers: list[Observer[AllAccessorSummaries]]=None):
         super().__init__(cache_disambiguator=cache_disambiguator, disable_cache=disable_cache, observers=observers)
         self._predefined_vocab_size = predefined_vocab_size
 
@@ -499,10 +499,10 @@ def summariseAccessors(accessors: AccessorDistributions, predefined_vocab_size: 
         # First we define the reduction operators.
         class SummaryReduction(ABC):
             @abstractmethod
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 pass
 
-            def reduce(self, type_summaries: List[TypeAccessorSummary], type_weights: List[float]) -> TypeAccessorSummary:
+            def reduce(self, type_summaries: list[TypeAccessorSummary], type_weights: list[float]) -> TypeAccessorSummary:
                 """We reduce all fields of the summaries with the same operator."""
                 return TypeAccessorSummary(
                     **{
@@ -512,40 +512,40 @@ def summariseAccessors(accessors: AccessorDistributions, predefined_vocab_size: 
                 )
 
         class Mean(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 return float(np.mean(type_values))
 
         class Median(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 return float(np.median(type_values))
 
         class MAD(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 return float(sp.stats.median_abs_deviation(type_values))
 
         class IQR(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 return float(sp.stats.iqr(type_values))
 
         class MeanWeighted(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 values  = np.array(type_values)
                 weights = np.array(type_weights)
                 weights = weights / np.sum(weights)  # Because the weights are type frequencies, they are likely very large and hence it should be more stable to use small floats.
                 return float(np.sum(weights * values))
 
         class MedianWeighted(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 return float(weighted_quantiles(type_values, type_weights, p=0.5))
 
         class MADWeighted(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 median = float(weighted_quantiles(type_values, type_weights, p=0.5))
                 value_deviations = np.abs(np.array(type_values) - median)  # Every value's deviation from the median. Weights for these values and deviations should be equal.
                 return float(weighted_quantiles(value_deviations, type_weights, p=0.5))
 
         class IQRWeighted(SummaryReduction):
-            def reduceField(self, type_values: List[float], type_weights: List[float]) -> float:
+            def reduceField(self, type_values: list[float], type_weights: list[float]) -> float:
                 q1, q3 = weighted_quantiles(type_values, type_weights, p=[0.25, 0.75])
                 return float(q3 - q1)
 

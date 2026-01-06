@@ -5,7 +5,7 @@ and at least he has documentation that exists.
 """
 from abc import abstractmethod
 from pathlib import Path
-from typing import Iterable, Tuple, Self
+from typing import Iterable, Self
 from dataclasses import dataclass
 
 import json
@@ -193,7 +193,7 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser[CacheableKudoPieceArtifac
     def _cacheType(self):
         return CacheableKudoPieceArtifacts
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[Tuple[str,int]]) -> CacheableKudoPieceArtifacts:
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableKudoPieceArtifacts:
         """
         FIXME: Currently suffers from https://github.com/google/sentencepiece/issues/967
         """
