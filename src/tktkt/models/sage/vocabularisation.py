@@ -13,6 +13,7 @@ import warnings
 from ...interfaces import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
 from .schedules import *
+from ...util.strings import shash
 
 
 class SageArtifacts(Artifacts):
@@ -81,11 +82,14 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
         self.initial_hex_vocab = None
         self.seed = seed
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "sage"
 
     def _cacheType(self):
         return CacheableSageArtifacts
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(repr(self.vocabulary_points) + repr(self.recompute_embeddings_at))
 
     def initialiseVocabulary(self, vocab: UnidentifiedVocab):
         """

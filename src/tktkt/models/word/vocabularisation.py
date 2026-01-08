@@ -7,15 +7,17 @@ from dataclasses import dataclass
 
 import gc
 
-from ...interfaces import Artifacts, CacheableArtifacts
-from ...util.printing import intsep, percent, pluralise
 from ...paths import TkTkTPaths
+from ...interfaces import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
+from ...util.printing import intsep, percent, pluralise
+from ...util.strings import shash
 
 import logging
 logger = logging.getLogger(__name__)
 
 _NAME_COUNTS = "words.tsv"
+_NAME_CORPUS = "name.txt"
 
 
 class WordFrequencyList(Artifacts):
@@ -23,11 +25,16 @@ class WordFrequencyList(Artifacts):
     def getFrequencies(self) -> Iterable[tuple[str,int]]:
         pass
 
+    @abstractmethod
+    def getCorpusName(self) -> str:
+        pass
+
 
 class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
-    def __init__(self, final_tsv_path: Path):
+    def __init__(self, final_tsv_path: Path, corpus_name: str):  # We save the corpus name only because the result is itself a kind of "corpus". We don't do this for tokenisers.
         super().__init__()
         self._path = final_tsv_path
+        self._name = corpus_name
 
     def _getVocabulary(self) -> UnidentifiedVocab:
         for word, _ in self._readTsv(self._path):
@@ -36,16 +43,23 @@ class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
     def getFrequencies(self) -> Iterable[tuple[str,int]]:
         yield from self._readTsv(self._path)
 
+    def getCorpusName(self) -> str:
+        return self._name
+
     ####################################################################################################################
 
     def store(self, cache_path: Path):
         expected_path = cache_path / _NAME_COUNTS
         if self._path != expected_path:
             shutil.copy(self._path, expected_path)  # Or something like _writeTsv(expected, _readTsv(path)) or just move (because the file can be quite big). Moving is allowed because this class is not supposed to be instantiated by a client script, and thus the only time when the path is specified is when it has just been filled by the Vocabulariser.
+        with open(cache_path / _NAME_CORPUS, "w", encoding="utf-8") as handle:
+            handle.write(self._name + "\n")
 
     @classmethod
     def load(cls, cache_path: Path) -> Self:
-        return CacheableWordFrequencyList(cache_path / _NAME_COUNTS)
+        with open(cache_path / _NAME_CORPUS, "r", encoding="utf-8") as handle:
+            name = handle.readline().rstrip()
+        return CacheableWordFrequencyList(cache_path / _NAME_COUNTS, name)
 
     @classmethod
     def exists(cls, cache_path: Path) -> bool:
@@ -70,6 +84,14 @@ class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
                 yield word, int(count)
 
 
+@dataclass
+class CountingConfig:
+    checkpoint_every_examples: int
+    shard_if_keys_exceed: int         # Upper bound on the amount of keys you want to keep in memory at once when counting. When exceeded, flush/siphon/shard everything to disk and start with an empty counter.
+    drop_if_multiple_exceeded: float  # When merging multiple shards, some multiple of the memory of counting is needed. When even this is exceeded, we start dropping low-frequency words (all the 1s, then all the 2s, ...) until we are good again.
+    delete_shards_after: bool
+
+
 class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
     """
     Has the goal of compressing a string iterable to a TSV containing every unique word exactly once with its frequency.
@@ -83,33 +105,26 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
           we can resume the counting in case of a crash.
     """
 
-    _RESULT_STEM = "words"
-
-    @dataclass
-    class CacheConfig:
-        checkpoint_every_examples: int
-        flush_if_keys_exceed: int         # Upper bound on the amount of keys you want to keep in memory at once when counting.
-        drop_if_multiple_exceeded: float  # When merging multiple caches, some multiple of the memory of counting is needed. When even this is exceeded, we start dropping low-frequency words (all the 1s, then all the 2s, ...) until we are good again.
-        delete_cache_after: bool
-
     def __init__(self,
         word_extractor: Preprocessor,
         frequency_minimum: int,
         sort_before_write: bool,
-        cache_config: "CountWords.CacheConfig"
+        config: CountingConfig
     ):
         """
         :param frequency_minimum: For filtering the final counter, i.e. with the "true" counts (modulo any dropping that happened while merging), to save space.
         :param sort_before_write: Whether to sort before writing the final counter.
         """
         super().__init__(preprocessor=word_extractor)
-        self.preprocessor = word_extractor
         self.frequency_minimum = frequency_minimum
         self.sort_before_write = sort_before_write
-        self.config            = cache_config
+        self.config            = config
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "counts"
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(f"{self.config.shard_if_keys_exceed*self.config.drop_if_multiple_exceeded}")
 
     def _cacheType(self):
         return CacheableWordFrequencyList
@@ -124,13 +139,13 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
 
         # Find prior work in this folder.
         files = TkTkTPaths.files(folder_intermediate)
-        caches      = [file for file in files if "_" not in file.stem]
+        shards      = [file for file in files if "_" not in file.stem]
         checkpoints = [file for file in files if "_"     in file.stem]
 
-        latest_cache      = max(map(lambda path: int(path.stem), caches),                        default=0)
+        latest_shard      = max(map(lambda path: int(path.stem), shards),                        default=0)
         latest_checkpoint = max(map(lambda path: int(path.stem.removeprefix("_")), checkpoints), default=0)
 
-        if len(checkpoints) > 0 and latest_checkpoint > latest_cache:
+        if len(checkpoints) > 0 and latest_checkpoint > latest_shard:
             if len(checkpoints) > 1:
                 logger.warning(f"Found obsolete checkpoint(s). Only using highest one.")
                 for checkpoint in checkpoints:
@@ -139,17 +154,17 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
                     checkpoint.unlink()
             counter = self._loadCounter(folder_intermediate / f"_{latest_checkpoint}.tsv")
             resume_after_idx = latest_checkpoint
-        else:  # No checkpoint to load. It either doesn't exist or caches are more recent.
+        else:  # No checkpoint to load. It either doesn't exist or shards are more recent.
             if len(checkpoints) > 0:
-                logger.warning(f"Found obsolete checkpoints. Caches are more recent.")
+                logger.warning(f"Found obsolete checkpoints. Shards are more recent.")
                 for checkpoint in checkpoints:
                     checkpoint.unlink()
                 latest_checkpoint = 0
             counter = Counter()
-            resume_after_idx = latest_cache
+            resume_after_idx = latest_shard
 
         if self._cacheStatusRead(folder) == "merging":
-            return CacheableWordFrequencyList(self._merge(caches, output_folder=folder))
+            return CacheableWordFrequencyList(self._merge(shards, output_folder=folder), sentence_iterable.name)
 
         # Now iterate.
         idx = 0
@@ -162,8 +177,8 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
                 counter[word] += 1
 
             # Flush to disk if counter is too big.
-            if len(counter) > self.config.flush_if_keys_exceed:
-                caches.append(self._saveCounter(counter, folder_intermediate, n_examples_seen=idx, is_temporary=False))
+            if len(counter) > self.config.shard_if_keys_exceed:
+                shards.append(self._saveCounter(counter, folder_intermediate, n_examples_seen=idx, is_temporary=False))
                 counter = Counter()
                 gc.collect()
 
@@ -178,24 +193,24 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
                     self._removeCheckpoint(folder_intermediate, latest_checkpoint)
                 latest_checkpoint = idx
 
-        # For safety, cache the current incomplete counter before continuing to the final merge step.
+        # For safety, store the current incomplete counter as a shard before continuing to the final merge step.
         if counter:
-            caches.append(self._saveCounter(counter, folder_intermediate, idx, is_temporary=False))
+            shards.append(self._saveCounter(counter, folder_intermediate, idx, is_temporary=False))
 
             if latest_checkpoint:
                 self._removeCheckpoint(folder_intermediate, latest_checkpoint)
 
-        # Merge and delete caches
+        # Merge and delete shards
         self._cacheStatusWrite(folder, "merging")
-        return CacheableWordFrequencyList(self._merge(caches, output_folder=folder))
+        return CacheableWordFrequencyList(self._merge(shards, output_folder=folder), sentence_iterable.name)
 
     def _merge(self, shards: list[Path], output_folder: Path) -> Path:
         """
         Note: if you will only ever stream the counts rather than hold them in memory all at once, this implementation
         is lossier than you need, since it assumes that at the end, the full counter must be held in memory before writing it away.
         """
-        warn_size = self.config.flush_if_keys_exceed
-        max_size  = int(self.config.flush_if_keys_exceed * self.config.drop_if_multiple_exceeded)
+        warn_size = self.config.shard_if_keys_exceed
+        max_size  = int(self.config.shard_if_keys_exceed * self.config.drop_if_multiple_exceeded)
         warned = False
 
         # Collect
@@ -248,8 +263,8 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
 
         # Delete
         self._cacheStatusClear(output_folder)
-        if self.config.delete_cache_after:
-            logger.info("Deleting caches...")
+        if self.config.delete_shards_after:
+            logger.info("Deleting shards...")
             parents = set()
             for shard in shards:
                 parents.add(shard.parent)

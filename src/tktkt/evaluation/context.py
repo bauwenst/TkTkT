@@ -340,7 +340,7 @@ class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
         super().__init__(disable_cache=disable_cache, observers=observers)
         self._bucket_size = bucket_samples_every
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return f"AV-bucket-size={self._bucket_size}"
 
     def _cacheType(self):
@@ -349,7 +349,7 @@ class AccessorCounting(FinallyObservableObserver[Tokens,AccessorDistributions]):
     def _cacheSubfolders(self) -> list[str]:
         return ["av", "counts"]
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self.max_id: VocabRef           = 0
         self.vocab: dict[str, VocabRef] = dict()
 
@@ -407,7 +407,7 @@ class AccessorVariety(FinallyObservableObserver[AccessorDistributions,AllAccesso
         super().__init__(cache_disambiguator=cache_disambiguator, disable_cache=disable_cache, observers=observers)
         self._predefined_vocab_size = predefined_vocab_size
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
     def _cacheType(self):
@@ -416,7 +416,7 @@ class AccessorVariety(FinallyObservableObserver[AccessorDistributions,AllAccesso
     def _cacheSubfolders(self) -> list[str]:
         return ["av", "summaries"]
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self.distributions = None
 
     def _receive(self, sample: AccessorDistributions, _):

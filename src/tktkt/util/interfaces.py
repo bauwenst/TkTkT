@@ -4,10 +4,11 @@ For general-purpose classes that have @abstractmethods.
 from abc import abstractmethod, ABC
 from typing import Iterable, TypeVar, Mapping, Generic, Callable, Optional
 
-from nltk.lm import counter
 from typing_extensions import Self
 from collections import Counter
 from pathlib import Path
+
+from tktkt.util.strings import prefixIfNotEmpty, suffixIfNotEmpty, circumfixIfNotEmpty, interfixIfNotEmpty
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -79,6 +80,23 @@ class ExtensibleMapping(Mapping[K,V], ABC):  # (No longer used since this assume
         yield from self.keys()
 
 
+class RuntimeIdentifiable(ABC):
+    def __init__(self, disambiguator: str=""):
+        self._disambiguator = disambiguator
+
+    def _identifierFull(self, external_identifier: str) -> str:
+        """
+        :param external_identifier: Identifier only known at runtime which belongs to some kind of parent which this object depends on,
+                                    and thus which changes its identifier.
+        """
+        return interfixIfNotEmpty(external_identifier, "_", self._identifierPartial()) + circumfixIfNotEmpty("[", self._disambiguator, "]")
+
+    @abstractmethod
+    def _identifierPartial(self) -> str:
+        """Produces the same value for all instances of this class that are equivalent. Kind of like a 'canonical representative' in abstract algebra."""
+        pass
+
+
 class Cacheable(ABC):
     """
     Something that can be serialised and deserialised, and in addition can check if it exists at a given path.
@@ -105,12 +123,13 @@ class Cacheable(ABC):
 
 C = TypeVar("C", bound=Cacheable)
 
-class Cache(Generic[C], ABC):
+class Cache(RuntimeIdentifiable, Generic[C]):
     """
     Can skip its computation using a cache.
     """
 
-    def __init__(self, disable_cache: bool=False):
+    def __init__(self, disambiguator: str="", disable_cache: bool=False):
+        super().__init__(disambiguator=disambiguator)
         self._disable_cache = disable_cache
 
     @abstractmethod
@@ -124,18 +143,15 @@ class Cache(Generic[C], ABC):
         pass
 
     @abstractmethod
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
-        """
-        Constructs (and possibly creates) the main folder or file used for this cache.
-        :param unambiguous_cache_identifier: unique identifier by which to associate the results. Two runs with the same identifier should be indistinguishable.
-        """
+    def _cachePath(self, external_identifier: str) -> Path:
+        """Constructs (and possibly creates) the main folder or file used for this cache."""
         pass
 
-    def _cacheRun(self, identifier: str, imputation: Callable[[],C]) -> C:
+    def _cacheRun(self, external_identifier: str, imputation: Callable[[],C]) -> C:
         if self._disable_cache:  # Bypass loading and storing
             result = imputation()
         else:
-            cache_path  = self._cachePath(identifier)
+            cache_path  = self._cachePath(external_identifier)
             cache_class = self._cacheType()
             if cache_class.exists(cache_path):
                 result = cache_class.load(cache_path)

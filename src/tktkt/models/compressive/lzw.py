@@ -14,6 +14,7 @@ from ...interfaces.tokenisers import Tokeniser, Preprocessor
 from ...models.greedy.directional import L2R_Greedy
 from ...util.printing import wprint
 from ...util.iterables import streamProgress
+from ...util.strings import shash
 
 
 class LzwArtifacts(Artifacts):
@@ -46,8 +47,11 @@ class LzwVocabulariser(UnsupervisedVocabulariser[CacheableLzwArtifacts]):
         super().__init__(preprocessor=preprocessor)
         self.vocab_size = vocab_size
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "lzw"
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(f"V={self.vocab_size}")
 
     def _cacheType(self):
         return CacheableLzwArtifacts

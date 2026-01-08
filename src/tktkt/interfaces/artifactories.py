@@ -12,7 +12,7 @@ from ..util.strings import anySubstringIn
 
 T = TypeVar("T", bound=Tokeniser)
 
-class TokeniserFactory(Generic[T], ABC):
+class TokeniserFactory(ABC, Generic[T]):
     """
     Object that instantiates a tokeniser with mostly default parameters.
     """

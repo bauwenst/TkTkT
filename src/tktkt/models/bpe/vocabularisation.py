@@ -6,10 +6,8 @@ from collections import defaultdict, OrderedDict, Counter
 
 from tqdm.auto import tqdm
 
-from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase
-from bpe_knockout.model.graph import MergeOnDisk
-from bpe_knockout.util.storage import HuggingFaceTokeniserPath
 from modest.formats.tsv import iterateTsv
+from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
@@ -20,6 +18,7 @@ from ...interfaces.vocabularisers import T_CacheableArtifact
 from ...util.dicts import substituteKey, argmax
 from ...util.iterables import streamProgress, deduplicate
 from ...util.printing import logger, pluralise
+from ...util.strings import shash
 
 
 class BpeTrainerImplementation(Enum):
@@ -85,7 +84,7 @@ class CacheableBPEArtifacts(CacheableArtifacts, BPEArtifacts):
     #     return sorted(vocab, key=vocab.get)
 
     @classmethod
-    def _storeMerges(cls, folder: Path, merges: Iterable[MergeOnDisk]) -> Path:
+    def _storeMerges(cls, folder: Path, merges: Iterable[Union[str, list[str], tuple[str,...]]]) -> Path:
         output_path = folder / "merges.txt"
         with open(output_path, "w", encoding="utf-8") as handle:
             for parts in merges:
@@ -134,11 +133,14 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
 
         self._mode = implementation
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "bpe"
 
     def _cacheType(self):
         return CacheableBPEArtifacts
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(f"V={self._size}_l={self._max_token_length}_c={self._character_coverage}")
 
     def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableBPEArtifacts:
         # Note: The cases that preprocess beforehand do this because the trainers only accept sentences. The other cases do preprocessing internally.
@@ -266,6 +268,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
         tokeniser.train_from_iterator(sentence_iterable, trainer=trainer)
 
         # Serialise
+        from bpe_knockout.util.storage import HuggingFaceTokeniserPath
         save_path = out_folder / f"tokenizer.json"
         hf = HuggingFaceTokeniserPath(json_path=save_path)  # Calls .mkdir, which is important because otherwise the next line fails.
         tokeniser.save(path=save_path.as_posix())
@@ -399,7 +402,7 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
                     max_type_length=max_type_length
                 ))
 
-            def _identifier(self) -> str:
+            def _cacheSubfolder(self) -> str:
                 return "bpe"
 
             def _cacheType(self):
@@ -534,6 +537,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
 
     def _dump(self, path: Path) -> Path:
         from pickybpe.vocabularisation import logger
+        from pickybpe.vocabularisation import EventType
 
         folder = Path(path).resolve()
         if folder.suffix:
@@ -574,6 +578,9 @@ class _VocabulariserWithChizhovBackend(UnsupervisedVocabulariser[T_CacheableArti
     def __init__(self, preprocessor: Preprocessor, backend: _BPETrainerBase):
         super().__init__(preprocessor=preprocessor)
         self._backend = backend
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(f"V={self._backend.desired_vocab_size}_l={self._backend.max_type_length}_c={self._backend.coverage}")
 
     @abstractmethod
     def _dumpToArtifacts(self, dump_path: Path) -> T_CacheableArtifact:

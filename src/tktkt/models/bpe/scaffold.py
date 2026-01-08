@@ -86,7 +86,7 @@ class ScaffoldBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableAblated
             character_coverage=character_coverage
         ))
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "scaffoldbpe"
 
     def _cacheType(self):

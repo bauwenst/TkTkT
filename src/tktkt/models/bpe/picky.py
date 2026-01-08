@@ -237,9 +237,13 @@ class PickyBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheablePickyBPEAr
             picky_threshold=picky_threshold,
             character_coverage=character_coverage
         ))
+        self._threshold = picky_threshold
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "pickybpe"
+
+    def _identifierPartial(self) -> str:
+        return super()._identifierPartial() + f"_{self._threshold}"
 
     def _cacheType(self):
         return CacheablePickyBPEArtifacts

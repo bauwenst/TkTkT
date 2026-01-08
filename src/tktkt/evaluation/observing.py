@@ -18,6 +18,7 @@ from ..interfaces.observables import *
 from ..util.dicts import optionalDataclassToDict
 from ..util.iterables import dunion
 from ..util.types import NamedIterable, Tokens, HoldoutState, generated
+from ..util.strings import shash
 
 
 class FutureObserver(Observer[Received]):
@@ -27,7 +28,7 @@ class FutureObserver(Observer[Received]):
     def __init__(self):
         self._value = None
 
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         self._value = None
 
     def _receive(self, sample: Received, _):
@@ -49,7 +50,7 @@ class AppendToListObserver(Observer[Received]):
     def __init__(self, list_to_append_to: list):
         self._list_reference = list_to_append_to
 
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         pass
 
     def _receive(self, sample: Received, _):
@@ -111,7 +112,7 @@ class DataclassObserver(Observer[Any]):
             self.fence()
         return [dunion(map(optionalDataclassToDict, dicts)) for dicts in self._completed_lists]
 
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         pass
 
     def _receive(self, sample: Any, _):
@@ -130,7 +131,7 @@ class DataclassObserver(Observer[Any]):
 
 class PrintingObserver(Observer[Any]):
 
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         pass
 
     def _receive(self, sample: Any, _):
@@ -144,7 +145,7 @@ class PrintIfContainsToken(Observer[Tokens]):
     def __init__(self, print_if_contains: set[str]):
         self._target_set = print_if_contains
 
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         pass
 
     def _receive(self, sample: Tokens, _):
@@ -164,11 +165,11 @@ class ObservableIterable(ObservableRoot[Sent]):
     """
 
     def __init__(self, experiment_id: str, iterable: Union[NamedIterable[Sent], NamedIterable[tuple[Sent,float]]], already_contains_weights: bool=False, observers: list[Observer[Sent]]=None):
-        super().__init__(cache_disambiguator=experiment_id, observers=observers)
+        super().__init__(disambiguator=experiment_id, observers=observers)
         self.iterable = iterable
         self._is_tuple_with_weight = already_contains_weights
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return self.iterable.name
 
     def _stream(self):
@@ -188,7 +189,7 @@ class ObservableIdentity(ImmediatelyObservableObserver[Sent,Sent]):
     def _transit(self, sample: Received, weight: float) -> Sent:
         return sample
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
 
@@ -198,8 +199,8 @@ class ObservablePreprocessor(ObservableObserver[str,str]):
         super().__init__(observers=observers)
         self.preprocessor = preprocessor
 
-    def _nodeIdentifier(self) -> str:
-        return str(hash(repr(self.preprocessor)))
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor))
 
     def _receive(self, sample: str, weight: float):
         for pretoken in self.preprocessor.do(sample):
@@ -212,7 +213,7 @@ class ObservableTokeniser(ImmediatelyObservableObserver[str,Tokens]):
         super().__init__(observers=observers)
         self.tokeniser = tokeniser
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return self.tokeniser.getName()
 
     def _transit(self, sample: str, _) -> Tokens:
@@ -226,7 +227,7 @@ class ObservableFunction(ImmediatelyObservableObserver[Received,Sent]):
         self._function = f
         self._name = name
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return self._name
 
     def _transit(self, sample: Received, weight: float) -> Sent:
@@ -240,7 +241,7 @@ class ObservableFilter(ObservableObserver[Received,Received]):
         self._predicate = predicate
         self._name = name
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return self._name
 
     def _receive(self, sample: Received, weight: float):
@@ -254,7 +255,7 @@ class HoldoutObserver(ObservableFilter[Received]):
         super().__init__(observers=observers, predicate=lambda sample: holdout.decide() != test_split, name=f"holdout(p={holdout._p}, {'test' if test_split else 'train'})")
         self._holdout = holdout
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self._holdout.reset()
 
 
@@ -288,10 +289,10 @@ class SplitObserver(Observer[tuple[Received,_Received2]], ObservableMeta[tuple[R
             except ObserverEarlyExit:
                 pass
 
-    def _initialiseObservers(self, global_run_identifier: str):
+    def _initialiseObservers(self, parent_observable_identifier: str):
         self._logicalAndExceptions(
-            lambda: self._observable1._initialise(global_run_identifier),
-            lambda: self._observable2._initialise(global_run_identifier)
+            lambda: self._observable1._initialise(parent_observable_identifier),
+            lambda: self._observable2._initialise(parent_observable_identifier)
         )
 
     def _send(self, sample: tuple[Received,_Received2], weight: float):
@@ -315,8 +316,8 @@ class SplitObserver(Observer[tuple[Received,_Received2]], ObservableMeta[tuple[R
 
     # Observer methods
 
-    def _initialise(self, global_run_identifier: str):
-        self._initialiseObservers(global_run_identifier)
+    def _initialise(self, parent_observable_identifier: str):
+        self._initialiseObservers(parent_observable_identifier)
 
     def _receive(self, sample: tuple[Received,_Received2], weight: float):
         self._send(sample, weight)
@@ -363,7 +364,7 @@ class WirelessSplittingObserver(ObservableObserver[tuple[Received,_Received2],Re
         self._n_receivers = 0
         connection._connectSender(self)
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
     def _registerReceiver(self):
@@ -396,7 +397,7 @@ class WirelessRecombiningObserver(ObservableObserver[Received,tuple[Received, _R
         self._server = None
         connection._connectReceiver(self)
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
     def _receive(self, sample: Received, weight: float):

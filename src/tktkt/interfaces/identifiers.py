@@ -9,7 +9,6 @@ from transformers import PreTrainedTokenizerBase
 import warnings
 from copy import deepcopy
 
-from ..factories import specials
 from ..util.iterables import areContiguous, fst, areUnique, arePositive, snd
 from ..util.dicts import getattr_recursive, setattr_recursive, intersect_dicts
 from ..util.exceptions import EmptyTokenError
@@ -285,7 +284,7 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
         # Set core fields
         self.specials = absolute_specials
         self.inverse = {v:k for k,v in self.items()}
-        self.__next_id = max(max(self.values()), max(self.specials)) + 1
+        self.__next_id = max(max(self.values(), default=-1), max(self.specials, default=-1)) + 1
 
     def size(self):
         return len(self) + len(list(self.specials)) + 1

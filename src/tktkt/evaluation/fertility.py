@@ -9,6 +9,7 @@ from math import log2
 
 from ..util.interfaces import SimpleCacheableDataclass, C
 from ..util.types import Tokens
+from ..util.strings import shash
 from ..interfaces.tokenisers import Preprocessor
 from ..interfaces.identifiers import SubwordCollection
 
@@ -138,8 +139,8 @@ class PossibleSegmentations(FinallyObservableObserver[Union[str,tuple[str,int]],
         self._do_measure_original_word_length = do_measure_original_word_length
         self._exclude_words_over_length       = exclude_words_over_length
 
-    def _nodeIdentifier(self) -> str:
-        return str(hash(" ".join(sorted(self.vocab))))  # Ideally, a Vocab has a name, but doing it this way is actually strictly better. TODO: Maybe you want the parameters too, idk.
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.effective_preprocessor)) + "_" + shash(" ".join(sorted(self.vocab)) + f" {self._unique_words},{self._do_logarithmic_segmentations},{self._do_measure_original_word_length},{self._exclude_words_over_length}")  # Ideally, a Vocab has a name, but doing it this way is actually strictly better.
 
     def _cacheType(self) -> type[C]:
         return VocabularyFertility
@@ -147,7 +148,7 @@ class PossibleSegmentations(FinallyObservableObserver[Union[str,tuple[str,int]],
     def _cacheSubfolders(self) -> list[str]:
         return ["fertility", "vocabulary"]
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self.seen = dict()
 
         self.sum_one          = 0
@@ -245,7 +246,7 @@ class SegmentationProperties(FinallyObservableObserver[Tokens,InferenceFertility
         super().__init__(observers=observers)
         self._unique_words = track_unique_words
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
     def _cacheType(self) -> type[C]:
@@ -254,7 +255,7 @@ class SegmentationProperties(FinallyObservableObserver[Tokens,InferenceFertility
     def _cacheSubfolders(self) -> list[str]:
         return ["fertility", "inference"]
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self.seen = set()
 
         self.sum_one          = 0

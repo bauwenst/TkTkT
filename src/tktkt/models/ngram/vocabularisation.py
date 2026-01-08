@@ -16,6 +16,7 @@ from ...interfaces.vocabularisers import *
 from ...util.types import NamedIterable
 from ...util.iterables import snd
 from ...util.arrays import BatchNormalisation
+from ...util.strings import shash
 
 
 class NgramArtifacts(Artifacts):
@@ -62,8 +63,11 @@ class NgramVocabulariser(UnsupervisedVocabulariser[CacheableNgramArtifacts]):
         self._intermediate_size = truncate_to_top
         self._final_size        = vocab_size
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return f"ngram(N=({self._n_min},{self._n_max}))"
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(f"n={self._n_min},N={self._n_max}_V={self._final_size}")  # TODO: Probably also add the seed.
 
     def _cacheType(self):
         return CacheableNgramArtifacts

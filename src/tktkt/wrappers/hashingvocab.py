@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 
 from ..interfaces.tokenisers import *
 from ..util.iterables import arePositive, areContiguous
+from ..util.strings import shash
 
 
 T = TypeVar("T")
@@ -87,7 +88,7 @@ class ModuloMapping(_ShiftedIntegerMapping[int]):  # For testing.
 
 class HashAndModuloMapping(_ShiftedIntegerMapping[T]):
     def _get(self, key: T) -> int:
-        return hash(key) % self._size
+        return shash(key) % self._size
 
 
 class TokeniserWithHashingVocab(TokeniserWithVocabulary[WithSpecials]):

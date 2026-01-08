@@ -12,7 +12,7 @@ import traceback
 import colorama
 
 from ..paths import TkTkTPaths
-from ..util.interfaces import C
+from ..util.interfaces import C, RuntimeIdentifiable
 from ..util.strings import indent, suffixIfNotEmpty, prefixIfNotEmpty
 from ..util.interfaces import Cache, Cacheable
 
@@ -49,9 +49,9 @@ class Observer(ABC, Generic[Received]):
     """
 
     @abstractmethod
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         """
-        Reset relevant fields at the start of a run, and store (or pass down) an identifier for the run that is unique across projects.
+        Reset relevant fields at the start of a run, and store (or pass down) an identifier for the observable being observed.
 
         :raise ObserverEarlyExit: When it is noticed that running this observer is unnecessary.
         """
@@ -71,12 +71,12 @@ class Observer(ABC, Generic[Received]):
         pass
 
 
-class ObservableMeta(ABC, Generic[Sent]):
+class ObservableMeta(RuntimeIdentifiable, Generic[Sent]):
     """
     Knows observers and sends data to them.
     """
     @abstractmethod
-    def _initialiseObservers(self, global_run_identifier: str):
+    def _initialiseObservers(self, parent_observable_identifier: str):
         pass
 
     @abstractmethod
@@ -106,16 +106,12 @@ class Observable(ObservableMeta[Sent]):
     samples of the type given by the type parameter.
     """
 
-    def __init__(self, observers: list[Observer[Sent]]):
+    def __init__(self, observers: list[Observer[Sent]], disambiguator: str=""):
+        super().__init__(disambiguator=disambiguator)
         assert observers, "An observable must have at least one observer."
         self.observers = observers
         self.done = []
         self.dead = []
-
-    @abstractmethod
-    def _nodeIdentifier(self) -> str:
-        """Disambiguates instances of this observable. Observables with the same identifier path are supposed to produce the same output every time."""
-        pass
 
     def _callObservers(self, callable: Callable[[Observer],None]):
         """
@@ -148,8 +144,8 @@ class Observable(ObservableMeta[Sent]):
             if not self.observers:
                 raise ObserverEarlyExit()
 
-    def _initialiseObservers(self, identifier_so_far: str):  # This method only to be called by users of this class, not by the class itself.
-        self._callObservers(lambda observer: observer._initialise(identifier_so_far + prefixIfNotEmpty("_", self._nodeIdentifier().replace("_", "-"))))
+    def _initialiseObservers(self, parent_observable_identifier: str):  # This method only to be called by users of this class, not by the class itself.
+        self._callObservers(lambda observer: observer._initialise(self._identifierFull(parent_observable_identifier)))
 
     def _send(self, sample: Sent, weight: float):
         self._callObservers(lambda observer: observer._receive(sample, weight))
@@ -192,32 +188,23 @@ class Observable(ObservableMeta[Sent]):
 class ObservableRoot(Observable[Sent]):
     """Observable with a method that opens a constant stream of samples."""
 
-    def __init__(self, cache_disambiguator: str, observers: list[Observer[Sent]]):
+    def __init__(self, disambiguator: str, observers: list[Observer[Sent]]):
         """
-        :param cache_disambiguator: disambiguates runs whose root instances are otherwise identical.
-                                    TODO: A smarter way to do this would be to instead have nodes in the tree
-                                          add on to the name of the root. Because indeed, the only thing that CAN
-                                          change in the experiment if the root node is the same but the cache is not,
-                                          is any node between the two, e.g. the tokeniser, which the user is now asked to identify in the disambiguator manually.
+        :param disambiguator: disambiguates runs whose root instances are otherwise identical.
         """
-        super().__init__(observers=observers)
-        self._cache_disambiguator = cache_disambiguator
+        super().__init__(observers=observers, disambiguator=disambiguator)
 
     @abstractmethod
     def _stream(self) -> Iterator[tuple[Sent,float]]:
         pass
 
-    def _globalRunIdentifier(self) -> str:
-        """Informs observers which of their caches to use."""
-        return suffixIfNotEmpty(self._cache_disambiguator, "_") + self._nodeIdentifier()
-
     def run(self):
-        print(_formatExit(f"Running {self._globalRunIdentifier()}..."))
+        print(_formatExit(f"Running {self._identifierFull("")}..."))
 
         # Initialise
         skip_everything = False
         try:
-            self._initialiseObservers(self._globalRunIdentifier())
+            self._initialiseObservers("")
         except Exception as e:
             skip_everything = True
 
@@ -240,7 +227,7 @@ class ObservableObserver(Observer[Received], Observable[Sent]):
     """
     An observer which itself is observed.
     """
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         """Initialise this object as if it is just an observer, without dependent observers."""
         pass
 
@@ -248,11 +235,11 @@ class ObservableObserver(Observer[Received], Observable[Sent]):
         """Finish this object as if it is just an observer, without dependent observers."""
         pass
 
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         # When you have dependent observers, it is more important to check if THEY can initialise than to check if YOU can.
         # If all your observers signal to you that you don't need to do any work, you should not even initialise.
-        self._initialiseObservers(global_run_identifier)  # Note also that since the observers can't see this object, they cannot crash due to lack of initialisation here.
-        self._initialiseAsObserver(global_run_identifier)  # This line will only run if there are observers left.
+        self._initialiseObservers(parent_observable_identifier)  # Note also that since the observers can't see this object, they cannot crash due to lack of initialisation here.
+        self._initialiseAsObserver(parent_observable_identifier)  # This line will only run if there are observers left.
 
     def _finish(self):
         if self.anyObserversAlive():  # You should ONLY finish if you ran to completion, i.e. if they stopped sending you samples because there were no more samples. You can figure this out by checking if you have alive observers (which is only a subset of the observers that need to get a finishing signal).
@@ -288,18 +275,17 @@ class FinallyObservableObserver(ObservableObserver[Received, CacheableSent], Cac
         :param cache_disambiguator: If you have two observers that would use the same cache given the same run identifier,
                                     this argument allows separating their two caches.
         """
-        super().__init__(observers=observers)
-        self._disable_cache = disable_cache
-        self._stored_global_run_identifier = ""
-        self._disambiguation_identifier = cache_disambiguator
+        super().__init__(observers=observers, disambiguator=cache_disambiguator)
+        Cache.__init__(self, disambiguator=cache_disambiguator, disable_cache=disable_cache)  # TODO: Is it fine that this runs the RuntimeIdentifiable constructor a second time?
+        self._current_observable_identifier = ""
 
-    def _initialise(self, global_run_identifier: str):
+    def _initialise(self, parent_observable_identifier: str):
         # Init your observers and init yourself. This can throw an exception.
-        super()._initialise(global_run_identifier)
+        super()._initialise(parent_observable_identifier)
 
         # Caching.
-        self._stored_global_run_identifier = global_run_identifier
-        if not self._disable_cache and self._cacheType().exists(self._cachePath(self._cacheIdentifier())):
+        self._current_observable_identifier = parent_observable_identifier  # In Vocabularisers, you don't need to use fields for this function, since the identifier is known in the same context that ._cacheRun is run. Not only is that not the case here, but also, the possibility of name aliasing exists, which is never the case for Vocabularisers.
+        if not self._disable_cache and self._cacheType().exists(self._cachePath(self._current_observable_identifier)):
             raise ObserverEarlyExit()
 
     @abstractmethod
@@ -310,16 +296,13 @@ class FinallyObservableObserver(ObservableObserver[Received, CacheableSent], Cac
     def _cacheSubfolders(self) -> list[str]:
         pass
 
-    def _cacheIdentifier(self) -> str:  # In Vocabularisers, you don't need to use fields for this function, since the identifier is known in the same context that ._cacheRun is run. Not only is that not the case here, but also, the possibility of name aliasing exists, which is never the case for Vocabularisers.
-        return self._stored_global_run_identifier + prefixIfNotEmpty("_", self._disambiguation_identifier)
-
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:  # TODO: There is a case to be made that actually, the identifier should be FIRST, so that all results of one run are grouped in their own little file system.
-        return TkTkTPaths.pathToEvaluations(*self._cacheSubfolders(), unambiguous_cache_identifier)
+    def _cachePath(self, external_identifier: str) -> Path:  # TODO: There is a case to be made that actually, the identifier should be FIRST, so that all results of one run are grouped in their own little file system.
+        return TkTkTPaths.pathToEvaluations(*self._cacheSubfolders(), self._identifierFull(external_identifier))
 
     def _cacheFinalise(self, loaded: C) -> C:
         return loaded
 
     def _finishAsObserver(self):
-        result = self._cacheRun(self._cacheIdentifier(), self._compute)
+        result = self._cacheRun(self._current_observable_identifier, self._compute)
         self._send(result, 1)
         # Only after THIS will its own observers be finished.

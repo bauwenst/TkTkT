@@ -157,13 +157,13 @@ class TokenUnigramDistribution(FinallyObservableObserver[Tokens,ReturnUnigramDis
             for t in ensured_vocabulary:
                 self.frequencies[t] += 0
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
     def _cacheType(self):
         return ReturnUnigramDistribution
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self.frequencies.clear()
 
     def _receive(self, sample: Tokens, weight: float):
@@ -192,7 +192,7 @@ class TTR(ImmediatelyObservableObserver[ReturnUnigramDistribution,ReturnTTR]):
             CTC=sample.total()
         )
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
 
@@ -210,7 +210,7 @@ class RenyiEntropy(ImmediatelyObservableObserver[ReturnUnigramDistribution,Retur
         self.alpha = alpha
         self.theoretical_vocab_size = vocab_size_in_denominator
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return f"Renyi-alpha={self.alpha}"
 
     def _transit(self, sample: ReturnUnigramDistribution, weight: float) -> ReturnRenyiEntropy:
@@ -242,7 +242,7 @@ class RenyiEfficiencyWithBounds(ImmediatelyObservableObserver[ReturnUnigramDistr
         self.alpha = alpha
         self.theoretical_vocab_size = vocab_size_in_denominator
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return f"Renyi-alpha={self.alpha}"
 
     def _transit(self, sample: ReturnUnigramDistribution, weight: float) -> ReturnRenyiEfficiencyWithBounds:
@@ -295,7 +295,7 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
         self.window_size = window_size
         self.flush       = flush_every_example
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return f"window={self.window_size},stride={self.stride}"
 
     def _cacheType(self):
@@ -304,7 +304,7 @@ class MATTR(FinallyObservableObserver[Tokens,ReturnMATTR]):
     def _cacheSubfolders(self) -> list[str]:
         return ["mattr"]
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self.n_TTR   = 0
         self.sum_TTR = 0
 
@@ -406,7 +406,7 @@ class SegmentationDistribution(FinallyObservableObserver[Tokens,SegmentationCoun
     def __init__(self, observers: list[Observer[SegmentationCounts]]):
         super().__init__(observers=observers)
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
     def _cacheType(self):
@@ -415,7 +415,7 @@ class SegmentationDistribution(FinallyObservableObserver[Tokens,SegmentationCoun
     def _cacheSubfolders(self) -> list[str]:
         return ["segmentations"]
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self.segmentations = SegmentationCounts()
 
     def _receive(self, sample: Tokens, _):
@@ -452,7 +452,7 @@ class SegmentationDiversity(ImmediatelyObservableObserver[SegmentationCounts,Ret
         self._renyi_alpha = renyi_alpha
         self._reference = deterministic_segmentation
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return f"Renyi-alpha={self._renyi_alpha}"
 
     def _transit(self, sample: SegmentationCounts, _: float) -> ReturnSegmentationDiversity:

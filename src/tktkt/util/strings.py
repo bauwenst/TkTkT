@@ -2,22 +2,40 @@ from typing import Iterable
 from enum import Enum
 import numpy as np
 
+import hashlib as _lib
+
 from .iterables import intercalate, cumsum
 
 
-def prefixIfNotEmpty(prefix: str, s: str):
+def shash(s: str, bits: int=40) -> str:
+    """
+    Stable, short, SHA string (SSSS) hash. Hexadecimal representation of the bitstring digest from the chosen hash.
+    All hashing in TkTkT must use this function. The built-in hash() is only deterministic within the same runtime,
+    whilst this function is stable across runtimes.
+
+    :param bits: Amount of bits the output represents, up to 256. The length of the output will be this number
+                 divided by 4 (since 4 bits make 1 hex). You can expect a collision after 2^{bits/2} applications
+                 of this function. So, the default of 40 bits is safe for anything where you expect fewer than 1_000_000
+                 tries to collide.
+    """
+    assert 0 < bits <= 256 and bits % 4 == 0
+    return _lib.sha256(s.encode("utf-8")).hexdigest()[:bits//4]
+
+
+def prefixIfNotEmpty(prefix: str, s: str) -> str:
     return prefix*bool(s) + s
 
 
-def suffixIfNotEmpty(s: str, suffix: str):
+def suffixIfNotEmpty(s: str, suffix: str) -> str:
     return s + suffix*bool(s)
 
 
-def underscoreIfNotEmpty(s: str, prefix_not_suffix: bool=True) -> str:
-    if s:
-        return "_" + s if prefix_not_suffix else s + "_"
-    else:
-        return s
+def circumfixIfNotEmpty(prefix: str, s: str, suffix: str) -> str:
+    return prefix*bool(s) + s + suffix*bool(s)
+
+
+def interfixIfNotEmpty(s1: str, interfix: str, s2: str) -> str:
+    return s1 + interfix*(bool(s1) and bool(s2)) + s2
 
 
 def findLongestCommonPrefix(strings: Iterable[str]) -> str:
@@ -136,6 +154,19 @@ def convertCase(text: str, from_case: Case, to_case: Case) -> str:
     else:
         raise NotImplementedError(to_case)
 
+
+def surround(text: str, frame_character: str= "#", frame_width: int=1) -> str:
+    assert len(frame_character) == 1
+    lines = text.split("\n")
+    base_width = max(map(len, lines))
+
+    full_width = base_width + 2 + 2*frame_width
+    output_lines = []
+    output_lines.append(frame_character*full_width)
+    for line in lines:
+        output_lines.append(frame_character*frame_width + " " + line + " "*(base_width - len(line)) + " " + frame_character*frame_width)
+    output_lines.append(frame_character*full_width)
+    return "\n".join(output_lines)
 
 ########################################################################################################################
 

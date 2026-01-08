@@ -229,6 +229,7 @@ class ConfusionMatrices(Cacheable):
 
     _FILENAME = "confusion-matrices.json"
 
+    @classmethod
     def exists(cls, cache_path: Path) -> bool:
         return (cache_path / ConfusionMatrices._FILENAME).exists()
 
@@ -253,11 +254,11 @@ class ConfusionMatrices(Cacheable):
 class MorphologyIterable(ObservableRoot[tuple[str,M]]):
 
     def __init__(self, experiment_id: str, dataset: ModestDataset[M], word_weights: dict[str,float]=None, observers: list[Observer[tuple[str,M]]]=None):
-        super().__init__(cache_disambiguator=experiment_id, observers=observers)
+        super().__init__(disambiguator=experiment_id, observers=observers)
         self._dataset = dataset
         self._weights = word_weights or dict()
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return self._dataset.identifier()
 
     def _stream(self) -> Iterator[tuple[tuple[str,M],float]]:
@@ -271,13 +272,13 @@ class MorphologyAsClassification(FinallyObservableObserver[tuple[Tokens,M],Confu
     def __init__(self, visitor: MorphologyVisitor, effective_preprocessor: Preprocessor,
                  do_log_false_negatives: bool=False,
                  observers: list[Observer[ConfusionMatrices]]=None):
-        super().__init__(cache_disambiguator=visitor.__class__.__name__, observers=observers)
+        super().__init__(observers=observers)
         self._visitor      = visitor
         self._preprocessor = effective_preprocessor
         self._do_log_fusions = do_log_false_negatives
 
-    def _nodeIdentifier(self) -> str:
-        return ""
+    def _identifierPartial(self) -> str:
+        return self._visitor.__class__.__name__
 
     def _cacheType(self):
         return ConfusionMatrices
@@ -285,10 +286,10 @@ class MorphologyAsClassification(FinallyObservableObserver[tuple[Tokens,M],Confu
     def _cacheSubfolders(self) -> list[str]:
         return ["morphology"]
 
-    def _initialiseAsObserver(self, identifier: str):
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
         self._cm   = ConfusionMatrix()
         self._cm_w = ConfusionMatrix()
-        self._log  = None if not self._do_log_fusions else open(TkTkTPaths.pathToEvaluations() / "" / f"{self._cacheIdentifier()}_morpheme-fusions.txt", "w", encoding="utf-8")
+        self._log  = None if not self._do_log_fusions else open(self._cachePath(parent_observable_identifier) / "morpheme-fusions.txt", "w", encoding="utf-8")
 
     def _receive(self, sample: tuple[Tokens,M], weight: float):
         tokens, obj = sample
@@ -317,7 +318,7 @@ class MorphologyAsClassification(FinallyObservableObserver[tuple[Tokens,M],Confu
 
 class ConfusionMatrixSummary(ImmediatelyObservableObserver[ConfusionMatrices,dict]):
 
-    def _nodeIdentifier(self) -> str:
+    def _identifierPartial(self) -> str:
         return ""
 
     def _transit(self, sample: ConfusionMatrices, weight: float) -> dict:

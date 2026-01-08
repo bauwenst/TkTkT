@@ -16,6 +16,7 @@ from ...interfaces import Artifacts, CacheableArtifacts
 from ...preparation.boundaries import BoundaryMarkerLocation
 from ...interfaces.vocabularisers import *
 from ...util.iterables import streamPrint, streamProgress, T, fst
+from ...util.strings import shash
 
 
 def progress(iterable: Iterable[T]) -> Iterable[T]:
@@ -105,8 +106,7 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser[CacheableKudoPieceArtifac
     (given that the sentences are no longer than 8192 characters).
     """
 
-    def __init__(self, preprocessor: Preprocessor, final_vocab_size: int, arguments: KudoPieceArguments,
-                 file_stem: str="kudopiece"):
+    def __init__(self, preprocessor: Preprocessor, final_vocab_size: int, arguments: KudoPieceArguments):
         """
         Trainer for KudoPiece (a.k.a. ULM) tokenisers.
 
@@ -185,10 +185,12 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser[CacheableKudoPieceArtifac
 
         self._arguments = arguments
         self._size = final_vocab_size
-        self._stem = file_stem
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "kudopiece"
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(f"V={self._size}_{repr(self._arguments)}")
 
     def _cacheType(self):
         return CacheableKudoPieceArtifacts

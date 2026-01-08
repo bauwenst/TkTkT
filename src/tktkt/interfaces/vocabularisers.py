@@ -26,20 +26,20 @@ class Vocabulariser(Cache[T_CacheableArtifact], ABC):
     Builds subword vocabularies.
     """
 
-    def __init__(self, preprocessor: Preprocessor, disable_cache: bool=False):
-        super().__init__(disable_cache=disable_cache)
+    def __init__(self, preprocessor: Preprocessor, disable_cache: bool=False, disambiguator: str=""):
+        super().__init__(disable_cache=disable_cache, disambiguator=disambiguator)
         self.preprocessor = preprocessor
 
     @abstractmethod
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         """A short string used for defining this Vocabulariser's output subdirectory."""
         pass
 
-    def _cachePath(self, unambiguous_cache_identifier: str) -> Path:
+    def _cachePath(self, external_identifier: str) -> Path:
         """
         Get a new folder in which to store any files you want to store during vocabularisation.
         """
-        return TkTkTPaths.pathToModels(self._identifier(), self._identifier() + prefixIfNotEmpty("_", unambiguous_cache_identifier))
+        return TkTkTPaths.pathToModels(self._cacheSubfolder(), self._cacheSubfolder() + prefixIfNotEmpty("_", self._identifierFull(external_identifier)))
 
     def _cacheFinalise(self, loaded: T_CacheableArtifact) -> T_CacheableArtifact:
         loaded.setPreprocessors(self.preprocessor)

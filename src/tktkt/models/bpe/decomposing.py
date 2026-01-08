@@ -16,6 +16,7 @@ from ...util.iterables import fst
 from ...interfaces.vocabularisers import *
 from ...interfaces.tokenisers import *
 from ...util.types import NamedIterable, Tokens
+from ...util.strings import shash
 
 __all__ = ["ScaffoldBPE", "TrimmedBPE"]
 
@@ -129,6 +130,9 @@ class _FrequencyBasedRecursivelyDecomposingBPEVocabulariser(UnsupervisedVocabula
         super().__init__(preprocessor=preprocessor)
         self._tokeniser = ClassicBPE(preprocessor=preprocessor, vocab=vocab, merges=merges)
 
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + shash(" ".join(sorted(self._tokeniser.vocab)))
+
     def _cacheType(self):
         return CacheableAblatedBPEArtifacts
 
@@ -172,7 +176,7 @@ class TrimmedBPEVocabulariser(_FrequencyBasedRecursivelyDecomposingBPEVocabulari
         super().__init__(preprocessor=preprocessor, vocab=vocab, merges=merges)
         self._threshold = keep_type_if_more_frequent_than
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "trimmedbpe"
 
     def _selectTypesToTrim(self, type_distribution: Counter[str]) -> set[str]:
@@ -197,7 +201,7 @@ class RandomDropBPE(_FrequencyBasedRecursivelyDecomposingBPEVocabulariser):
         self._rng = npr.default_rng(seed)
         assert 0 <= self._k <= self._N <= len(self._getNonAlphabet())  # This assertion can only happen when the BPE graph is constructed.
 
-    def _identifier(self) -> str:
+    def _cacheSubfolder(self) -> str:
         return "randomdropbpe"
 
     def _selectTypesToTrim(self, type_distribution: Counter[str]) -> list[str]:
