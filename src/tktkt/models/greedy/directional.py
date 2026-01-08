@@ -119,7 +119,7 @@ class R2L_Lazy(TokeniserWithVocabulary[WithSpecials]):
 
 class L2R_R2L_Alternating(TokeniserWithVocabulary[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials],
                  start_left: bool=True):
         super().__init__(preprocessor=preprocessor, vocab=vocab)
         self._start_left = start_left
@@ -159,7 +159,7 @@ class L2R_R2L_Alternating(TokeniserWithVocabulary[WithSpecials]):
 
 class L2R2L_Greedy(TokeniserWithVocabulary[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials],
                  prefer_left: bool=True):
         super().__init__(preprocessor=preprocessor, vocab=vocab)
         self._prefer_left = prefer_left

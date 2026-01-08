@@ -17,7 +17,7 @@ def identifiedCall(id: K, f: Callable[P, R], *args: P, **kwargs: P) -> tuple[K, 
     return id, f(*args, **kwargs)
 
 
-def batchItems(callables: dict[K, tuple[Callable[P, R], tuple[P]]], n_parallel_processes: int) -> dict[K, R]:  # Without the tuple[ ] around P, it doesn't work. Probably because mypy has a bug such that when a ParamSpec appears in the outer tuple[ ], the entire tuple, including the arguments that come before, are demanded to be of type P.
+def batchItems(callables: dict[K, tuple[Callable[P, R], tuple[P]]], n_parallel_processes: int, message: str="Batch computation") -> dict[K, R]:  # Without the tuple[ ] around P, it doesn't work. Probably because mypy has a bug such that when a ParamSpec appears in the outer tuple[ ], the entire tuple, including the arguments that come before, are demanded to be of type P.
     """
     Runs a set of callables with the same signature by dispatching them to parallel processes, and links the results to
     each callable's identification key so that the parallelisation doesn't lose this ordering.
@@ -37,7 +37,7 @@ def batchItems(callables: dict[K, tuple[Callable[P, R], tuple[P]]], n_parallel_p
     if n_parallel_processes > 1:
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_parallel_processes) as executor:
             futures = [executor.submit(identifiedCall, id, f, *args) for id, (f, args) in callables.items()]
-            results = [yielded_result.result() for yielded_result in tqdm(concurrent.futures.as_completed(futures), desc="Finished processes", total=len(futures))]
+            results = [yielded_result.result() for yielded_result in (concurrent.futures.as_completed(futures) if not message else tqdm(concurrent.futures.as_completed(futures), desc=message, total=len(futures)))]
         return dict(results)
     else:
         return {id: f(*args) for id, (f, args) in callables.items()}

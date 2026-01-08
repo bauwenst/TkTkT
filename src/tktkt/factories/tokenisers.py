@@ -1,21 +1,20 @@
-"""
-Evaluate any tokeniser on English morphology.
-"""
 from ..interfaces import TokeniserFactory, Artifacts
 from ..interfaces.identifiers import WithSpecials, SpecialsExtended, NoSpecials
 from ..models.predictive.viterbi.instances import *
+from ..models.bpe.vocabularisation import BPEArtifacts
 from ..models.bpe.base import ClassicBPE
 from ..models.bpe.knockout import BPEKnockout, ReBPE
 from ..models.bpe.guided import GuidedBPEDropout
 from ..models.huggingface.bpe import HuggingFaceBPETokeniser
+from ..models.kudopiece.vocabularisation import KudoPieceArtifacts
 from ..models.kudopiece.segmentation import KudoPieceTokeniser
 from ..models.random.grampa import GRaMPa, PowerNormalisation
 from ..models.ngram.alphabet import UnicodeTokeniser
 from ..wrappers.multiplexing import StochasticTokeniserSwitch, MultiplexedPreprocessor
 from .preprocessors import *
+from ..preparation.boundaries import detectBoundaryMarkerFromVocabulary
 from .artifacts import *
-from .artifacts import BPEArtifacts, KudoPieceArtifacts, detectBoundaryMarkerFromVocabulary, getEnglishCANINE
-
+from .artifacts import getEnglishCANINE
 
 ########################################################################################################################
 

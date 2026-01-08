@@ -7,10 +7,10 @@ from ...interfaces.tokenisers import *
 RNG = npr.default_rng(0)
 
 
-class ShuffledBPE(_DeterministicBPETokeniser):
+class ShuffledBPE(_DeterministicBPETokeniser[WithSpecials]):
 
     def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList,
+                 vocab: Vocab[WithSpecials], merges: MergeList,
 
                  constrained: bool=True):
         super().__init__(

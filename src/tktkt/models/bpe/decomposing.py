@@ -21,13 +21,13 @@ from ...util.strings import shash
 __all__ = ["ScaffoldBPE", "TrimmedBPE"]
 
 
-class RecursivelyDecomposingBPE(_DeterministicBPETokeniser):
+class RecursivelyDecomposingBPE(_DeterministicBPETokeniser[WithSpecials]):
     """
     First applies BPE like normal, and then recursively undoes applied merges until all tokens are NOT in a predefined set of illegal types.
     """
 
     def __init__(self, preprocessor: Preprocessor,
-                 expanded_vocab: Vocab, merges: MergeList,  # TODO: Although you need the expanded vocabulary in the constructor (you need the full BPE graph), you should report a smaller vocabulary size and have a compacted ID mapping for downstream models, lest you have unused embeddings. The same is true for BPE-knockout and PickyBPE.
+                 expanded_vocab: Vocab[WithSpecials], merges: MergeList,  # TODO: Although you need the expanded vocabulary in the constructor (you need the full BPE graph), you should report a smaller vocabulary size and have a compacted ID mapping for downstream models, lest you have unused embeddings. The same is true for BPE-knockout and PickyBPE.
                  disabled_set: set[str]):
         """
         :param expanded_vocab: Vocabulary including both the types that remain accessible AND the types to be disabled.

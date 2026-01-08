@@ -44,7 +44,7 @@ class HighestScoreFirst(TokeniserWithVocabulary[WithSpecials]):
         https://aclanthology.org/2020.lrec-1.486.pdf
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, scores: dict[str, float], diminish_atoms: bool=False):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], scores: dict[str, float], diminish_atoms: bool=False):
         """
         :param diminish_atoms: if True, the score for atoms (~characters) will be the lowest possible.
         """
@@ -97,12 +97,12 @@ class HighestScoreFirst(TokeniserWithVocabulary[WithSpecials]):
 
 from ..bpe.base import MergeList
 
-class LastBPETokenFirst(HighestScoreFirst):
+class LastBPETokenFirst(HighestScoreFirst[WithSpecials]):
     """
     Find youngest BPE subword through the whole word.
     """
 
-    def __init__(self, preprocessor: Preprocessor, bpe_vocab: Vocab, bpe_merges: MergeList):
+    def __init__(self, preprocessor: Preprocessor, bpe_vocab: Vocab[WithSpecials], bpe_merges: MergeList):
         from bpe_knockout.model.graph import MergeGraph
         scores = dict()
 

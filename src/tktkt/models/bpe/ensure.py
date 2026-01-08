@@ -18,10 +18,10 @@ from ...util.iterables import deduplicate, mapExtend
 from ...util.functions import relu
 
 
-class EnsuredBPE(_DeterministicBPETokeniser):
+class EnsuredBPE(_DeterministicBPETokeniser[WithSpecials]):
 
     def __init__(self, preprocessor: Preprocessor,
-                 vocab: Vocab, merges: MergeList, ensure_strings: Iterable[str], forbid_strings: Iterable[str], forbid_forming: Iterable[str],
+                 vocab: Vocab[WithSpecials], merges: MergeList, ensure_strings: Iterable[str], forbid_strings: Iterable[str], forbid_forming: Iterable[str],
                  do_preprocess_these: bool=False, do_expand_vocabulary: bool=False, do_binary_merges: bool=True):
         """
         :param ensure_strings: The (sub)words for which there must be a single token in the BPE vocabulary (that can be

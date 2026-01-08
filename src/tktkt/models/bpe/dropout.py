@@ -7,9 +7,9 @@ from ...interfaces.tokenisers import *
 from .base import MergeList, _NonDeterministicBPETokeniser
 
 
-class BPEDropout(_NonDeterministicBPETokeniser):
+class BPEDropout(_NonDeterministicBPETokeniser[WithSpecials]):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList,
                  dropout_probability: float):
         super().__init__(
             vocab=vocab, merges=merges,
@@ -55,7 +55,7 @@ class BPEDropout(_NonDeterministicBPETokeniser):
         return buffer[1:-1].split(" ")
 
 
-class BPEDropoutNonGeometric(_NonDeterministicBPETokeniser):
+class BPEDropoutNonGeometric(_NonDeterministicBPETokeniser[WithSpecials]):
     """
     The outcome of which merge is selected in BPE-dropout is geometrically distributed over the IDs of the possible merges,
     sorted in order of priority. That is: the highest-priority merge has probability (1-p) of being done, the second has
@@ -66,7 +66,7 @@ class BPEDropoutNonGeometric(_NonDeterministicBPETokeniser):
     each is chosen with probability 1/N. (This is equivalent to classic BPE with random merge priorities.)
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList):
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList):
         super().__init__(
             vocab=vocab, merges=merges,
 
@@ -101,7 +101,7 @@ class BPEDropoutNonGeometric(_NonDeterministicBPETokeniser):
         return buffer[1:-1].split(" ")
 
 
-class BPEBreakdown(_NonDeterministicBPETokeniser):
+class BPEBreakdown(_NonDeterministicBPETokeniser[WithSpecials]):
     """
     Rather than dropping merges BEFORE doing them, drop merges AFTER doing them, starting all the way at the end of the
     merge process.
@@ -111,7 +111,7 @@ class BPEBreakdown(_NonDeterministicBPETokeniser):
     down, and it also points out explicitly that the breakdown process is independent of BPE (already the case here).
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList,
                  within_tree: bool=False, breakdown_probability: float=0.33):
         super().__init__(
             vocab=vocab, merges=merges,

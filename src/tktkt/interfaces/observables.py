@@ -199,7 +199,7 @@ class ObservableRoot(Observable[Sent]):
         pass
 
     def run(self):
-        print(_formatExit(f"Running {self._identifierFull("")}..."))
+        print(_formatExit(f"Running {self._identifierFull('')}..."))
 
         # Initialise
         skip_everything = False

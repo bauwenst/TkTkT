@@ -1,8 +1,11 @@
 """
 One contract for all forms of start-of-word (SoW) and end-of-word (EoW).
 """
+from typing import Iterable
 from dataclasses import dataclass
 from enum import Enum
+
+from ..util.trie import PrefixTrie, SuffixTrie
 
 
 class BoundaryMarkerLocation(str, Enum):  # The str parent allows JSON serialisation: https://stackoverflow.com/a/51976841/9352077
@@ -93,3 +96,51 @@ class BoundaryMarker:
 # Old names for compatibility
 SpaceMarker = BoundaryMarker
 SpaceMarkerLocation = BoundaryMarkerLocation
+
+
+def detectBoundaryMarkerFromVocabulary(vocab: Iterable[str], threshold: float=0.5) -> BoundaryMarker:
+    vocab = list(vocab)
+    V = len(vocab)
+
+    trie = PrefixTrie()
+    for t in vocab:
+        trie.add(t)
+    trie.compileRoots()
+
+    suggested_prefix = trie
+    while True:
+        top = suggested_prefix.getTopChildNodes(n=1)
+        if len(top) and top[0].count / V >= threshold:
+            suggested_prefix = top[0]
+        else:
+            break
+
+    trie = SuffixTrie()
+    for t in vocab:
+        trie.add(t)
+    trie.compileRoots()
+
+    suggested_suffix = trie
+    while True:
+        top = suggested_suffix.getTopChildNodes(n=1)
+        if len(top) and top[0].count / V >= threshold:
+            suggested_suffix = top[0]
+        else:
+            break
+
+    found_prefix = len(suggested_prefix.root) > 0
+    found_suffix = len(suggested_suffix.root) > 0
+    prefix = BoundaryMarker(suggested_prefix.root, detached=suggested_prefix.root in vocab, location=BoundaryMarkerLocation.START)
+    suffix = BoundaryMarker(suggested_suffix.root, detached=suggested_suffix.root in vocab, location=BoundaryMarkerLocation.END)
+
+    if not found_prefix and not found_suffix:  # No prefix nor suffix? I guess it must be an isolated token.
+        return BoundaryMarker("", detached=True, location=BoundaryMarkerLocation.ISOLATED)
+    elif not found_suffix:  # No suffix? Then it's a prefix.
+        return prefix
+    elif not found_prefix:  # No prefix? Then it's a suffix.
+        return suffix
+    else:  # Prefix and suffix found? Then take the one with higher occurrence. (TODO: Alternatively, take the one with higher length.)
+        if suggested_prefix.count > suggested_suffix.count:
+            return prefix
+        else:
+            return suffix

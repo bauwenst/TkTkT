@@ -17,7 +17,7 @@ class ConstantCharacterClassifier(CharacterClassifier):
         return [self.logp for _ in range(len(pretoken))]
 
 
-class GuidedBPEDropout(_NonDeterministicBPETokeniser):
+class GuidedBPEDropout(_NonDeterministicBPETokeniser[WithSpecials]):
     """
     Generalisation of BPE-dropout which varies the probability of every merge being applied in the given string based on
     a classifier that predicts whether the split that would be removed by the merge should be kept (e.g. because it is
@@ -26,7 +26,7 @@ class GuidedBPEDropout(_NonDeterministicBPETokeniser):
     If you want to use vanilla BPE-dropout, you should probably use a more efficient version than this.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, merges: MergeList,
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList,
                  dropout_probability: Union[float,CharacterClassifier], always_dropout_above: Optional[float]=None):
         """
         TODO: To improve non-deterministic performance, you might want to apply companding
