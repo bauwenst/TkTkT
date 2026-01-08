@@ -139,7 +139,10 @@ class Cache(RuntimeIdentifiable, Generic[C]):
 
     @abstractmethod
     def _cacheFinalise(self, loaded: C) -> C:
-        """Post-processing applied to cached data once it has been loaded. (Is NOT applied when it is computed.)"""
+        """
+        Post-processing applied to cached data once it has been loaded OR computed.
+        (When computing, you have AT LEAST as much information as when loading, so this is not an issue.)
+        """
         pass
 
     @abstractmethod
@@ -158,6 +161,7 @@ class Cache(RuntimeIdentifiable, Generic[C]):
                 result = self._cacheFinalise(result)
             else:
                 result = imputation()
+                result = self._cacheFinalise(result)
                 result.store(cache_path)
         return result
 

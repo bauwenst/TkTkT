@@ -300,7 +300,7 @@ trainer = KudoPieceVocabulariser(
     arguments=KudoPieceArguments(character_coverage=0.9995),
     file_stem="tutorial"
 )
-results = trainer.vocabulariseFromStringIterable(sentence_corpus)
+results = trainer.vocabulariseFromHf(sentence_corpus, text_field="text")
 
 
 from tktkt.models.kudopiece.segmentation import KudoPieceTokeniser
