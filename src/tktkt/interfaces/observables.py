@@ -22,15 +22,15 @@ Sent     = TypeVar("Sent")
 
 
 def _formatException(exception_string: str) -> str:
-    return indent(1, f"{colorama.Fore.YELLOW}{exception_string}{colorama.Fore.RESET}")
+    return indent(1, f"{colorama.Fore.RED}{colorama.Style.NORMAL}{exception_string}{colorama.Fore.RESET}{colorama.Style.RESET_ALL}")
 
 
 def _formatEarlyExit(msg: str) -> str:
     return indent(1, f"{colorama.Fore.CYAN}{msg}{colorama.Fore.RESET}")
 
 
-def _formatExit(msg: str) -> str:
-    return indent(1, f"{colorama.Fore.GREEN}{msg}{colorama.Fore.RESET}")
+def _formatSuccess(msg: str) -> str:
+    return indent(0, f"{colorama.Fore.GREEN}{msg}{colorama.Fore.RESET}")
 
 
 class ObserverEarlyExit(Exception):
@@ -199,7 +199,7 @@ class ObservableRoot(Observable[Sent]):
         pass
 
     def run(self):
-        print(_formatExit(f"Running {self._identifierFull('')}..."))
+        print(_formatSuccess(f"Running {self._identifierFull('')}..."))
 
         # Initialise
         skip_everything = False
@@ -219,8 +219,8 @@ class ObservableRoot(Observable[Sent]):
         # Finish
         self._finishObservers()
 
-        print(_formatExit("ObservableRoot finished running."))
-        print(_formatExit(self.observerStatusReport()))
+        print(_formatSuccess(f"Finished running {self._identifierFull('')}."))
+        print(_formatSuccess(indent(1, self.observerStatusReport())))
 
 
 class ObservableObserver(Observer[Received], Observable[Sent]):

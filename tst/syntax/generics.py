@@ -107,7 +107,7 @@ def test_extendedspecials():
     v = d.getVocabulary(specials=extended_specials)
     v.specials
 
-    # These work, but I'm quite disappointed by the fact that SpecialsExtended can't infer the type of WithSpecials due to it being in the constructor.
+    # TODO: These work, but I'm quite disappointed by the fact that SpecialsExtended can't infer the type of WithSpecials due to it being in the constructor.
     extended_specials: SpecialsExtended[RobertaSpecials] = SpecialsExtended(RobertaSpecials(-1,-1,-1,-1))
     extended_specials.specials
 
