@@ -72,7 +72,7 @@ class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
         NUL = chr(0)
         with open(path, "w", encoding="utf-8") as handle:
             for k, v in (items if not sort else sorted(items, key=lambda t: (-t[1], t[0]))):
-                k = k.replace("\t", NUL).replace("\n", NUL)
+                k = k.replace("\t", NUL).replace("\r", NUL).replace("\n", NUL)
                 handle.write(f"{k}\t{v}\n")
 
     @classmethod

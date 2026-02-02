@@ -12,8 +12,9 @@ import warnings
 
 from ...interfaces import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
-from .schedules import *
+from ...util.iterables import deduplicate
 from ...util.strings import shash
+from .schedules import *
 
 
 class SageArtifacts(Artifacts):
@@ -42,7 +43,7 @@ class CacheableSageArtifacts(SageArtifacts, CacheableArtifacts):
 
 class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
 
-    def __init__(self, preprocessor: Preprocessor, seed: int=0,
+    def __init__(self, initial_artifacts: Artifacts, seed: int=0,
                  vocabulary_schedule: Schedule=DoubleLinearSchedule(262144, 65536, 16384, t_mid=0.5), n_vocab_samples: int=13,
                  embedding_schedule: Dilation=ExponentialDilation(1.35), n_embedding_samples: int=6):
         """
@@ -57,6 +58,12 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
             vocab: 262144 229376 196608 163840 131072 98304 65536 57344 49152 40960 32768 16384
             embed: 262144                      131072       65536       49152 40960 32768
 
+        :param initial_artifacts: Contains the vocabulary from which to start the pruning process, as well as the preprocessor
+                                  that maps strings into that vocabulary's character space.
+                                  Under the hood, all types in the vocabulary are mapped to bytes. This is not an issue
+                                  even if the given vocabulary uses pseudo-bytes: types in the vocabulary will just
+                                  become longer internally, but since the preprocessor also maps input text to pseudo-bytes and
+                                  those are also converted to bytes by SaGe, the input and vocabulary will match in character space.
         :param vocabulary_schedule: Shape of the sequence of vocabulary sizes you transition to at each pruning step.
                                     The shape is on a normalised time axis, meaning SaGe starts at t=0.0 and ends at t=1.0.
         :param n_vocab_samples: How many equidistant samples to take from the schedule on that axis.
@@ -68,7 +75,8 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
                                    more slowly, the selected indices will be denser.
         :param n_embedding_samples: How many equidistant samples to take on the index scale.
         """
-        super().__init__(preprocessor=preprocessor)
+        super().__init__(preprocessor=initial_artifacts.preprocessorEffective())
+        self._initial_artifacts = initial_artifacts
 
         import sage_tokenizer  # Just to check that you have it.
 
@@ -79,7 +87,6 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
             round(embedding_schedule.get(i/(n_embedding_samples-1)) * (n_vocab_samples - 2)) for i in range(n_embedding_samples)  # This round produces integers between 0 and len(self.vocabulary_points)-2, i.e. all possible indices into self.vocabulary_points except the last one (since SaGe STOPS at the last vocab size, so it's pointless to recompute embeddings at that point).
         })]
 
-        self.initial_hex_vocab = None
         self.seed = seed
 
     def _cacheSubfolder(self) -> str:
@@ -91,17 +98,6 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
     def _identifierPartial(self) -> str:
         return shash(repr(self.preprocessor)) + "_" + shash(repr(self.vocabulary_points) + repr(self.recompute_embeddings_at))
 
-    def initialiseVocabulary(self, vocab: UnidentifiedVocab):
-        """
-        Set the initial tokens that the tokeniser can use to segment the output of the preprocessor.
-
-        Under the hood, we will map them to bytes (stored and later read out in hex format). Note that this is not
-        an issue even if the given vocabulary already uses pseudo-bytes: types in the vocabulary will become longer, yes,
-        but since the preprocessor also maps input text to pseudo-bytes and those are converted to bytes by SaGe already,
-        the input will contain the same bytes-of-pseudobytes units we get in the vocabulary.
-        """
-        self.initial_hex_vocab = set(map(SageVocabulariser._toHexString, vocab)) | {bytes([i]).hex() for i in range(256)}
-
     @classmethod
     def _toHexString(cls, typ: str) -> str:
         return typ.encode(encoding="utf-8").hex()
@@ -110,15 +106,14 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
         raise RuntimeError("SaGe operates on contextual corpora, not on word lists.")
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableSageArtifacts:
-        if not self.initial_hex_vocab:
-            raise RuntimeError("SaGe vocabulary wasn't yet initialised.")
-
         from sage_tokenizer import SaGeVocabBuilder, setSageFolder
+
+        hex_vocab = list(map(SageVocabulariser._toHexString, self._initial_artifacts.getVocabulary()))
 
         builder = SaGeVocabBuilder(
             full_vocab_schedule=self.vocabulary_points,
             embeddings_schedule=self.recompute_embeddings_at,
-            max_len=max(len(t) for t in self.initial_hex_vocab),
+            max_len=max(len(t)//2 for t in hex_vocab),  # Each byte is represented by two hex digits, so the vocabulary in hex form is twice as long.
 
             random_seed=self.seed
         )
@@ -127,8 +122,8 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
 
         hex_vocab_path = builder.build_vocab(
             experiment_name="sage",
-            initial_vocabulary=self.initial_hex_vocab,
-            corpus=sentence_iterable,  # TODO: Possible replace this by self._preprocessSentencesToListsAsStrings(sentence_iterable).
+            initial_vocabulary=deduplicate([bytes([i]).hex() for i in range(256)] + hex_vocab),
+            corpus=self._preprocessSentencesToSentences(sentence_iterable, sep=" "),
 
             k_corpus_examples=None,
             corpus_cache="",  # Don't use corpus caching. Slower, but it is what you would expect by coming from an iterable.
@@ -140,12 +135,12 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
             for line in handle.readlines():
                 hex_string = line.rstrip()
                 utf8_bytes = bytes.fromhex(hex_string)
-                try:
-                    type_string = utf8_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    print("Cannot properly decode partial UTF-8 character from bytes:", utf8_bytes)
-                    type_string = utf8_bytes.decode("utf-8", errors="replace")
-                    print("\tImputed to", type_string)
+
+                # We skip all single-byte results, because these are purely there for internal reasons.
+                if len(utf8_bytes) == 1:
+                    continue
+
+                type_string = utf8_bytes.decode("utf-8")  # It is impossible that this cannot decode because the bytes came from UTF-8 encoding.
                 types.append(type_string)
 
-        return CacheableSageArtifacts(types=types)
+        return CacheableSageArtifacts(types=list(deduplicate(self.preprocessor.getAlphabet() + types)))

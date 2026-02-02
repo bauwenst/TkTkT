@@ -47,6 +47,9 @@ class NgramVocabulariser(UnsupervisedVocabulariser[CacheableNgramArtifacts]):
     """
     Count the character N-grams (or 1...N-grams) in a corpus, truncate to the most frequent K, and then select |V| from
     that (randomly or just the top).
+
+    Why would you want anything to do with N-gram vocabularies in this decade? Because they can be used as initialisations
+    for vocabularisers that prune top-down (e.g. KudoPiece) rather than build bottom-up (e.g. BPE).
     """
 
     def __init__(self, preprocessor: Preprocessor, N_min: int, N_max: int,
@@ -59,7 +62,7 @@ class NgramVocabulariser(UnsupervisedVocabulariser[CacheableNgramArtifacts]):
                                with probability equal to whatever this function makes of their counts.
         :param do_switch_loops: If True, counts N-grams "for N, for word in corpus" rather than "for word in corpus, for N".
                                 The time complexity of these are the same, but it allows saving some memory by disqualifying
-                                larger N-grams if they don't contain any substrings with the minimal frequency.
+                                larger N-grams if they don't contain any substrings with the minimal frequency (h/t Craig Schmidt for sharing this trick).
         """
         super().__init__(preprocessor=preprocessor)
 
