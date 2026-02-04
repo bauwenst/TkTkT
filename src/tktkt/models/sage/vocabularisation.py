@@ -123,7 +123,7 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
         hex_vocab_path = builder.build_vocab(
             experiment_name="sage",
             initial_vocabulary=deduplicate([bytes([i]).hex() for i in range(256)] + hex_vocab),
-            corpus=self._preprocessSentencesToSentences(sentence_iterable, sep=" "),
+            corpus=self._preprocessSentencesToSentences(sentence_iterable, sep=chr(31)),
 
             k_corpus_examples=None,
             corpus_cache="",  # Don't use corpus caching. Slower, but it is what you would expect by coming from an iterable.

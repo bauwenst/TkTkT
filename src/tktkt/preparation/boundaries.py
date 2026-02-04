@@ -71,7 +71,7 @@ class BoundaryMarker:
                 if self.detached:
                     return (sow,) + tuple(chars)
                 else:
-                    return (sow + chars[0],) + tuple(chars[1:])
+                    return (sow + chars[:1],) + tuple(chars[1:])
 
         elif self.location == BoundaryMarkerLocation.END:
             chars, eow = self.isolate(pretoken)
@@ -81,7 +81,7 @@ class BoundaryMarker:
                 if self.detached:
                     return tuple(chars) + (eow,)
                 else:
-                    return tuple(chars[:-1]) + (chars[-1] + eow,)
+                    return tuple(chars[:-1]) + (chars[-1:] + eow,)
 
         elif self.location == BoundaryMarkerLocation.ISOLATED:
             if pretoken == self.substitute:

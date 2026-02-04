@@ -578,7 +578,7 @@ class AddWordBoundary(Pretokeniser):
         self.marker = marker
 
     def _modifyAlphabet(self, known: list[str]) -> list[str]:
-        return known + [self.marker.substitute]
+        return known + [self.marker.substitute] + (not self.marker.detached)*[self.marker.concatenate(c, self.marker.substitute) for c in known]
 
     def getBoundaryMarker(self) -> Optional[BoundaryMarker]:
         return self.marker
