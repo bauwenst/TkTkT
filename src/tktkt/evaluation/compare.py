@@ -69,7 +69,7 @@ class ExactMatches(ComparisonMetric[tuple[float,int,int]]):
 
 class TokenJaccard(ComparisonMetric[tuple[float, float]]):
     """
-    Gives the micro-average and macro-average of Jaccard similarity of the token sequences produced by the given tokenisers.
+    Gives the micro-average and macro-average of (generalised) Jaccard similarity of the token sequences produced by the given tokenisers.
     """
 
     def _reset(self):

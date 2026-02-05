@@ -48,16 +48,18 @@ def compareSplits_cursors(candidate: str, reference: str):
     return tp, predicted, relevant, total - 1  # The `total` variable counts the amount of characters, not splits.
 
 
-def morphFraction(morphs: list[str], tokens: list[str], output: NestedMicroMacro):
+def morphIntegrity(morphs: list[str], tokens: list[str], output: NestedMicroMacro):
     """
     For each morph, find the token which contains most of its characters and compute the fraction of its total length
     that is present in that token. Then micro- or macro-average this across morphs in the corpus.
+    Note that tokens are allowed to be the majority token for more than one morph. In the most extreme case: if the entire
+    word is represented by one token, then all the morphs have 100% integrity.
 
     Given is the reference AAA BBB CCC. When treating morphological alignment as binary classification,
     a candidate AAA BBBC CC shows up the same as AAA BBBCC C (both have two splits, of which one is precise
     and both recall one of two splits). Meanwhile, we want to have a metric that measures the fact that
-    the second one has a token dedicated to the last morpheme which will be much less informative because most of the
-    morpheme has disappeared.
+    the second one's token dedicated to the last morpheme is much less informative than the first one's,
+    because most of the morpheme has disappeared.
 
     More examples that illustrate this concept:
 
@@ -115,6 +117,93 @@ def morphFraction(morphs: list[str], tokens: list[str], output: NestedMicroMacro
         token_start = index
 
     output.fence()
+
+
+def morphDilution(morphs: list[str], tokens: list[str], token_turbidity: NestedAverage, morph_dilution: NestedAverage, morph_muddiness: NestedAverage):
+    """
+    I have what I call the "morphological dilution hypothesis", which is slightly different from the morphological
+    alignment hypothesis: language models perform worse in interpreting a morpheme when a strict substring of that morpheme
+    appears in a token that carries any information about at least one other morpheme, and equivalently, language models
+    perform worse in interpreting a token when it contains information from multiple morphemes of which at least one
+    a strict substring.
+
+    We define a contaminated token as "a token containing the characters of more than one morph and for at least one
+    of those morphs is missing a character".
+    We define a contaminated morph as "a morph for which there exists at least one contaminated token where that morph
+    is missing a character".
+
+    The rate of token contamination can be called token contamination or token turbidity.
+    The rate of morphs that are partially concatenated to other morphs can be called the morph dilution.
+    The rate of morphs which have a partial morph concatenated to them can be called the morph contamination or morph turbidity.
+    The rate of morphs which are either partially concatenated to other morphs, or have a partial morph concatenated to
+    them, can be called morph muddiness or morph confusion.
+
+    The morph metrics are roughly interpretable as boundary false-positive rate (i.e. rate of splitting in the wrong
+    place), except a wrong split is ignored if it is bordered by another split that isolates it from the adjacent morphs.
+    """
+    contaminated_tokens = []
+    contaminated_morphs = set()
+    diluted_morphs      = set()
+
+    morph_splits = list(cumsum(map(len, morphs)))
+    token_splits = list(cumsum(map(len, tokens)))
+
+    current_morph = 0
+    current_morph_end = morph_splits[current_morph]
+
+    starts_initial_morph = True
+    for token_id, index in enumerate(token_splits):
+        initial_morph = current_morph
+        current_morph_already_started = True
+        while index >= current_morph_end:  # Iterate over all morphs that were finished by this token. (The morph being handled in the loop body is the one that currently ends at current_morph_end.)
+
+            # End of loop increments
+            current_morph_already_started = index != current_morph_end  # We know that when the current morph's boundary == index, the next morph won't have started by the end of this token.
+            current_morph += 1
+            if current_morph < len(morph_splits):
+                current_morph_end = morph_splits[current_morph]
+            else:
+                current_morph_end = float("inf")
+
+        # The information you now want to figure out is
+        #    1. Is the left contaminating? (if yes, it is initial_morph)
+        #    2. Is the right contaminating? (if yes, it is current_morph)
+        #    3. If there is contamination coming from the left, does it include or exclude current_morph?
+        contamination_from_left  = not starts_initial_morph and initial_morph != current_morph and (current_morph_already_started or current_morph > initial_morph + 1)  # Basically, we are just trying to avoid the case A|AA|BBB, the first time initial != current yet A does not contaminate current. So we introduce 'not current_morph_already_started', but then A|AABBB|CCC is excluded, so we introduce the last check.
+        contamination_from_right = initial_morph != current_morph and current_morph_already_started
+
+        if contamination_from_left:
+            diluted_morphs.add(initial_morph)
+            for i in range(initial_morph+1, current_morph+1 - (not current_morph_already_started)):
+                contaminated_morphs.add(i)
+        if contamination_from_right:
+            diluted_morphs.add(current_morph)
+            for i in range(initial_morph, current_morph):
+                contaminated_morphs.add(i)
+        if contamination_from_left or contamination_from_right:
+            contaminated_tokens.append(token_id)
+
+        # Deprecated: Boolean equivalent, but less interpretable way to check if a token is contaminated.
+        # if starts_initial_morph:  # I.e. the initial morph you're seeing is NOT part of a preceding token. So, if it finishes within this token, then it does NOT count as contamination.
+        #     if initial_morph != current_morph and current_morph_already_started:  # First check excludes first token in AAA|AAA|BBB (i.e. you're allowed to start a morph and not end it if that same morph keeps going afterwards), second check excludes first token in AAA|BBB and AAABBB|CCC (i.e. you're allowed to start a morph if you also end it).
+        #         contaminated_tokens.append(token_id)
+        # else:
+        #     if initial_morph != current_morph and (current_morph_already_started or current_morph > initial_morph + 1):  # First check excludes the second token in AAA|AAA|ABBB (i.e. you're allowed to not start a morph if you also don't end it), second check excludes the second token in AAA|AAA|BBB (i.e. you're allowed to not start a morph and still end it, but only if you don't already start the next morph) and third check re-includes the second token in AAA|AAABBB|CCC (i.e. even though you're allowed to not start a morph if you end it cleanly, what must be ending cleanly is that morph, not another one).
+        #         contaminated_tokens.append(token_id)
+
+        # The next token starts its first morph if the current morph does not include its final morph.
+        starts_initial_morph = not current_morph_already_started
+
+    # print("     Bad tokens:", [tokens[i] for i in contaminated_tokens])
+    # print(" Diluted morphs:", [morphs[i] for i in sorted(diluted_morphs)])
+    # print("Impacted morphs:", [morphs[i] for i in sorted(contaminated_morphs)])
+
+    token_turbidity.addMany(len(contaminated_tokens),                  len(tokens))
+    morph_dilution .addMany(len(diluted_morphs),                       len(morphs))
+    morph_muddiness.addMany(len(diluted_morphs | contaminated_morphs), len(morphs))
+    token_turbidity.fence()
+    morph_dilution .fence()
+    morph_muddiness.fence()
 
 
 def alignedSegmentationScore(morphs: list[str], tokens: list[str], adversarial: bool, output: NestedAverage):
@@ -214,7 +303,7 @@ def alignedSegmentationScore(morphs: list[str], tokens: list[str], adversarial: 
             # print("Diff", diff)
             split_index += 1
 
-        output.add(best_score)
+        output.addOne(best_score)
 
     output.fence()
 

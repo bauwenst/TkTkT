@@ -117,8 +117,8 @@ class NestedMicroMacro:
             - averaged across examples and those averages are averaged across the dataset (macro-macro);
             - averaged across the dataset after concatenating examples (micro-macro);
 
-    Usually, we assume each example has one instance, but this need not be so, e.g. if you have a metric that computes
-    a ratio per token, whereas the dataset consists of pretokens.
+    A good example would be if you had a dataset of words that were tokenised, and every token had some fractional metric
+    assigned to it, e.g. "fraction of characters that are vowels".
     """
 
     @dataclass
@@ -204,6 +204,18 @@ class NestedMicroMacro:
 
 
 class NestedAverage:
+    """
+    Computes either an average across the entire dataset (micro), or an average per example in a dataset and then an
+    average of those averages (macro).
+
+    This is for quantities that are fractions per example, but not a fraction per instance within an example.
+        - A good example is average token length: it is not a fraction computed for each token in an example, but it can
+          be computed as the fraction sum(lengths)/n_tokens for one example.
+        - A good example is some kind of token proportion, e.g. fraction of tokens that contains a vowel: it is not computed
+          for each token, but it can be computed as len(filter(tokens))/n_tokens. For this, you'll want to use addMany().
+        - A bad example is average amount of tokens: it is not a fraction per example. You need a regular average for this.
+        - A bad example is the example under NestedMicroMacro.
+    """
 
     @dataclass
     class NestedAverage:
@@ -219,9 +231,13 @@ class NestedAverage:
         self._total_n_instances = 0
         self._total_n_examples  = 0
 
-    def add(self, x: float):
+    def addOne(self, x: float):
         self._current_sum         += x
         self._current_n_instances += 1
+
+    def addMany(self, num: float, denom: float):
+        self._current_sum         += num
+        self._current_n_instances += denom
 
     def fence(self):
         """
