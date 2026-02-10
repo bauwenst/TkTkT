@@ -11,3 +11,8 @@ class MissingUnkError(Exception):
 class EmptyTokenError(Exception):
     """Raised when attempting to claim that the empty string is a token."""
     pass
+
+
+class DuplicateTokenError(Exception):
+    """Raised when attempting to add two strings to the vocabulary that are identical."""
+    pass

@@ -11,7 +11,7 @@ from copy import deepcopy
 
 from ..util.iterables import areContiguous, fst, areUnique, arePositive, snd
 from ..util.dicts import getattr_recursive, setattr_recursive, intersect_dicts
-from ..util.exceptions import EmptyTokenError
+from ..util.exceptions import EmptyTokenError, DuplicateTokenError
 
 
 class _ProhibitDeclaringConstructor(type):
@@ -155,8 +155,10 @@ UnidentifiedVocab = Iterable[str]  # Vocabulary without identifiers, but in some
 WithSpecials = TypeVar("WithSpecials", bound=Specials)  # There is a bug where this TypeVar pretends to BE its bound rather than USE its bound. You can still get type completion for .specials, but you should manually annotate the vocab as "v: Vocab[YourSpecialsType]"... https://youtrack.jetbrains.com/issue/PY-49816/Type-inference-fails-when-using-bound-typevar-inference-through-TypeT
 
 
+# SpecialsExtended: TypeAlias = tuple[WithSpecials, Optional[int]]
+
 @dataclass
-class SpecialsExtended(Generic[WithSpecials], metaclass=_ProhibitSubclassing):
+class SpecialsExtended(Generic[WithSpecials], metaclass=_ProhibitSubclassing):  # FIXME: Currently, because generic type parameters aren't inferred from constructor arguments, this class does not transmit its type information. If this is not fixed somewhere in 2026, we shall revert to the tuple definition above, which does work.
     """Purely for bundling Specials with an UNK. This should NOT be used to define a new class of Specials."""
     specials: WithSpecials
     unk: Optional[int] = 0
@@ -292,6 +294,10 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
     def __repr__(self):
         return f"{self.__class__.__name__}(types={super().__repr__()}, specials={self.specials.__repr__()}, UNK={self.UNK})"
 
+    def __iter__(self):
+        for t in sorted(self, key=self.get):
+            yield t
+
     def unsafe(self, specials_formatter: Callable[[str], str] = None) -> dict[str, int]:
         """
         Turns the specials into strings and returns a dictionary that contains
@@ -336,6 +342,8 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
         self.__init__(types, specials=new_specials, unk_id=new_unk)
 
     def add(self, type: str):
+        if type in self:
+            raise DuplicateTokenError(f"Cannot add type '{type}' to the vocabulary because it's already present (id {self[type]}).")
         self[type] = self.__next_id
         self.inverse[self.__next_id] = type
         self.__next_id += 1
