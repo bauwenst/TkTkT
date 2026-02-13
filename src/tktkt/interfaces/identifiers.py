@@ -295,7 +295,7 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
         return f"{self.__class__.__name__}(types={super().__repr__()}, specials={self.specials.__repr__()}, UNK={self.UNK})"
 
     def __iter__(self):
-        for t in sorted(self, key=self.get):
+        for t in sorted(super().__iter__(), key=self.get):
             yield t
 
     def unsafe(self, specials_formatter: Callable[[str], str] = None) -> dict[str, int]:
