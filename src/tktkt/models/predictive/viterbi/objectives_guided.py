@@ -20,6 +20,10 @@ from math import log as ln
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
 from ....util.printing import sgnprint
 
+__all__ = ["BoundaryScoresChosen", "BoundaryScoresAll",
+           "BoundaryPrefixLength", "BoundarySuffixLength", "BoundaryPrefixLengthExtended", "BoundarySuffixLengthExtended",
+           "BoundaryPrefixAndSuffixLengthExtended"]
+
 
 class CharacterClassifier(ABC):
 
@@ -51,7 +55,7 @@ class SubstringClassifier(ABC):
 #############################################################################################
 
 
-class ProbabilityTransform:
+class ProbabilityTransform(ABC):
 
     def __init__(self, negate_as_complement: bool=False):
         self.negate_as_complement = negate_as_complement
@@ -281,7 +285,7 @@ class SineMBPT(MultiplicativelyBalancedProbabilityTransform):
 ########################################################################################################################
 
 
-class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
+class _ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
     """
     Stores a model that generates log(probability) values.
     The reason why that model is not a constructor argument is because the constructor of these score generators should
@@ -301,7 +305,7 @@ class ScoreGeneratorUsingCharacterClassifier(ViterbiStepScoreGenerator):
         self.logprob_classifier = point_model
 
 
-class ScoreGeneratorUsingCharacterClassifierForTransform(ScoreGeneratorUsingCharacterClassifier):
+class _ScoreGeneratorUsingCharacterClassifierForTransform(_ScoreGeneratorUsingCharacterClassifier):
     """
     Stores a transformation for probabilities (not log probabilities!), since it automatically converts the given model's
     log probabilities into probabilities before applying the transformation.
@@ -320,7 +324,7 @@ class ScoreGeneratorUsingCharacterClassifierForTransform(ScoreGeneratorUsingChar
         return self.__class__.__name__ + "(" + self.T.__repr__() + ")"
 
 
-class BoundaryScoresChosen(ScoreGeneratorUsingCharacterClassifierForTransform):
+class BoundaryScoresChosen(_ScoreGeneratorUsingCharacterClassifierForTransform):
     """
     For Viterbi paths that maximise the score on the character boundaries they hit.
 
@@ -359,7 +363,7 @@ class BoundaryScoresChosen(ScoreGeneratorUsingCharacterClassifierForTransform):
         return scores
 
 
-class BoundaryScoresAll(ScoreGeneratorUsingCharacterClassifierForTransform):
+class BoundaryScoresAll(_ScoreGeneratorUsingCharacterClassifierForTransform):
     """
     Uses point boundaries, assumed to be independent, to compute segment probabilities.
     Should still be used with sum accumulation.
@@ -439,7 +443,7 @@ class BoundaryScoresAll(ScoreGeneratorUsingCharacterClassifierForTransform):
 ########################################################################################################################
 
 
-class ScoreGeneratorUsingCharacterClassifierForHardBoundaries(ScoreGeneratorUsingCharacterClassifier):
+class _ScoreGeneratorUsingCharacterClassifierForHardBoundaries(_ScoreGeneratorUsingCharacterClassifier):
     """
     Base class for all prefix/suffix score generators, which don't put predicted probabilities into the grid but rather
     some score related to the hard boundaries they indicate.
@@ -484,7 +488,7 @@ class ScoreGeneratorUsingCharacterClassifierForHardBoundaries(ScoreGeneratorUsin
         return self.__class__.__name__ + "_Normed"*self.do_normalise + f"(pm={self.punishment}))"
 
 
-class BoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
+class BoundaryPrefixLength(_ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
     """
     Doesn't output probability/score, but does character counting instead.
 
@@ -520,7 +524,7 @@ class BoundaryPrefixLength(ScoreGeneratorUsingCharacterClassifierForHardBoundari
         return scores
 
 
-class BoundaryPrefixLengthExtended(ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
+class BoundaryPrefixLengthExtended(_ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
     """
     The same as BoundaryPrefixLength except you are also rewarded if you start on a boundary and end AFTER the next
     boundary, with the reward stagnating at that boundary.
@@ -547,7 +551,7 @@ class BoundaryPrefixLengthExtended(ScoreGeneratorUsingCharacterClassifierForHard
         return scores
 
 
-class BoundarySuffixLength(ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
+class BoundarySuffixLength(_ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
     """
     Equivalent of BoundaryPrefixLength but for suffices: you get a score proportional to how much of the END of a
     suggested segment you capture.
@@ -574,7 +578,7 @@ class BoundarySuffixLength(ScoreGeneratorUsingCharacterClassifierForHardBoundari
         return scores
 
 
-class BoundarySuffixLengthExtended(ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
+class BoundarySuffixLengthExtended(_ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
     """
     Analogue of BoundaryPrefixLengthExtended.
     """
@@ -596,7 +600,7 @@ class BoundarySuffixLengthExtended(ScoreGeneratorUsingCharacterClassifierForHard
         return scores
 
 
-class BoundaryPrefixAndSuffixLengthExtended(ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
+class BoundaryPrefixAndSuffixLengthExtended(_ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
     """
     Combination of prefix and suffix scores.
         - When you don't start on a boundary and don't end on a boundary, you get punished.

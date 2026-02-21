@@ -7,7 +7,7 @@ from typing import MutableSequence
 
 from ...interfaces.tokenisers import Preprocessor
 from ...models.predictive.viterbi.framework import ViterbiTokeniser, ViterbiObjective, INFTY
-from ...models.predictive.viterbi import ScoreGeneratorUsingSubstringClassifier, SubstringClassifier
+from ...models.predictive.viterbi.objectives_guided import ScoreGeneratorUsingSubstringClassifier, SubstringClassifier
 from ...models.predictive.viterbi.accumulators import ScoreSum
 
 

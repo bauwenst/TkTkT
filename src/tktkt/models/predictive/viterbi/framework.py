@@ -29,7 +29,7 @@ the Viterbi decoder, but rather in the scoring grid. The grid might map the step
 from dataclasses import dataclass
 from typing import Iterable
 from typing_extensions import Self
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 import numpy as np
 
 from ....interfaces.tokenisers import Tokeniser, Preprocessor
@@ -129,7 +129,7 @@ class ViterbiStepScoresWithTokens(ViterbiStepScores):
         return this
 
 
-class ViterbiStepScoreGenerator:
+class ViterbiStepScoreGenerator(ABC):
 
     @abstractmethod
     def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
@@ -143,11 +143,14 @@ class ViterbiStepScoreGeneratorWithTokens(ViterbiStepScoreGenerator):
         pass
 
 
-class ViterbiAccumulator:
+class ViterbiAccumulator(ABC):
 
     @abstractmethod
     def combine(self, previous_value: float, edge_score: float):
         pass
+
+
+########################################################################################################################
 
 
 @dataclass
@@ -219,12 +222,12 @@ class ViterbiTokeniser(Tokeniser):
         self._degenerate_output = degenerate
         self._trim_fully_infinite_steps = trimmed
 
-    def tokenise(self, string: str):
-        N = len(string)
+    def tokenise(self, pretoken: str):
+        N = len(pretoken)
         K = min(self.K, N)  # There's no point having a bigger step than the entire string's length. Biggest step is from character 0 to character N, the end-of-string position.
 
         # 1. There is a different set of edge weights per objective and per string. Generate these for the given string.
-        graphs = [o.score_generator.generateGrid(string, K) for o in self.objectives]
+        graphs = [o.score_generator.generateGrid(pretoken, K) for o in self.objectives]
         if self._trim_fully_infinite_steps:
             K = min(graph.getEffectiveK() for graph in graphs)  # We assume that this cannot be larger than the K we already had. You're in trouble otherwise.
 
@@ -251,7 +254,7 @@ class ViterbiTokeniser(Tokeniser):
             indices_to_token = lambda string, left_index, right_index: graphs[0].getToken(left_index, right_index-left_index-1)
 
         while current_index != -1:
-            token = indices_to_token(string, current_index, prev_index)
+            token = indices_to_token(pretoken, current_index, prev_index)
             tokens.insert(0, token)
 
             prev_index    = current_index

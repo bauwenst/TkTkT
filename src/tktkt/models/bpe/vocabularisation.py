@@ -7,7 +7,7 @@ from collections import defaultdict, OrderedDict, Counter
 from tqdm.auto import tqdm
 
 from modest.formats.tsv import iterateTsv
-from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase
+from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase, BPETrainerState as _ChizhovTrainingContext
 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
@@ -535,12 +535,12 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
     def _string_to_atoms(self, word: str) -> Iterable[str]:
         return self._marker.atomise(word)
 
-    def _dump(self, path: Path) -> Path:
+    def _dump(self, state: _ChizhovTrainingContext, path: Path) -> Path:
         from pickybpe.vocabularisation import logger
         from pickybpe.vocabularisation import EventType
 
         folder = Path(path).resolve()
-        if folder.suffix:
+        if not folder.is_dir():
             folder = folder.parent
         logger.info(f'Dumping model to {folder.as_posix()}...')
 

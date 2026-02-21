@@ -9,7 +9,7 @@ from pickybpe.vocabularisation import BPETrainer as _BPETrainerBase, EventType
 from ...interfaces import Preprocessor
 from ...interfaces.vocabularisers import UnidentifiedVocab
 from .decomposing import ScaffoldBPE, CacheableAblatedBPEArtifacts
-from .vocabularisation import _VocabulariserWithChizhovBackend, CacheableBPEArtifacts
+from .vocabularisation import _VocabulariserWithChizhovBackend, CacheableBPEArtifacts, _ChizhovTrainingContext
 
 __all__ = ["ScaffoldBPE", "ScaffoldBPEVocabulariser"]
 
@@ -24,28 +24,31 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
             max_type_length=max_type_length,
             include_specials=False
         )
-        self._scaffolds_and_causes: dict[str,list[str]] = defaultdict(list)
         self._marker = preprocessor.getBoundaryMarker()
 
     def _string_to_atoms(self, word: str) -> Iterable[str]:
         return self._marker.atomise(word)
 
-    def _scrutinize_parent_after_merge(self, parent: Token, child: Token, pair_frequency: int, pairs: PairCounts):
+    def _initialize_state(self) -> _ChizhovTrainingContext:
+        self._scaffolds_and_causes: dict[str,list[str]] = defaultdict(list)
+        return super()._initialize_state()
+        
+    def _scrutinize_parent_after_merge(self, parent: Token, child: Token, pair_frequency: int, state: _ChizhovTrainingContext):
         _, next_pair_frequency = pairs.get_argmax()
         if parent.freq < next_pair_frequency:
             self._scaffolds_and_causes[parent.str].append(child.str)
-            self.actual_vocab_size -= 1
+            state.actual_vocab_size -= 1
 
-    def _dump(self, path: PathLike):
+    def _dump(self, state: _ChizhovTrainingContext, path: PathLike):
         folder = Path(path).resolve()
-        if folder.suffix:
+        if not folder.is_dir():
             folder = folder.parent
 
         # Dump extended vocab and merges
         # super()._dump(folder)
         # - Vocab
         CacheableBPEArtifacts._storeTypes(folder, [
-            typ.str for typ in sorted(filter(lambda token: token != self.unk_token, self.str2token.values()), key=lambda token: token.id)
+            typ.str for typ in sorted(filter(lambda token: token != self.unk_token, state.str2token.values()), key=lambda token: token.id)
         ])
 
         # Merges
@@ -58,7 +61,7 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
         CacheableBPEArtifacts._storeMerges(folder,
             (
                 [validate_characters(part.str) for part in parts]
-                for event_type, parts, _ in self.events if event_type == EventType.MERGE
+                for event_type, parts, _ in state.events if event_type == EventType.MERGE
             )
         )
 
@@ -66,9 +69,9 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
         with open(folder / "ablations.json", "w", encoding="utf-8") as handle:
             json.dump({
                 scaffold_parent: {
-                    "id": self.str2token[scaffold_parent].id,
+                    "id": state.str2token[scaffold_parent].id,
                     "accusers": {
-                        child_type: self.str2token[child_type].id
+                        child_type: state.str2token[child_type].id
                         for child_type in children
                     }
                 }

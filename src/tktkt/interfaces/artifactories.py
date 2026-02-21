@@ -150,25 +150,25 @@ class CacheableArtifacts(Artifacts, Cacheable):
     # Auxiliary methods for saving vocabularies as a simple txt.
 
     @classmethod
-    def _storeTypes(cls, cache_path: Path, types: Union[dict[str,int], Iterable[str]]):
+    def _storeTypes(cls, cache_path: Path, types: Union[dict[str,int], Iterable[str]], stem: str=None):
         if isinstance(types, dict):
             types = sorted(types.keys(), key=types.get)
 
         # We use two obsolete ASCII control characters, namely byte 5 and byte 6, to encode \r\n, which are control characters that may actually be used below.
         LF = chr(5)
         CR = chr(6)
-        with open(cache_path / _DEFAULT_VOCAB_FILENAME, "w", encoding="utf-8") as handle:
+        with open(cache_path / (_DEFAULT_VOCAB_FILENAME if not stem else stem + ".txt"), "w", encoding="utf-8") as handle:
             for t in types:
                 t = t.replace("\n", LF).replace("\r", CR)
                 handle.write(f"{t}\n")
 
     @classmethod
-    def _loadTypes(cls, cache_path: Path) -> list[str]:
+    def _loadTypes(cls, cache_path: Path, stem: str=None) -> list[str]:
         LF = chr(5)
         CR = chr(6)
-        with open(cache_path / _DEFAULT_VOCAB_FILENAME, "r", encoding="utf-8") as handle:
+        with open(cache_path / (_DEFAULT_VOCAB_FILENAME if not stem else stem + ".txt"), "r", encoding="utf-8") as handle:
             return [line.rstrip("\r\n").replace(LF, "\n").replace(CR, "\r") for line in handle.readlines() if line.rstrip("\r\n")]
 
     @classmethod
-    def _existsTypes(cls, cache_path: Path) -> bool:
-        return (cache_path / _DEFAULT_VOCAB_FILENAME).is_file()
+    def _existsTypes(cls, cache_path: Path, stem: str=None) -> bool:
+        return (cache_path / (_DEFAULT_VOCAB_FILENAME if not stem else stem + ".txt")).is_file()

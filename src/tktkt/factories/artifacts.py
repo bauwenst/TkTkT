@@ -26,7 +26,7 @@ from .specials import BertSpecials, RobertaSpecials
 from ..interfaces import Vocab
 from ..interfaces.identifiers import AutoVocab, NoSpecials, WithSpecials, AutoVocabSpecs, UnidentifiedVocab
 from ..models.bpe.vocabularisation import BPEArtifacts, CacheableBPEArtifacts
-from ..models.predictive.viterbi import HuggingFaceForBinaryCharacterClassification
+from ..models.predictive.viterbi.objectives_guided import HuggingFaceForBinaryCharacterClassification
 from ..models.kudopiece.vocabularisation import KudoPieceArtifacts
 from ..util.trie import PrefixTrie, SuffixTrie
 from ..util.iterables import fst

@@ -57,7 +57,7 @@ class BoMMa(ViterbiTokeniser):
     """
 
     def __init__(self, preprocessor: Preprocessor, max_step: Optional[int],
-                 score_generator: ScoreGeneratorUsingCharacterClassifier,
+                 score_generator: _ScoreGeneratorUsingCharacterClassifier,
                  vocabulary_constraint_class: type[VocabularyConstraint], vocab: SubwordCollection):
         max_step = max_step or max(len(t) for t in vocab)
 

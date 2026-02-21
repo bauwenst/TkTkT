@@ -686,7 +686,7 @@ class AddCapitalMarker(Pretokeniser):
 
 
 
-from ..models.predictive.viterbi import CharacterClassifier
+from ..models.predictive.viterbi.objectives_guided import CharacterClassifier
 class OnBoundaryClassifier(Pretokeniser):
 
     def __init__(self, classifier: CharacterClassifier, threshold: float=0.5):

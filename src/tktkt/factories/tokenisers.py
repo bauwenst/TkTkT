@@ -159,7 +159,7 @@ class Factory_BoMMaSum(TokeniserFactory[BoMMa_Sum]):
     """
 
     def __init__(self,
-                 generator: ScoreGeneratorUsingCharacterClassifier=BoundaryScoresChosen(LinearPT(-1, +1, negate_as_complement=True)),
+                 generator: _ScoreGeneratorUsingCharacterClassifier=BoundaryScoresChosen(LinearPT(-1, +1, negate_as_complement=True)),
                  constraint: type[VocabularyConstraint]=VocabularyConstraintExact,
                  preprocessor: Preprocessor=None, files: Artifacts=KudoPiece32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
         self._prep = preprocessor  # TODO: As we know, BoMMa has a two-preprocessor problem.
@@ -185,7 +185,7 @@ class Factory_BoMMaSum(TokeniserFactory[BoMMa_Sum]):
 class Factory_BoMMaSum_FromTransform(Factory_BoMMaSum):
     def __init__(self,
                  files: Artifacts=KudoPiece32ki_SlimPajama3M(),
-                 generator: type[ScoreGeneratorUsingCharacterClassifierForTransform]=BoundaryScoresChosen,
+                 generator: type[_ScoreGeneratorUsingCharacterClassifierForTransform]=BoundaryScoresChosen,
                  score_transform: ProbabilityTransform=LinearPT(-1, +1, negate_as_complement=False),
                  constraint: type[VocabularyConstraint]=VocabularyConstraintExact,
                  specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):

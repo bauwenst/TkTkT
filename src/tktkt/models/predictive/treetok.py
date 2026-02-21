@@ -4,7 +4,7 @@ character, and you check if the current string is in the vocabulary, where you s
 on the halves separated by the largest probability if no.
 https://aclanthology.org/2025.findings-acl.1146.pdf
 """
-from .viterbi import CharacterClassifier
+from .viterbi.objectives_guided import CharacterClassifier
 from ...interfaces.tokenisers import *
 from ...util.iterables import maxargmax
 

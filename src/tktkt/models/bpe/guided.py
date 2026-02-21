@@ -4,7 +4,7 @@ import numpy.random as npr
 from math import exp, log, inf
 
 from ...interfaces.tokenisers import *
-from ...models.predictive.viterbi import CharacterClassifier
+from ...models.predictive.viterbi.objectives_guided import CharacterClassifier
 from .base import MergeList, _NonDeterministicBPETokeniser
 
 
