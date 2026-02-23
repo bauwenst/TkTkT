@@ -1,14 +1,14 @@
 from typing import Optional
 
-from bpe_knockout import BPEKnockoutVocabulariser, BTEConfig, KnockoutConfig, AnnealingConfig, ReifyMode, AnnealingTime, ReferenceMode
-from bpe_knockout.model.auto import AutoKnockout
+from bpe_knockout import BPEKnockoutVocabulariser, FullBPEKnockoutConfig, KnockoutConfig, AnnealingConfig, ReifyConfig, ReifyMode, AnnealingTime, ReferenceMode
+from bpe_knockout.model.auto import AutoKnockout, AutoVocab, AutoMerges, AutoVocabSpecs  # These unused imports are here on purpose, so the user can get ReBPE(AutoVocab, AutoMerges) using one import statement.
 from modest.interfaces.datasets import ModestDataset
 
 from .base import _DeterministicBPETokeniser, MergeList
 from ...interfaces.tokenisers import *
 
 __all__ = ["BPEKnockout", "ReBPE",
-           "BPEKnockoutVocabulariser", "BTEConfig"]  # Vocabularisation is already implemented for us.
+           "BPEKnockoutVocabulariser", "FullBPEKnockoutConfig"]  # Vocabularisation is already implemented for us.
 
 
 class _KnockoutJIT(_DeterministicBPETokeniser[WithSpecials]):
@@ -20,10 +20,10 @@ class _KnockoutJIT(_DeterministicBPETokeniser[WithSpecials]):
             super().__init__(preprocessor=preprocessor, vocab=vocab, merges=merges)
         else:  # Make a config and run AutoKnockout, which uses the given dataset to modify a BTE tokeniser during the same runtime as its tokeniser is instantiated.
             do_anneal = False
-            config = BTEConfig(
-                knockout=KnockoutConfig(reference=ReferenceMode.NONE if not do_knockout else ReferenceMode.MORPHEMIC),
-                annealing=AnnealingConfig(reference=ReferenceMode.NONE if not do_anneal else ReferenceMode.MORPHEMIC),
-                reify=ReifyMode.NONE if not do_reify else ReifyMode.FIX_AND_LINK if backwards_compatible else ReifyMode.FIX_AND_LINK_AND_MAKE,
+            config = FullBPEKnockoutConfig(
+                knockout=KnockoutConfig(reference=ReferenceMode.NONE if not do_knockout else ReferenceMode.ALL),
+                annealing=AnnealingConfig(reference=ReferenceMode.NONE if not do_anneal else ReferenceMode.ALL),
+                reify=ReifyConfig(mode=ReifyMode.NONE if not do_reify else ReifyMode.FIX_AND_LINK if backwards_compatible else ReifyMode.FIX_AND_LINK_AND_MAKE),
                 iterations=iterations,
             )
             bte = AutoKnockout(config).from_objects(preprocessor=preprocessor, vocab=vocab, merges=merges, reference=reference_segmentations)
