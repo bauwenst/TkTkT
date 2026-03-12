@@ -68,7 +68,7 @@ class Artifacts(ABC):
     # Specials you would've given to their constructor originally (which didn't even work properly to induce the generic type).
 
     def __init__(self):
-        self._vocab_cache = None
+        self._vocab_cache: Vocab = None
 
     def getVocabulary(self,
         specials: SpecialsExtended[WithSpecials]=SpecialsExtended(NoSpecials()),
@@ -79,7 +79,7 @@ class Artifacts(ABC):
             1. the order of the remaining types;
             2. which specials to add to them.
         """
-        if self._vocab_cache is None:
+        if self._vocab_cache is None or (self._vocab_cache.specials != specials.specials or self._vocab_cache.UNK != specials.unk):
             removed_types = self._bakedSpecials()
             iterator = filter(lambda t: t not in removed_types, self._getVocabulary())
             if type_sorting_key is not None:

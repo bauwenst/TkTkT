@@ -1,6 +1,19 @@
+"""
+User-friendly factory classes that abstract over the potentially user-unfriendly constructors and post-constructor methods
+of various tokenisers in the package. The main advantage of a factory
+
+Generally, a factory should take three arguments:
+    1. Preprocessor, for everything that happens before tokenisation;
+    2. Artifacts, for everything that happens during tokenisation;
+    3. Specials, for everything that happens after tokenisation.
+"""
 from ..interfaces import TokeniserFactory, Artifacts
+from ..interfaces.artifactories import T
 from ..interfaces.identifiers import WithSpecials, SpecialsExtended, NoSpecials
 from ..models.predictive.viterbi.instances import *
+from ..models.predictive.viterbi.objectives_guided import \
+    _ScoreGeneratorUsingCharacterClassifier, _ScoreGeneratorUsingCharacterClassifierForTransform, \
+    ProbabilityTransform, MultiplicativelyBalancedProbabilityTransform
 from ..models.bpe.vocabularisation import BPEArtifacts
 from ..models.bpe.base import ClassicBPE
 from ..models.bpe.knockout import BPEKnockout, ReBPE
@@ -16,10 +29,25 @@ from ..preparation.boundaries import detectBoundaryMarkerFromVocabulary
 from .artifacts import *
 from .artifacts import getEnglishCANINE
 
+from modest.interfaces.datasets import ModestDataset
+
 ########################################################################################################################
 
 
 DEFAULT_SPECIALS = SpecialsExtended(NoSpecials())
+
+
+class PrebuiltFactory(TokeniserFactory[T]):
+    """
+    Wrapper for cases where the constructor of the tokeniser and of the factory would essentially have the same signature,
+    but your application absolutely needs a factory.
+    """
+
+    def __init__(self, tokeniser: T):
+        self._tokeniser = tokeniser
+
+    def buildTokeniser(self) -> T:
+        return self._tokeniser
 
 
 class Factory_BPE(TokeniserFactory[HuggingFaceBPETokeniser[WithSpecials]]):
@@ -56,28 +84,37 @@ class Factory_BPE_Pythonic(TokeniserFactory[ClassicBPE[WithSpecials]]):
         )
 
 
+# NOTE: I'm considering removing these altogether because the signatures are almost identical to those of the constructors,
+#       but two things are holding me back:
+#   1. There may be users who want to have one single import for all functionality in tktkt, i.e. from tktkt.factories.tokenisers import *, rather than having to go look for them in e.g. tktkt.models.bpe.knockout.
+#   2. Factories also abstract over Artifacts and this is useful for idiots who can't use an interface.
 class Factory_BPEKnockout(TokeniserFactory[BPEKnockout[WithSpecials]]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS,
+                 reference_segmentations: ModestDataset=None):
         self._prep = preprocessor
         self._files = files
         self._specials = specials
+        self._reference = reference_segmentations
 
     def buildTokeniser(self):
         return BPEKnockout(
             preprocessor=self._prep or self._files.preprocessorEffective(),
             vocab=self._files.getVocabulary(specials=self._specials),
             merges=self._files.getMerges(),
+            reference_segmentations=self._reference
         )
 
 
 class Factory_ReBPE(TokeniserFactory[ReBPE[WithSpecials]]):
     def __init__(self, iterations: int, reduced: bool=False,
-                 preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
+                 preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS,
+                 reference_segmentations: ModestDataset=None):
         self._prep = preprocessor
         self._files = files
         self._specials = specials
         self.its = iterations
         self.bc = reduced
+        self._reference = reference_segmentations
 
     def buildTokeniser(self):
         return ReBPE(
@@ -86,7 +123,8 @@ class Factory_ReBPE(TokeniserFactory[ReBPE[WithSpecials]]):
             merges=self._files.getMerges(),
 
             iterations=self.its,
-            backwards_compatible=self.bc
+            backwards_compatible=self.bc,
+            reference_segmentations=self._reference
         )
 
 
@@ -129,10 +167,12 @@ class Factory_LeastToken(TokeniserFactory[LeastTokenViterbi]):
 
 
 class Factory_LeastToken_BPEKnockout(TokeniserFactory[LeastTokenViterbi]):
-    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS):
+    def __init__(self, preprocessor: Preprocessor=None, files: BPEArtifacts=BPE32ki_SlimPajama3M(), specials: SpecialsExtended[WithSpecials]=DEFAULT_SPECIALS,
+                 reference_segmentations: ModestDataset=None):
         self._files = files
         self._prep = preprocessor or files.preprocessorEffective()
         self._specials = specials
+        self._reference = reference_segmentations
 
     def buildTokeniser(self):
         # Prune the vocabulary with BPE-knockout
@@ -140,6 +180,7 @@ class Factory_LeastToken_BPEKnockout(TokeniserFactory[LeastTokenViterbi]):
             preprocessor=ModernEnglishPreprocessor(RobertaSpaceMarker),
             vocab=self._files.getVocabulary(specials=self._specials),
             merges=self._files.getMerges(),
+            reference_segmentations=self._reference
         )
 
         # Use this new vocabulary

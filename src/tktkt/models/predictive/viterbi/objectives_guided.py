@@ -22,7 +22,8 @@ from ....util.printing import sgnprint
 
 __all__ = ["BoundaryScoresChosen", "BoundaryScoresAll",
            "BoundaryPrefixLength", "BoundarySuffixLength", "BoundaryPrefixLengthExtended", "BoundarySuffixLengthExtended",
-           "BoundaryPrefixAndSuffixLengthExtended"]
+           "BoundaryPrefixAndSuffixLengthExtended",
+           "IdentityPT", "PiecewisePT", "PowerMBPT", "LogPT", "LinearPT", "SineMBPT", "DoublingMBPT", "ExponentialMBPT"]
 
 
 class CharacterClassifier(ABC):

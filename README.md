@@ -45,8 +45,11 @@ Currently, the package implements:
   - **Lempel-Ziv-Welch (LZW)** as a tokeniser ([Zouhar et al., 2023](https://aclanthology.org/2023.acl-long.284/)).
 
 Currently work in progress:
+- [Less-is-Better (LiB)](https://github.com/bauwenst/LiB)
+- [Tokenmonster](https://github.com/alasdairforsythe/tokenmonster)
+- DPE
 - Morfessor family
-- VOLT
+- VOLT (mostly already present in TkTkT)
 
 #### Multiplexing
 TkTkT is the only package that supports **multiplexing** multiple tokenisers into one big tokeniser that alternates 

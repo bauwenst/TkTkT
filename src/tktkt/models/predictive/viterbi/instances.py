@@ -2,9 +2,11 @@
 Some examples of common Viterbi objectives.
 """
 from typing import Optional
+
 from typing_extensions import Self
 
 from . import *
+from .objectives_guided import _ScoreGeneratorUsingCharacterClassifier, CharacterClassifier, HuggingFaceForBinaryCharacterClassification
 from ....interfaces.tokenisers import Preprocessor
 from ....interfaces.identifiers import SubwordCollection
 
