@@ -12,8 +12,7 @@ from enum import Enum
 
 from copy import copy
 
-from bpe_knockout.util.datahandlers.hf_corpora import punctuation
-from bpe_knockout.util.bytemapping import BYTE_ALPHABET
+from bpe_knockout.util.unicode import punctuation
 
 from ...interfaces.tokenisers import *
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
@@ -63,7 +62,7 @@ class NgramTokeniser(Tokeniser):
         )
 
         if self.mode != NgramByteBasedMode.CHAR_NGRAMS:
-            self.alphabet = (set(BYTE_ALPHABET) - ASCII_PUNCTUATION, ASCII_PUNCTUATION)  # These two sets can never appear in the same token.
+            self.alphabet = (set(self.bytemap.getAlphabet()) - ASCII_PUNCTUATION, ASCII_PUNCTUATION)  # These two sets can never appear in the same token.
         else:
             self.alphabet = (LETTERS, set(punctuation))
 

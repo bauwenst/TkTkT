@@ -15,11 +15,9 @@ amount of artifacts is limited enough not to bother with this).
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download
-from transformers import AutoTokenizer
 import json
 
 from modest.formats.tsv import iterateTsv
-from bpe_knockout.util.storage import SennrichTokeniserPath
 from bpe_knockout.model.auto import AutoMerges
 
 from .specials import BertSpecials, RobertaSpecials
@@ -135,6 +133,7 @@ class BPEArtifacts_HuggingFace(BPEArtifacts):
         return set(self._specialsToTypes().values())
 
     def getVocabulary(self) -> Vocab[WithSpecials]:
+        from transformers import AutoTokenizer
         return AutoVocab.fromTokenizer(
             tokenizer=AutoTokenizer.from_pretrained(self._checkpointName()),
             specials_specification=AutoVocabSpecs(specials_template=self._specialsTemplate(), special_to_string=self._specialsToTypes())
@@ -147,6 +146,7 @@ class BPEArtifacts_HuggingFace(BPEArtifacts):
         return self.preprocessorEffective()
 
     def preprocessorEffective(self) -> Preprocessor:  # Note: these tokenisers tend to suck with boundary marking.
+        from transformers import AutoTokenizer
         return HuggingFacePreprocessor(AutoTokenizer.from_pretrained(self._checkpointName()))
 
 
@@ -205,6 +205,7 @@ class KudoPieceArtifacts_HuggingFace(KudoPieceArtifacts):
         raise NotImplementedError()
 
     def getVocabulary(self) -> Vocab[WithSpecials]:
+        from transformers import AutoTokenizer
         return AutoVocab.fromTokenizer(
             tokenizer=AutoTokenizer.from_pretrained(self._checkpointName()),
             specials_specification=AutoVocabSpecs(specials_template=self._specialsTemplate(), special_to_string=self._specialsToTypes())

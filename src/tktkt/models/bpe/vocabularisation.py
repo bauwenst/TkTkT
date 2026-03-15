@@ -5,6 +5,7 @@ from enum import Enum
 from collections import defaultdict, OrderedDict, Counter
 
 from tqdm.auto import tqdm
+import json
 
 from modest.formats.tsv import iterateTsv
 from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase, BPETrainerState as _ChizhovTrainingContext
@@ -268,14 +269,14 @@ class BPEVocabulariser(UnsupervisedVocabulariser[CacheableBPEArtifacts]):
         tokeniser.train_from_iterator(sentence_iterable, trainer=trainer)
 
         # Serialise
-        from bpe_knockout.util.storage import HuggingFaceTokeniserPath
         save_path = out_folder / f"tokenizer.json"
-        hf = HuggingFaceTokeniserPath(json_path=save_path)  # Calls .mkdir, which is important because otherwise the next line fails.
         tokeniser.save(path=save_path.as_posix())
 
         # Deserialise
-        vocab  = hf.loadVocabulary()
-        merges = [tuple(m.split(" ")) for m in hf.loadMerges()]
+        with open(save_path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        vocab  = data.get("model", dict()).get("vocab", dict())
+        merges = [tuple(m.split(" ")) for m in data.get("model", dict()).get("merges", [])]
         return CacheableBPEArtifacts(types=sorted(vocab, key=vocab.get), merges=merges)
 
     def _withSentencePieceTrainer(self, word_or_sentence_iterable: NamedIterable, words_not_sentences: bool=False) -> CacheableBPEArtifacts:
