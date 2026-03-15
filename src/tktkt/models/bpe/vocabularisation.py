@@ -547,7 +547,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
 
         # Vocab
         CacheableBPEArtifacts._storeTypes(folder,
-            [typ.str for typ in sorted(filter(lambda token: token != self.unk_token, self.str2token.values()), key=lambda token: token.id)]
+            [typ.str for typ in sorted(filter(lambda token: token != self.unk_token, state.str2token.values()), key=lambda token: token.id)]
         )
 
         # Merges
@@ -560,7 +560,7 @@ class _ChizhovBackend_BPE(_BPETrainerBase):
         CacheableBPEArtifacts._storeMerges(folder,
             (
                 [validate_characters(part.str) for part in parts]
-                for event_type, parts, _ in self.events if event_type == EventType.MERGE
+                for event_type, parts, _ in state.events if event_type == EventType.MERGE
             )
         )
         return folder

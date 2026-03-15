@@ -7,7 +7,6 @@ from pickybpe.utils import Token, PairCounts, PathLike
 from pickybpe.vocabularisation import BPETrainer as _BPETrainerBase, EventType
 
 from ...interfaces import Preprocessor
-from ...interfaces.vocabularisers import UnidentifiedVocab
 from .decomposing import ScaffoldBPE, CacheableAblatedBPEArtifacts
 from .vocabularisation import _VocabulariserWithChizhovBackend, CacheableBPEArtifacts, _ChizhovTrainingContext
 
@@ -34,7 +33,7 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
         return super()._initialize_state()
         
     def _scrutinize_parent_after_merge(self, parent: Token, child: Token, pair_frequency: int, state: _ChizhovTrainingContext):
-        _, next_pair_frequency = pairs.get_argmax()
+        _, next_pair_frequency = state.pairs.get_argmax()
         if parent.freq < next_pair_frequency:
             self._scaffolds_and_causes[parent.str].append(child.str)
             state.actual_vocab_size -= 1
