@@ -37,7 +37,9 @@ Currently, the package implements:
   - Other experimental variants:
     - **Last-BPE-first**: random-access youngest-first tokenisation (specifically for BPE vocabularies).
     - **Left-to-right-to-left greedy**: L2R2L_Greedy
-- **GRaMPa** ([Bauwens et al., 2025](https://aclanthology.org/2025.acl-long.1180/)): randomised segmentation constrained by a vocabulary.
+- Subword regularisers:
+  - **GRaMPa** ([Bauwens et al., 2025](https://aclanthology.org/2025.acl-long.1180/)): randomised segmentation constrained by a vocabulary.
+  - **StochasTok** ([Sims et al., 2025](https://iclr.cc/virtual/2025/33365))
 - **SaGe** ([Yehezkel & Pinter, 2023](https://aclanthology.org/2023.eacl-main.45/)) vocabularisation.
 - **Derivative leverager (DeL)** ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)), both training and segmentation.
 - Other, less interesting tokenisers:
@@ -47,7 +49,7 @@ Currently, the package implements:
 Currently work in progress:
 - [Less-is-Better (LiB)](https://github.com/bauwenst/LiB)
 - [Tokenmonster](https://github.com/alasdairforsythe/tokenmonster)
-- DPE
+- [DPE](https://aclanthology.org/2020.acl-main.275/)
 - Morfessor family
 - VOLT (mostly already present in TkTkT)
 

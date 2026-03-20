@@ -1,7 +1,3 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "tktkt"
 version = "2026.03.12"  # Don't forget to replace __version__ as well.
@@ -14,15 +10,14 @@ maintainers = [
 ]
 description = "Tokeniser toolkit: a collection of Pythonic subword tokenisers and text preprocessing tools."
 readme = "README.md"
-license = {file = "LICENSE"}
+license-files = ["LICENSE"]
 keywords = ["NLP", "tokenizers", "tokenization", "subwords", "segmentation", "natural language"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    # HuggingFace
-    "transformers",
+    # HuggingFace. We do NOT include 'transformers' by default because this is an incredibly heavy package, and it is only needed for TkTkT's forwards/backwards-compatibility modules.
     "tokenizers",
     "datasets",
     "evaluate",
@@ -42,21 +37,31 @@ dependencies = [
     # Misc
     "dacite",
     "langcodes",
-    "clavier_lib"
+    "clavier_lib",
 ]
 
-# These are not optional, but if you have these packages as editable install, you don't want to let pip install them again!
 [project.optional-dependencies]
-github = [
-    # Packages by me
-    "modest[github]       @ git+https://github.com/bauwenst/MoDeST",
-    "bpe_knockout[github] @ git+https://github.com/bauwenst/BPE-knockout",
-    "fiject               @ git+https://github.com/bauwenst/fiject",
+all = [  # All my other packages, from PyPI. We don't install them by default to avoid overriding editable installs.
+    "fiject",
+    "bpe_knockout",
 
-    # Forks by me
-    "sage_tokenizer       @ git+https://github.com/bauwenst/SaGe-tokeniser",
-    "pickybpe             @ git+https://github.com/bauwenst/PickyBPE",
+    "pickybpe_bauwenst"
 ]
+github = [  # All my other packages, from GitHub.
+    "modest[github]       @ git+https://github.com/bauwenst/MoDeST",
+    "sage_tokenizer       @ git+https://github.com/bauwenst/SaGe-tokeniser",
+]
+hf = [  # Only if you want functionality that uses PreTrainedTokenizer and SpecialsMixin.
+    "transformers"
+]
+
+[project.urls]
+Repository = "https://github.com/bauwenst/TkTkT"
+"Bug Tracker" = "https://github.com/bauwenst/TkTkT/issues"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
 
 # Include data and tokeniser files.
 [tool.setuptools.package-data]

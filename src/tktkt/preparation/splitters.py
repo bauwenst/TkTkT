@@ -106,6 +106,9 @@ class TokeniserAsPretokeniser(Pretokeniser):
         else:
             return self._tokeniser.tokenise(text)
 
+    def invertTokens(self, pretokens: Pretokens) -> Pretokens:
+        return [self._tokeniser.preprocessor.undo(pretokens)]
+
 
 class HyphenMode(Enum):
     ONLY     = 1
