@@ -45,11 +45,11 @@ all = [  # All my other packages, from PyPI. We don't install them by default to
     "fiject",
     "bpe_knockout",
 
-    "pickybpe_bauwenst"
+    "pickybpe_bauwenst",
+    "sage_bauwenst"
 ]
 github = [  # All my other packages, from GitHub.
-    "modest[github]       @ git+https://github.com/bauwenst/MoDeST",
-    "sage_tokenizer       @ git+https://github.com/bauwenst/SaGe-tokeniser",
+    "modest[github]  @ git+https://github.com/bauwenst/MoDeST",
 ]
 hf = [  # Only if you want functionality that uses PreTrainedTokenizer and SpecialsMixin.
     "transformers"

@@ -78,7 +78,7 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
         super().__init__(preprocessor=initial_artifacts.preprocessorEffective())
         self._initial_artifacts = initial_artifacts
 
-        import sage_tokenizer  # Just to check that you have it.
+        import sage  # Just to check that you have it.
 
         self.vocabulary_points: list[int] = [
             round(vocabulary_schedule.get(i/(n_vocab_samples-1))) for i in range(n_vocab_samples)  # This round() produces vocabulary sizes in the thousands. The -1 is because we want to normalise the N samples 0, 1, ..., N-1 such that the extrema are 0.0 and 1.0.
@@ -106,11 +106,11 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
         raise RuntimeError("SaGe operates on contextual corpora, not on word lists.")
 
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableSageArtifacts:
-        from sage_tokenizer import SaGeVocabBuilder, setSageFolder
+        from sage import SaGe, setSageFolder
 
         hex_vocab = list(map(SageVocabulariser._toHexString, self._initial_artifacts.getVocabulary()))
 
-        builder = SaGeVocabBuilder(
+        builder = SaGe(
             full_vocab_schedule=self.vocabulary_points,
             embeddings_schedule=self.recompute_embeddings_at,
             max_len=max(len(t)//2 for t in hex_vocab),  # Each byte is represented by two hex digits, so the vocabulary in hex form is twice as long.
@@ -120,7 +120,7 @@ class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):
 
         setSageFolder(self._cachePath(sentence_iterable.name))
 
-        hex_vocab_path = builder.build_vocab(
+        hex_vocab_path = builder.build(
             experiment_name="sage",
             initial_vocabulary=deduplicate([bytes([i]).hex() for i in range(256)] + hex_vocab),
             corpus=self._preprocessSentencesToSentences(sentence_iterable, sep=chr(31)),
