@@ -43,13 +43,13 @@ dependencies = [
 [project.optional-dependencies]
 all = [  # All my other packages, from PyPI. We don't install them by default to avoid overriding editable installs.
     "fiject",
-    "bpe_knockout",
+    "bpe_knockout[all]",
+    "modest_bauwenst[all]",
 
     "pickybpe_bauwenst",
     "sage_bauwenst"
 ]
-github = [  # All my other packages, from GitHub.
-    "modest[github]  @ git+https://github.com/bauwenst/MoDeST",
+github = [  # All remaining packages, by me or others, that are not on PyPI.
 ]
 hf = [  # Only if you want functionality that uses PreTrainedTokenizer and SpecialsMixin.
     "transformers"

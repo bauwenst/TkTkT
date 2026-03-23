@@ -202,12 +202,15 @@ The packages is divided into the following submodules:
 - `tktkt.util`: contains tools peripheral to tokenisation, like string formatting, combinatoric calculations, iterable functions, timing, etc...
 
 ## Installation
-Simply run
+To just get TkTkT and all its dependencies, run
 ```shell
-pip install "tktkt[github] @ git+https://github.com/bauwenst/TkTkT"
+pip install tktkt[all]
 ```
-where you should leave out the `[github]` suffix only if you have editable installations of any of my other packages, 
-like [`bpe_knockout`](https://github.com/bauwenst/BPE-knockout) (but you probably don't).
+If you also want to make use of the HuggingFace compatibility, you'll need `transformers`, which can be installed for you 
+if you don't already have it by running
+```shell
+pip install tktkt[all,hf]
+```
 
 ## Examples
 ### HuggingFace compatibility
