@@ -94,7 +94,7 @@ class CountingConfig:
 
 class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
     """
-    Has the goal of compressing a string iterable to a TSV containing every unique word exactly once with its frequency.
+    Has the goal of compressing an iterable of texts to a TSV that contains every unique word exactly once with its frequency.
 
     Takes its interface from Vocabulariser to support multiple input formats.
     Has extensive support for caching:
@@ -129,11 +129,15 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
     def _cacheType(self):
         return CacheableWordFrequencyList
 
-    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableWordFrequencyList:
-        raise NotImplementedError
-
     def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> CacheableWordFrequencyList:
-        folder = self._cachePath(sentence_iterable.name)
+        return self._vocabulariseFromWords(sentence_iterable.map(lambda s: (s,1)))
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableWordFrequencyList:
+        """
+        Does it make sense to count words in an existing word iterable? No, not really.
+        But it is still useful for counting pretokens extracted from words.
+        """
+        folder = self._cachePath(word_iterable.name)
         folder_intermediate = folder / "shards"
         folder_intermediate.mkdir(exist_ok=True)
 
@@ -164,17 +168,17 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
             resume_after_idx = latest_shard
 
         if self._cacheStatusRead(folder) == "merging":
-            return CacheableWordFrequencyList(self._merge(shards, output_folder=folder), sentence_iterable.name)
+            return CacheableWordFrequencyList(self._merge(shards, output_folder=folder), word_iterable.name)
 
         # Now iterate.
         idx = 0
-        for idx,text in enumerate(sentence_iterable, start=1):
+        for idx,(text,weight) in enumerate(word_iterable, start=1):
             # Resume where you left off.
             if idx <= resume_after_idx:
                 continue
 
             for word in self.preprocessor.do(text):
-                counter[word] += 1
+                counter[word] += weight
 
             # Flush to disk if counter is too big.
             if len(counter) > self.config.shard_if_keys_exceed:
@@ -202,7 +206,7 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
 
         # Merge and delete shards
         self._cacheStatusWrite(folder, "merging")
-        return CacheableWordFrequencyList(self._merge(shards, output_folder=folder), sentence_iterable.name)
+        return CacheableWordFrequencyList(self._merge(shards, output_folder=folder), word_iterable.name)
 
     def _merge(self, shards: list[Path], output_folder: Path) -> Path:
         """
