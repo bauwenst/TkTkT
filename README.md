@@ -1,4 +1,4 @@
-<img src="./doc/logo.png">
+<img src="./doc/logo.png" alt="TkTkT">
 
 # TkTkT: the ToKeniser ToolKiT
 A collection of Pythonic subword tokenisers and text preprocessing tools, with full

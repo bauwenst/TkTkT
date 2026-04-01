@@ -11,6 +11,7 @@ SennrichSpaceMarker = BoundaryMarker("</w>",    detached=False, location=Boundar
 IsolatedSpaceMarker = BoundaryMarker("[SPACE]", detached=True,  location=BoundaryMarkerLocation.ISOLATED)  # Huck 2017
 KudoSpaceMarker     = BoundaryMarker("▁",       detached=True,  location=BoundaryMarkerLocation.START)     # Kudo 2018
 RobertaSpaceMarker  = BoundaryMarker("Ġ",       detached=True,  location=BoundaryMarkerLocation.START)     # Radford 2019
+LittleEndianMarker  = BoundaryMarker("▁",       detached=True, location=BoundaryMarkerLocation.END)
 NoSpaceMarker       = BoundaryMarker("",        detached=False, location=BoundaryMarkerLocation.START)
 PrefixWhitespaceAsMarker = BoundaryMarker(" ",  detached=True,  location=BoundaryMarkerLocation.START)
 SuffixWhitespaceAsMarker = BoundaryMarker(" ",  detached=True,  location=BoundaryMarkerLocation.END)
