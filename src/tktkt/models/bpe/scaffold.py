@@ -3,8 +3,7 @@ from pathlib import Path
 from collections import defaultdict
 import json
 
-from pickybpe.utils import Token, PairCounts, PathLike
-from pickybpe.vocabularisation import BPETrainer as _BPETrainerBase, EventType
+from pickybpe.vocabularisation import BPETrainer as _BPETrainerBase, EventType, Token
 
 from ...interfaces import Preprocessor
 from .decomposing import ScaffoldBPE, CacheableAblatedBPEArtifacts
@@ -33,12 +32,12 @@ class _ChizhovBackend_ScaffoldBPE(_BPETrainerBase):
         return super()._initialize_state()
         
     def _scrutinize_parent_after_merge(self, parent: Token, child: Token, pair_frequency: int, state: _ChizhovTrainingContext):
-        _, next_pair_frequency = state.pairs.get_argmax()
-        if parent.freq < next_pair_frequency:
+        next_argmax = state.pairs.get_argmax_objective()
+        if parent.freq < state.pairs.counts.get(next_argmax):
             self._scaffolds_and_causes[parent.str].append(child.str)
             state.actual_vocab_size -= 1
 
-    def _dump(self, state: _ChizhovTrainingContext, path: PathLike):
+    def _dump(self, state: _ChizhovTrainingContext, path: Path):
         folder = Path(path).resolve()
         if not folder.is_dir():
             folder = folder.parent
