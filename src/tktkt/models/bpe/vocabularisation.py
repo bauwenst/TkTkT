@@ -581,7 +581,7 @@ class _VocabulariserWithChizhovBackend(UnsupervisedVocabulariser[T_CacheableArti
         self._backend = backend
 
     def _identifierPartial(self) -> str:
-        return shash(repr(self.preprocessor)) + "_" + shash(f"V={self._backend.desired_vocab_size}_l={self._backend.max_type_length}_c={self._backend.coverage}")
+        return shash(repr(self.preprocessor)) + "_" + shash(self._backend.__repr__args__())
 
     @abstractmethod
     def _dumpToArtifacts(self, dump_path: Path) -> T_CacheableArtifact:
