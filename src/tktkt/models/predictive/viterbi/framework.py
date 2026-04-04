@@ -27,11 +27,12 @@ Deciding whether a substring doesn't belong to the vocabulary, and hence a step 
 the Viterbi decoder, but rather in the scoring grid. The grid might map the step to a different string, e.g.
 """
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Union
 from typing_extensions import Self
 from abc import abstractmethod, ABC
 import numpy as np
 
+from ....interfaces import TokeniserWithVocabulary, Vocab
 from ....interfaces.tokenisers import Tokeniser, Preprocessor
 from ....util.printing import gridify
 from ....util.iterables import transpose
@@ -49,7 +50,7 @@ class ViterbiStepScores:
     def __init__(self, N: int, K: int, default=0):
         self.grid = np.full(shape=(N,K), fill_value=default, dtype=ViterbiStepScores.DTYPE)
 
-    def get(self, n: int, k: int):
+    def get(self, n: int, k: int) -> float:
         return self.grid[n,k]
 
     def set(self, n: int, k: int, value: float):
@@ -209,7 +210,7 @@ class ViterbiTokeniser(Tokeniser):
                         score for a certain step size at all characters, then all objectives can only make steps smaller than that step.
                         This means you can e.g. put a vocabulary constraint on one objective and it applies to all automatically.
                         Time complexity becomes O(L x N x K') for L objectives and for some K' <= K,
-                        space complexity stays O(L x N x K).
+                        space complexity stays O(L x N x K) because we don't truncate the grids, just how far we look in them.
         """
         super().__init__(preprocessor)
         if not objectives:
@@ -261,3 +262,53 @@ class ViterbiTokeniser(Tokeniser):
             current_index = t.backpointers[prev_index]
 
         return tokens
+
+
+class ViterbiTokeniserWithVocabulary(ViterbiTokeniser, TokeniserWithVocabulary):
+
+    def __init__(self, preprocessor: Preprocessor, vocab: Vocab,
+                 max_stepsize: int, objectives: ViterbiObjectives, degenerate: bool=False, trimmed: bool=True):
+        super().__init__(preprocessor=preprocessor, max_stepsize=max_stepsize, objectives=objectives, degenerate=degenerate, trimmed=trimmed)
+        TokeniserWithVocabulary.__init__(self, preprocessor=preprocessor, vocab=vocab)
+
+
+from ....interfaces.artifactories import TokeniserFactory
+class AutoViterbiTokeniser(TokeniserFactory):
+    """
+    Depending on which objectives the tokeniser is instantiated with at runtime, it should have different methods.
+    """
+
+    def __init__(self, preprocessor: Preprocessor, max_stepsize: int,
+                 objectives: ViterbiObjectives, accelerate: bool=True):
+        self.preprocessor = preprocessor
+        self.objectives = objectives
+        self.max_stepsize = max_stepsize
+        self.accelerated = accelerate
+
+    def buildTokeniser(self) -> Union[ViterbiTokeniser, ViterbiTokeniserWithVocabulary]:
+        from .objectives_postprocessors import VocabularyConstraintExact, VocabularyConstraintAtLeastAll
+        vocab = None
+        is_degen = False
+        for i, objective in enumerate(self.objectives):
+            if isinstance(objective, (VocabularyConstraintExact, VocabularyConstraintAtLeastAll)):
+                vocab = objective.vocab
+            if i == 0 and isinstance(objective.score_generator, ViterbiStepScoreGeneratorWithTokens):
+                is_degen = True
+
+        if vocab is not None:
+            return ViterbiTokeniserWithVocabulary(
+                preprocessor=self.preprocessor,
+                vocab=vocab,
+                max_stepsize=self.max_stepsize,
+                objectives=self.objectives,
+                degenerate=is_degen,
+                trimmed=self.accelerated
+            )
+        else:
+            return ViterbiTokeniser(
+                preprocessor=self.preprocessor,
+                max_stepsize=self.max_stepsize,
+                objectives=self.objectives,
+                degenerate=is_degen,
+                trimmed=self.accelerated
+            )
