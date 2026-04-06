@@ -1,7 +1,7 @@
 from pathlib import Path
 from math import log as ln
 
-from pickybpe.vocabularisation import CountingObjective, Pair, MovingAverage
+from pickybpe.vocabularisation import CountingObjective, Pair, MovingAverage, Token
 from pickybpe.util.counters import *
 
 from .vocabularisation import Preprocessor, _ChizhovBackend_BPE, _ChizhovTrainingContext, \
@@ -30,7 +30,7 @@ class _SBPEObjective(CountingObjective):
     def get_argmax_objective(self) -> Pair:
         return self._pair_metrics.get_argmax()[0]
 
-    def recompute_objective(self, pairs: Iterable[Pair], state: _ChizhovTrainingContext):
+    def recompute_objective(self, pairs_with_updated_counts: Iterable[Pair], state: _ChizhovTrainingContext, subtokens: Optional[Pair]):
         """
         Equation 6 in the paper shows the score formula
 
@@ -63,8 +63,7 @@ class _SBPEObjective(CountingObjective):
         #      means that the entire heap will change when any change to the corpus happens, so having a heap is pointless.
 
         # updated_pairs = set(pairs)  # This is not even all the pairs you need to update bruh. Basically just everything that has an x or a y in it will change.
-
-        for pair in pairs:
+        for pair in pairs_with_updated_counts:
             # Count tokens in the hypothetical corpus where the pair is merged.
             count_pair   = self._pair_counts.get(pair)
             count_first  = pair[0].freq - count_pair  # TODO: It should actually be count_pair * pair.count(token).
@@ -142,3 +141,7 @@ class SBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts])
             types=CacheableBPEArtifacts._loadTypes(dump_path),
             merges=CacheableBPEArtifacts._loadMerges(dump_path)
         )
+
+
+def pairs_with_token(token: Token) -> set[Pair]:
+    return {pair for word in token.words for pair in word.pairs if token in pair}
