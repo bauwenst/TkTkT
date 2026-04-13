@@ -1,7 +1,10 @@
+"""
+Implements S-BPE.
+"""
 from pathlib import Path
 from math import log as ln
 
-from pickybpe.vocabularisation import CountingObjective, Pair, MovingAverage, Token
+from pickybpe.vocabularisation import CountingObjective, Pair, MovingAverage
 from pickybpe.util.counters import *
 
 from .vocabularisation import Preprocessor, _ChizhovBackend_BPE, _ChizhovTrainingContext, \
@@ -12,8 +15,7 @@ class _SBPEObjective(CountingObjective):
 
     def __init__(self):
         self._pair_counts: FlatCounter[Pair] = FlatCounter()
-        self._pair_metrics: MaxHeap[Pair] = MaxHeap()
-        raise NotImplementedError("The S-BPE metric is currently under review for whether it can use a heap at all.")
+        self._pair_metrics: FlatCounterArgmaxable[Pair] = FlatCounterArgmaxable()  # Sadly not a heap, see below.
 
     @property
     def counts(self):
@@ -50,34 +52,30 @@ class _SBPEObjective(CountingObjective):
             |T_n| =   |T_{n-1}| - C_n(xy) = |T_{n-1}|  - C_{n-1}(x,y);
             C_n(x) = C_{n-1}(x) - C_n(xy) = C_{n-1}(x) - C_{n-1}(x,y);
             C_n(y) = C_{n-1}(y) - C_n(xy) = C_{n-1}(y) - C_{n-1}(x,y);
-
         except the probabilities are computed using Laplace smoothing of the MLEs, so C'_n(t) = C_n(t) + 1 and |T'_n| = |T_n| + |V_n| = |T_n| + (|V_{n-1}| + 1).
+
+        Also, if you want to extend this to merges of m tokens rather than 2, you can simply extend the denominator with
+        any product, and get C_n(tup) * [ ln C_n(tup) - sum_{x in tup} ln C_n(x) + (len(tup)-1) * ln |T_n| ].
+
+        One big issue, which the original implementation of S-BPE possibly overlooked, is the fact that the formula
+        contains a term
+                     C_n(xy) * ln |T_n|
+                   = C_{n-1}(x,y) * ln(|T_{n-1}| - (len(tup)-1)*C_{n-1}(x,y))
+                   = [something pair-specific] * [something global]
+        meaning that the entire heap will change when any change to the corpus happens. Thus, having a heap is pointless.
         """
-        # FIXME: This is broken for at least two reasons.
-        #   1. The amount of pairs to update is larger than the amount of pairs that are adjacent to a merge.
-        #      This is because S-BPE uses C(x) and C(y), not just C(x,y), so even if a merge (z,x) or (y,z) has the same exact count as before, x and y do not.
-        #   2. But even more generally, the fact that the formula contains a term
-        #             C_n(xy) * ln |T_n|
-        #          == C_{n-1}(x,y) * ln(|T_{n-1}| - C_{n-1}(x,y))
-        #          == [something pair-specific] * [something global]
-        #      means that the entire heap will change when any change to the corpus happens, so having a heap is pointless.
-
-        # updated_pairs = set(pairs)  # This is not even all the pairs you need to update bruh. Basically just everything that has an x or a y in it will change.
-        for pair in pairs_with_updated_counts:
+        for pair in self._pair_counts:
             # Count tokens in the hypothetical corpus where the pair is merged.
-            count_pair   = self._pair_counts.get(pair)
-            count_first  = pair[0].freq - count_pair  # TODO: It should actually be count_pair * pair.count(token).
-            count_second = pair[1].freq - count_pair
-            sum_count    = state.corpus_token_count - count_pair
+            count_pair = self._pair_counts.get(pair)
+            n_tokens   = len(pair)
+            new_corpus_count = state.corpus_token_count - (n_tokens-1)*count_pair
 
-            # Do Laplace smoothing (add 1 to each type's count and add |V_n| = |V_{n-1}|+1 to the sum of type counts)
+            # Do Laplace smoothing (add 1 to each type's count and add |V_n| = |V_{n-1}|+1 to the sum of all counts)
             # and unpack the probability ratios into a sum of logarithms.
-            score = count_pair * (
-                ln(count_pair   + 1)
-              - ln(count_first  + 1)
-              - ln(count_second + 1)
-              + ln(sum_count + (state.actual_vocab_size + 1))
-            )
+            score = ln(count_pair+1) + (n_tokens-1)*ln(new_corpus_count + (state.actual_vocab_size+1))
+            for token in pair:
+                score -= ln(token.freq+1 - pair.count(token)*count_pair)
+            score *= count_pair
             self._pair_metrics.set(pair, score)
 
 
@@ -121,6 +119,10 @@ class _ChizhovBackend_SBPE(_ChizhovBackend_BPE):  # Inherits the preprocessing a
 
 
 class SBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):  # Analogous to BPEVocabulariser_Chizhov
+    """
+    Implementation of S-BPE by Vilar & Federico (2021).
+    https://aclanthology.org/2021.iwslt-1.31/
+    """
 
     def __init__(self, preprocessor: Preprocessor, character_coverage: float, max_type_length: int, threshold: float=0.002):
         super().__init__(preprocessor=preprocessor, backend=_ChizhovBackend_SBPE(
@@ -141,7 +143,3 @@ class SBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts])
             types=CacheableBPEArtifacts._loadTypes(dump_path),
             merges=CacheableBPEArtifacts._loadMerges(dump_path)
         )
-
-
-def pairs_with_token(token: Token) -> set[Pair]:
-    return {pair for word in token.words for pair in word.pairs if token in pair}

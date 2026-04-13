@@ -6,32 +6,33 @@ from pathlib import Path
 from math import log2
 
 from pickybpe.util.counters import *
+from pickybpe.vocabularisation import Token
 
 from .vocabularisation import Preprocessor, CacheableBPEArtifacts, _VocabulariserWithChizhovBackend, \
     _ChizhovTrainingContext, _ChizhovBackend_BPE
-from .statistical import pairs_with_token, CountingObjective, Pair
+from .statistical import CountingObjective, Pair
 
 
 class _DLGBPEObjective(CountingObjective):
 
     def __init__(self):
         self._pair_counts: FlatCounter[Pair] = FlatCounter()
-        self._pair_metrics: MaxHeap[Pair] = MaxHeap()
+        self._pair_metric_heap: MaxHeap[Pair] = MaxHeap()
 
     @property
     def counts(self):
         return self._pair_counts
 
     def has(self, pair: Pair) -> bool:
-        return self._pair_counts.has(pair) and self._pair_metrics.has(pair)
+        return self._pair_counts.has(pair) and self._pair_metric_heap.has(pair)
 
     def pop(self, pair: Pair) -> tuple[int, float]:
         count = self._pair_counts.pop(pair)
-        metric = self._pair_metrics.pop(pair)
+        metric = self._pair_metric_heap.pop(pair)
         return count, metric
 
     def get_argmax_objective(self) -> Pair:
-        return self._pair_metrics.get_argmax()[0]
+        return self._pair_metric_heap.get_argmax()[0]
 
     def recompute_objective(self, pairs_with_updated_counts: Iterable[Pair], state: _ChizhovTrainingContext, subtokens: Optional[Pair]):
         """
@@ -101,7 +102,7 @@ class _DLGBPEObjective(CountingObjective):
         a heap is appropriate.
         """
         pairs = set(pairs_with_updated_counts)
-        for token in subtokens:
+        for token in subtokens or []:
             pairs |= pairs_with_token(token)
         for pair in pairs:
             C_xy = self._pair_counts.get(pair)
@@ -111,7 +112,7 @@ class _DLGBPEObjective(CountingObjective):
                 C_x  = token.freq
                 D_x  = -m*(C_xy-1)  # The -1 is because in DLG, you assume that the merge itself is appended to the end of the corpus and thus all its C_xy occurrences disappear and 1 new one appears.
                 score += (C_x + D_x) * log2(C_x + D_x) - C_x * log2(C_x)
-            self._pair_metrics.set(pair, score)
+            self._pair_metric_heap.set(pair, score)
 
 
 class _ChizhovBackend_DLGBPE(_ChizhovBackend_BPE):  # Inherits the preprocessing and dumping logic.
@@ -131,6 +132,10 @@ class _ChizhovBackend_DLGBPE(_ChizhovBackend_BPE):  # Inherits the preprocessing
 
 
 class DLGBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):  # Analogous to BPEVocabulariser_Chizhov
+    """
+    BPE variant using description length gain (DLG) as the argmax objective for pairs.
+    https://aclanthology.org/W99-0701
+    """
 
     def __init__(self, preprocessor: Preprocessor, vocab_size: int, character_coverage: float, max_type_length: int):
         super().__init__(preprocessor=preprocessor, backend=_ChizhovBackend_DLGBPE(
@@ -151,3 +156,7 @@ class DLGBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts
             types=CacheableBPEArtifacts._loadTypes(dump_path),
             merges=CacheableBPEArtifacts._loadMerges(dump_path)
         )
+
+
+def pairs_with_token(token: Token) -> set[Pair]:
+    return {pair for word in token.words for pair in word.pairs if token in pair}
