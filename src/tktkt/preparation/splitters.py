@@ -390,7 +390,7 @@ class IntoSentences(Pretokeniser):
     """
 
     def __init__(self, cuda: bool=True):
-        from wtpsplit import SaT
+        from wtpsplit import SaT  # Note: wtpsplit uses transformers as backend and is thus not installed with TkTkT by default.
         self._backend = SaT("sat-3l-sm")
         if cuda:
             self._backend.half().to("cuda")

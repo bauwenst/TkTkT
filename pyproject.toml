@@ -32,7 +32,7 @@ dependencies = [
     "ipadic",
     "pythainlp",
     "nlpaug",
-    "wtpsplit",
+    # "wtpsplit",  # Uses HF
 
     # Misc
     "dacite",
@@ -51,8 +51,9 @@ all = [  # All my other packages, from PyPI. We don't install them by default to
 ]
 github = [  # All remaining packages, by me or others, that are not on PyPI.
 ]
-hf = [  # Only if you want functionality that uses PreTrainedTokenizer and SpecialsMixin.
-    "transformers"
+hf = [  # Only if you want functionality that uses PreTrainedTokenizer, SpecialsMixin, or relies on a PreTrainedModel.
+    "transformers",
+    "wtpsplit"
 ]
 
 [project.urls]

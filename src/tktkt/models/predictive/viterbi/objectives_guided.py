@@ -13,7 +13,10 @@ from typing import MutableSequence
 from abc import abstractmethod, ABC
 
 import numpy as np
-import torch
+try:
+    import torch
+except ImportError:
+    torch = object
 from math import exp, sin, pi, asin
 from math import log as ln
 
