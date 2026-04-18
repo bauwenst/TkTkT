@@ -132,6 +132,9 @@ class BPEArtifacts_HuggingFace(BPEArtifacts):
     def _bakedSpecials(self) -> set[str]:  # Not used for anything because of AutoVocab, but still implementing it properly.
         return set(self._specialsToTypes().values())
 
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        raise NotImplementedError()  # Not implemented because getVocabulary's interface is altered.
+
     def getVocabulary(self) -> Vocab[WithSpecials]:
         from transformers import AutoTokenizer
         return AutoVocab.fromTokenizer(
