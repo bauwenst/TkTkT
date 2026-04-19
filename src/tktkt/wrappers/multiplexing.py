@@ -11,7 +11,7 @@ There are 5 possible configurations to handle preprocessing:
 | yes                        | yes                                                     | yes                                    |
 | no (== yes, Identity)      | yes+no (there only is one pretoken)                     | yes                                    |
 
-Every yes-yes-X style is arguably mediocre (multiplexing at the sentence level).
+Every yes-yes-X style is arguably unnecessary (multiplexing at the sentence level).
 The bottom one can be implemented as yes-no-yes.
 That means we really only need support for yes-no-yes and yes-no-no. Hence, there is always a global preprocessor
 (sometimes an identity) which determines the pretokens over which we multiplex tokenisers. Whether the subtokeniser
@@ -36,6 +36,9 @@ class MultiplexedPreprocessor:
 
 
 class TokeniserMultiplexer(Tokeniser):
+    """
+    Applies a global preprocessor, and then decides per pretoken to which of a set of subtokenisers to send it.
+    """
 
     def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[Tokeniser]):
         assert subtokenisers

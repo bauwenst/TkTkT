@@ -39,18 +39,23 @@ def rejectionSampling(text: str, vocab: SubwordCollection, rng: npr.Generator):
 
 
 def rejectionSamplingBiased(text: str, vocab: SubwordCollection, rng: npr.Generator,
-                            max_tries: int=5_000) -> list[str]:
+                            backoff_probabilities: list[int]=[0.05, 0.1, 0.25], max_tries: int=5_000) -> list[str]:
     """
     Sample random segmentations until one is valid, where single-character tokens are disincentivised by having split
     positions be less likely than non-split positions.
 
     This may require even more needle-in-a-haystack luck.
+
+    :param backoff_probabilities: Probabilities to use in order for max_tries each, until finding a segmentation that
+                                  is admissible under the voabulary.
+                                  Expect p = 0.005 to cost about 50k tries at most, and p = 0.01 about 10k.
+                                  Every loop of 1000 tries is about 2 ms.
+                                  We want to keep tokenisers to at least 200 tkz/s, which is 0.005 s/tkz = 5 ms/tkz.
     """
     n_positions = len(text)-1
 
-    backoff = [0.05, 0.1, 0.25]  # Expect p = 0.005 to cost about 50k tries at most, and p = 0.01 about 10k. Every loop of 1000 tries is about 2 ms. We want to keep tokenisers to at least 200 tkz/s, which is 0.005 s/tkz = 5 ms/tkz.
     tries = 0
-    for p in backoff:
+    for p in backoff_probabilities:
         tries += 1  # Technically adds too much, but you have to add 1 to get the while loop to be re-entered.
         while tries % max_tries != 0:
             indices = rng.binomial(n=1, p=p, size=n_positions).nonzero()[0].tolist()
@@ -63,7 +68,7 @@ def rejectionSamplingBiased(text: str, vocab: SubwordCollection, rng: npr.Genera
     return list(text)
 
 
-from .graph import GraphTokeniser, ForwardGraphSampler, SegmentationGraph
+from .graph import GraphTokeniser, ForwardSegmentationGraph, SegmentationGraph
 class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
     """
     Samples all segmentations with equal probability (i.e. uniformly) from the graph of all valid segmentations. Hence,
@@ -74,11 +79,8 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
     way, the probability of emitting each segmentation is equal, even though the graph itself prefers some over others.
 
     This approach was described by Cognetta e.a. (2024) in https://aclanthology.org/2024.emnlp-main.600/.
+    Its drawbacks were outlined by Bauwens e.a. (2025) in https://aclanthology.org/2025.acl-long.1180/.
     """
-
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab):
-        super().__init__(preprocessor, vocab=vocab, sampler=ForwardGraphSampler())
-        self.rng = npr.default_rng(0)
 
     def generateGraph(self, pretoken: str) -> SegmentationGraph:
         forepointers = [[] for _ in range(len(pretoken)+1)]
@@ -91,7 +93,7 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
         out_degree = [len(b) for b in forepointers]
         probabilities = [ [1/out_degree[node]]*out_degree[node] if out_degree[node] else []  # 1/d_o(n) for each backpointer.
                          for node in range(len(pretoken)) ]
-        return SegmentationGraph(pointers=forepointers, probabilities=probabilities)
+        return ForwardSegmentationGraph(pointers=forepointers, probabilities=probabilities)
 
     def tokenise(self, pretoken: str) -> Tokens:
         # Generate the graph first.
@@ -99,11 +101,11 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
 
         # Rejection sampling:
         #   - Determine epsilon, i.e. the probability of the possibly non-existent path that does all possible samplings (it visits all nodes where probability could be added to the final product).
-        eps = 1/prod(len(ps) or 1   for ps in graph.pointers)
+        eps = 1/prod(  len(ps) or 1  for ps in graph.pointers)
 
         #   - Generate valid paths and retry based on eps and its probability.
         # print(pretoken, eps)
         while True:
-            indices, p = self.sampler.samplePathAndProb(graph)
+            indices, p = graph.samplePathAndProb(self.rng)
             if self.rng.random() < eps/p:  # Probability of being emitted is P(generate)*P(accept) = p*eps/p = eps. To verify the direction of "<", note that when P(accept) = eps/p = 1, you must always accept the path, and indeed, rand() is always lower than 1.
                 return indicesToTokens(pretoken, starts_of_tokens=indices)
