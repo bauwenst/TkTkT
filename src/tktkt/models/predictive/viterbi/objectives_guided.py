@@ -705,7 +705,7 @@ class GoldSplits(CharacterClassifier):
 from transformers import AutoTokenizer, AutoModelForTokenClassification
 from transformers.models.canine.modeling_canine import CanineForTokenClassification, TokenClassifierOutput
 from transformers.models.canine.tokenization_canine import CanineTokenizer
-from ....util.environment import DEVICE
+from ....util.environment import get_torch_device
 
 
 class HuggingFaceForBinaryCharacterClassification(CharacterClassifier):
@@ -716,16 +716,17 @@ class HuggingFaceForBinaryCharacterClassification(CharacterClassifier):
     def __init__(self, characterclassifier_checkpoint: str, input_kwargs: dict=None):
         self.characters_to_modelinput: CanineTokenizer = AutoTokenizer.from_pretrained(characterclassifier_checkpoint)
         self.input_kwargs = input_kwargs or dict()
+        self.device = get_torch_device()
 
         # Sadly there is no generic "ForTokenClassification" type in HuggingFace's API nor is there any way to check that
         # the model is actually classifying tokens, so there's no real way to enforce statically that the user actually gives the correct checkpoint.
         self.model_for_tokenclassification: CanineForTokenClassification = AutoModelForTokenClassification.from_pretrained(characterclassifier_checkpoint)
-        self.model_for_tokenclassification.to(DEVICE)  # Speeds up inference about 2x to 4x on VSC. This call is in-place, unlike for tensors. https://stackoverflow.com/a/59560101/9352077
+        self.model_for_tokenclassification.to(self.device)  # Speeds up inference about 2x to 4x on VSC. This call is in-place, unlike for tensors. https://stackoverflow.com/a/59560101/9352077
 
     def getPointLogProbabilities(self, pretoken: str) -> MutableSequence[float]:
         model_input = self.characters_to_modelinput(pretoken, add_special_tokens=False, return_tensors="pt", **self.input_kwargs)
         with torch.no_grad():  # no_grad means all tensors returned don't have their gradient tracked, so you don't need to .detach() them before going to numpy.
-            model_input = {k: v.to(DEVICE) for k,v in model_input.items()}
+            model_input = {k: v.to(self.device) for k,v in model_input.items()}
             prediction: TokenClassifierOutput = self.model_for_tokenclassification(**model_input)
 
         chars_by_classes = prediction.logits.squeeze()  # Remove batch dimension (because it has size 1).
