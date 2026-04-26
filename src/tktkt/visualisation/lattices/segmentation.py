@@ -113,9 +113,9 @@ class LinearDAGToTikz:
             from somewhere to somewhere, in the correct direction.
         """
         # Sanity checks
-        assert len(graph.probabilities) == len(graph.pointers)
+        assert len(graph.scores) == len(graph.pointers)
         assert all(len(backpointer_sublist) == len(label_sublist)
-                   for backpointer_sublist, label_sublist in zip(graph.probabilities, graph.pointers))
+                   for backpointer_sublist, label_sublist in zip(graph.scores, graph.pointers))
 
         nodes = len(graph.pointers)
 
@@ -126,7 +126,7 @@ class LinearDAGToTikz:
         for n in range(nodes):
             arc_direction  =  "left" if not do_alternate_arcs or n % 2 == 0 else "right"  # "left" actually means "arc goes over" and "right" means "arc goes under".
             label_location = "above" if not do_alternate_arcs or n % 2 == 0 else "below"
-            for i,(n2,l) in enumerate(sorted(zip(graph.pointers[n], graph.probabilities[n]))):
+            for i,(n2,l) in enumerate(sorted(zip(graph.pointers[n], graph.scores[n]))):
                 # Variations on "bend left" include:
                 #   - suffixing "left" by "=NUMBERcm" to have the arc deviate from the baseline by a fixed distance
                 #   - suffixing "left" by "=NUMBER" to have the arc leave at a unit circle angle in degrees (0 to 90 make sense)

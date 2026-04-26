@@ -90,10 +90,11 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
                 if self.hasType(token):  # To get from BEFORE character i to BEFORE character j, you do include j and don't include i.
                     forepointers[j].append(i)
 
-        out_degree = [len(b) for b in forepointers]
-        probabilities = [ [1/out_degree[node]]*out_degree[node] if out_degree[node] else []  # 1/d_o(n) for each backpointer.
-                         for node in range(len(pretoken)) ]
-        return ForwardSegmentationGraph(pointers=forepointers, probabilities=probabilities)
+        scores = [[1]*len(pointers) for pointers in forepointers]
+        # out_degree = [len(b) for b in forepointers]
+        # probabilities = [ [1/out_degree[node]]*out_degree[node] if out_degree[node] else []  # 1/d_o(n) for each backpointer.
+        #                  for node in range(len(pretoken)) ]
+        return ForwardSegmentationGraph(pointers=forepointers, scores=scores, precompute=True)  # Rejection sampling => precompute all probabilities.
 
     def tokenise(self, pretoken: str) -> Tokens:
         # Generate the graph first.
@@ -101,7 +102,7 @@ class RandomVocabSegmentation_RejectionSampling_UniformGraph(GraphTokeniser):
 
         # Rejection sampling:
         #   - Determine epsilon, i.e. the probability of the possibly non-existent path that does all possible samplings (it visits all nodes where probability could be added to the final product).
-        eps = 1/prod(  len(ps) or 1  for ps in graph.pointers)
+        eps = 1/prod(  len(ps) or 1  for ps in graph.pointers)  # TODO: You can get a better estimate with 1/graph.maximalDenominatorProduct() but it costs O(n²) instead of O(n). This is justifiable if you get more than O(n) rejections.
 
         #   - Generate valid paths and retry based on eps and its probability.
         # print(pretoken, eps)
