@@ -99,6 +99,18 @@ class SegmentationGraph:
         """
         pass
 
+    def adjacencyMatrix(self) -> list[list[int]]:
+        """
+        A from-to matrix where 1 means there is a directed arc from node {vertical} to node {horizontal}.
+        """
+        matrix = []
+        for pointers in self.pointers:
+            row = [0]*len(pointers)
+            for node in pointers:
+                row[node] = 1
+            matrix.append(row)
+        return matrix
+
 
 class ForwardSegmentationGraph(SegmentationGraph):  # "Forward" refers to how it is sampled (left-to-right). It is likely constructed in reverse.
 

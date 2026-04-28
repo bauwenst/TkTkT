@@ -3,15 +3,17 @@ Taken from the BPE knockout repo.
 """
 from typing import Self
 from dataclasses import dataclass
+from collections import defaultdict
 
 import json
+import numpy as np
 
 from modest.interfaces.morphologies import MorphologyVisitor, MorphSplit, FreeMorphSplit
 from modest.interfaces.datasets import ModestDataset, M
 
 from ..util.aggregates import ConfusionMatrix, NestedAverage, NestedMicroMacro
-from ..util.interfaces import Cacheable, C
 from ..util.iterables import cumsum
+from ..util.interfaces import SimpleCacheableDataclass
 from .observing import *
 
 
@@ -421,3 +423,107 @@ class ConfusionMatrixSummary(ImmediatelyObservableObserver[ConfusionMatrices,dic
             "re_w": re_w,
             "f1_w": f1_w,
         }
+
+
+@dataclass
+class ReturnAlignmentPlausibility(SimpleCacheableDataclass):
+    sum: float             = 0
+    sum_log: float         = 0
+    mean_arithmetic: float = 0
+    mean_harmonic: float   = 0
+    mean_geometric: float  = 0
+    min: float             = 0
+    max: float             = 0
+
+
+class AlignmentPlausibility(FinallyObservableObserver[tuple[Tokens,tuple[str,...]],ReturnAlignmentPlausibility]):
+    """
+    Trains an IBM1 model that tries to align tokens with morphological tags. The better the model ends up rating its
+    own alignment, the better the tokeniser is considered.
+
+    Code refactored from Stephen & Libovický (2026) https://aclanthology.org/2026.findings-eacl.196/
+    """
+
+    def __init__(self, ibm_threshold: float, ibm_iterations: int, observers: list[Observer[ReturnAlignmentPlausibility]]):
+        super().__init__(observers=observers)
+        self.threshold    = ibm_threshold
+        self.n_iterations = ibm_iterations
+
+    def _identifierPartial(self) -> str:
+        return f"threshold={self.threshold},iterations={self.n_iterations}"
+
+    def _cacheType(self):
+        return ReturnAlignmentPlausibility
+
+    def _cacheSubfolders(self) -> list[str]:
+        return ["morphology"]
+
+    def _initialiseAsObserver(self, parent_observable_identifier: str):
+        self.received_samples = []
+
+    def _receive(self, sample: tuple[Tokens,tuple[str,...]], weight: float):
+        self.received_samples.append(sample)
+
+    def _compute(self) -> ReturnAlignmentPlausibility:
+        probability_tag_given_token = defaultdict(lambda: defaultdict(float))  # P(tag | token)
+
+        # First determine vocabulary of tokens and tags.
+        all_types = set()
+        all_tags  = set()
+        for tokens, tags in self.received_samples:
+            all_types.update(tokens)
+            all_tags.update(tags)
+
+        uniform_prob = 1.0 / len(all_tags) if all_tags else 0.0
+        for typ in all_types:
+            for tag in all_tags:
+                probability_tag_given_token[tag][typ] = uniform_prob
+
+        # Now iteratively refine the IBM1 EM probabilities.
+        for iteration in range(self.n_iterations):
+            # E-step
+            count_ts = defaultdict(lambda: defaultdict(float))
+            total_t  = defaultdict(float)
+            for tokens, tags in self.received_samples:
+                for tag in tags:  # For every feature, we will...
+                    unnormalised_probabilities_of_this_tag = {token: probability_tag_given_token[tag][token] for token in tokens}  # P(token | tag)
+                    norm_factor = 1e-10 + sum(unnormalised_probabilities_of_this_tag.values())
+
+                    for token in tokens:
+                        delta = unnormalised_probabilities_of_this_tag[token] / norm_factor
+                        count_ts[tag][token] += delta
+                        total_t[tag]         += delta
+
+            # M-step
+            for tag in count_ts:
+                total_tag = 1e-10 + total_t[tag]
+                for typ in count_ts[tag]:
+                    probability_tag_given_token[tag][typ] = count_ts[tag][typ] / total_tag
+
+        # Finally, evaluate using the main equation in the paper.
+        macro_averages = ReturnAlignmentPlausibility()
+        n_tokens = 0
+        for tokens, tags in self.received_samples:
+            for token in tokens:  # For each token, get the alignment scores to each of the tags.
+                scores = list(filter(lambda p: p > self.threshold,
+                                     map(lambda tag: probability_tag_given_token[tag][token], tags)))
+                n = len(scores)
+                if n > 0:  # Aggregate the alignment over tags in different ways.
+                    scores = np.array(scores)
+                    macro_averages.sum             += np.sum(scores)
+                    macro_averages.sum_log         += np.sum(np.log(scores))
+                    macro_averages.mean_arithmetic += np.sum(scores) / n
+                    macro_averages.mean_harmonic   += n / np.sum(1.0/np.array(scores))
+                    macro_averages.mean_geometric  += np.exp(np.log(scores).mean())
+                    macro_averages.min             += np.min(scores)
+                    macro_averages.max             += np.max(scores)
+                n_tokens += 1
+
+        macro_averages.sum             /= n_tokens
+        macro_averages.sum_log         /= n_tokens
+        macro_averages.mean_arithmetic /= n_tokens
+        macro_averages.mean_harmonic   /= n_tokens
+        macro_averages.mean_geometric  /= n_tokens
+        macro_averages.min             /= n_tokens
+        macro_averages.max             /= n_tokens
+        return macro_averages
