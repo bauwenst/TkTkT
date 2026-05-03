@@ -103,9 +103,10 @@ class SegmentationGraph:
         """
         A from-to matrix where 1 means there is a directed arc from node {vertical} to node {horizontal}.
         """
+        n = len(self.pointers)
         matrix = []
         for pointers in self.pointers:
-            row = [0]*len(pointers)
+            row = [0]*n
             for node in pointers:
                 row[node] = 1
             matrix.append(row)

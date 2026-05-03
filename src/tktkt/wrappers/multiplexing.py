@@ -177,7 +177,7 @@ class TokeniserMultiplexer_DifferentDomains_Stateful(TokeniserMultiplexer):
                                          into the embedding matrix and indexing into the specials matrix), the specials
                                          need to align across all the vocabularies.
         """
-        super().__init__(preprocessor, subtokenisers)
+        super().__init__(preprocessor=preprocessor, subtokenisers=subtokenisers)
         self.current = None
 
         if assert_matching_specials:
@@ -196,6 +196,26 @@ class TokeniserMultiplexer_DifferentDomains_Stateful(TokeniserMultiplexer):
     def select(self, pretoken: str) -> int:
         assert self.current is not None
         return self.current
+
+
+class PeriodicTokeniserMultiplexer(TokeniserMultiplexer):
+    """
+    Switch tokeniser every N pretokens.
+    """
+    def __init__(self, preprocessor: MultiplexedPreprocessor, subtokenisers: list[Tokeniser], period: int):
+        assert period >= 1
+        super().__init__(preprocessor=preprocessor, subtokenisers=subtokenisers)
+        self.cursor    = 0
+        self.remaining = period
+        self.period    = period
+
+    def select(self, pretoken: str) -> int:
+        if self.remaining == 0:
+            self.remaining = self.period
+            self.cursor = (self.cursor + 1) % len(self.subtokenisers)
+
+        self.remaining -= 1
+        return self.cursor
 
 
 class CompressiveTokeniserMultiplexer(TokeniserMultiplexer):  # Based on the idea put forth in https://huggingface.co/Parallia/Fairly-Multilingual-ModernBERT-Embed-BE
