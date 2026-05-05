@@ -212,7 +212,7 @@ class ViterbiTokeniser(Tokeniser):
                         Time complexity becomes O(L x N x K') for L objectives and for some K' <= K,
                         space complexity stays O(L x N x K) because we don't truncate the grids, just how far we look in them.
         """
-        super().__init__(preprocessor)
+        Tokeniser.__init__(self, preprocessor=preprocessor)  # Instead of super() because this class is inherited in multiple inheritance and therefore super() would be a reference to the second inherited class (the sibling/spouse of this class), not to this class's parent.
         if not objectives:
             raise ValueError("At least one Viterbi objective is needed to construct a trellis.")
         if degenerate and not isinstance(objectives[0].score_generator,ViterbiStepScoreGeneratorWithTokens):
@@ -268,7 +268,8 @@ class ViterbiTokeniserWithVocabulary(ViterbiTokeniser, TokeniserWithVocabulary):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab,
                  max_stepsize: int, objectives: ViterbiObjectives, degenerate: bool=False, trimmed: bool=True):
-        super().__init__(preprocessor=preprocessor, max_stepsize=max_stepsize, objectives=objectives, degenerate=degenerate, trimmed=trimmed)
+        # In multiple inheritance with two classes that are already derived, using super() causes errors.
+        ViterbiTokeniser.__init__(self, preprocessor=preprocessor, max_stepsize=max_stepsize, objectives=objectives, degenerate=degenerate, trimmed=trimmed)
         TokeniserWithVocabulary.__init__(self, preprocessor=preprocessor, vocab=vocab)
 
 
