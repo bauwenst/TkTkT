@@ -6,9 +6,9 @@ from typing import Iterable, Type
 from pathlib import Path
 
 from .segmentation import Derivator
-from ...interfaces.tokenisers import TokeniserWithVocabulary
-from ...util.timing import datetimeDashed
-from ...paths import TkTkTPaths
+from tktkt.interfaces.tokenisers import TokeniserWithVocabulary
+from tktkt.util.timing import datetimeDashed
+from tktkt.paths import TkTkTPaths
 
 FILESTEM_PREFICES = "prefices"
 FILESTEM_SUFFICES = "suffices"

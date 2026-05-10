@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Union, Optional, Iterable
 from abc import ABC, abstractmethod
 
-from ...interfaces.tokenisers import *
-from ...util.iterables import streamLines
+from tktkt.interfaces.tokenisers import *
+from tktkt.util.iterables import streamLines
 
 DEL_DATA = Path(__file__).resolve().parent / "data"
 
