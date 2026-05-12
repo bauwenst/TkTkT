@@ -100,6 +100,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
                              For example: {"pad_token": "PAD", "eos_token": "EOS", ...}
         """
         self.backend = backend
+        self._special_ids = set(self.backend.vocab.specials)
         self._specials_formatter = specials_formatter or (lambda s: "[" + s + "]")
 
         if specials_map is None:
@@ -179,9 +180,7 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
     def get_special_tokens_mask(self, token_ids_0: list, token_ids_1: Optional[list]=None, already_has_special_tokens: bool=False) -> list[int]:
         if already_has_special_tokens:
             assert token_ids_1 is None  # If not, you're claiming you got specials added to paired sequences BEFORE combining them, which is impossible.
-
-            special_id_set = set(self.backend.vocab.specials)
-            return [int(id in special_id_set) for id in token_ids_0]
+            return [int(isinstance(id, int) and id in self._special_ids) for id in token_ids_0]
         else:
             ids_with_specials = self.build_inputs_with_special_tokens(token_ids_0, token_ids_1)
             return self.get_special_tokens_mask(ids_with_specials, already_has_special_tokens=True)
