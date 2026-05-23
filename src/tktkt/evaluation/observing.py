@@ -267,6 +267,7 @@ class SplitObserver(Observer[tuple[Received,_Received2]], ObservableMeta[tuple[R
     """
 
     def __init__(self, observers1: list[Observer[Received]], observers2: list[Observer[_Received2]]):
+        super().__init__()
         self._observable1 = ObservableIdentity(observers1)
         self._observable2 = ObservableIdentity(observers2)
 
