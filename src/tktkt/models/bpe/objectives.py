@@ -1,5 +1,8 @@
 """
 Variation on BPE's "argmax_pair frequency(pair)" objective.
+
+TODO: The design is quite poor here. I feel like the objective and the stopping condition should be deliverable in a
+      single object.
 """
 from math import log2
 
@@ -13,6 +16,116 @@ from pickybpe.util.counters import *
 
 from .vocabularisation import Preprocessor, _ChizhovBackend_BPE, _ChizhovTrainingContext, \
     _VocabulariserWithChizhovBackend, CacheableBPEArtifacts
+
+
+class _BigramOverUnigramObjective(CountingObjective):
+    """
+    Tracks the pair score
+
+        score(x,y) = count(x,y)/(count(x) * count(y))
+
+    which is related to
+
+        PMI(x,y) = ln( P(x,y)/(P(x) * P(y)) )
+
+    by the naive expression
+
+        PMI(x,y) = ln( P(x,y)/(P(x) * P(y)) )
+                 = ln( count(x,y)/|T| / ( count(x)/|T| * count(y)/|T| )
+                 = ln(|T| * count(x,y) / ( count(x) * count(y) )
+                 = ln |T| + ln score(x,y)
+
+    which is a monotonous transform of score(x,y). Because the score is independent of global statistics like CTC,
+    updates can be computed as efficiently as they are for BPE.
+
+    HuggingFace calls BPE with this score "WordPiece" but this is probably not correct.
+    """
+
+    def __init__(self):
+        self._pair_counts: FlatCounter[Pair] = FlatCounter()
+        self._pair_metrics: MaxHeap[Pair] = MaxHeap()
+
+    @property
+    def counts(self):
+        return self._pair_counts
+
+    def has(self, pair: Pair) -> bool:
+        return self._pair_counts.has(pair) and self._pair_metrics.has(pair)
+
+    def pop(self, pair: Pair) -> tuple[int,float]:
+        count  = self._pair_counts.pop(pair)
+        metric = self._pair_metrics.pop(pair)
+        return count, metric
+
+    def get_argmax_objective(self) -> Pair:
+        return self._pair_metrics.get_argmax()[0]
+
+    def recompute_objective(self, pairs_with_updated_counts: Iterable[Pair], state: _ChizhovTrainingContext, subtokens: Optional[Pair]):
+        # Because the score depends on (x,y) and x and y, for each updated pair we update both it as well as all the pairs of its parts.
+        affected_pairs = set(pairs_with_updated_counts)
+
+        affected_tokens = set()
+        for pair in affected_pairs:
+            affected_tokens.update(pair)
+
+        for pair in self._pair_counts:
+            for token in pair:
+                if token in affected_tokens:
+                    affected_pairs.add(pair)
+
+        for pair in affected_pairs:
+            # We don't do any Laplace smoothing. We also don't use any logarithms.
+            score = self._pair_counts.get(pair)
+            for token in pair:
+                score /= token.freq
+            self._pair_metrics.set(pair, score)
+
+
+class _ChizhovBackend_PMIBPE(_ChizhovBackend_BPE):  # Inherits the preprocessing and dumping logic.
+
+    def _initialize_state(self) -> _ChizhovTrainingContext:
+        state = super()._initialize_state()
+        state.pairs = _BigramOverUnigramObjective()
+        return state
+
+
+class _BPEVocabulariser_DifferentMetric(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):  # Analogous to BPEVocabulariser_Chizhov
+
+    @abstractmethod
+    def _metric_name(self) -> str:
+        pass
+
+    def _cacheSubfolder(self) -> str:
+        return self._metric_name() + "-bpe"
+
+    def _cacheType(self):
+        return CacheableBPEArtifacts
+
+    def _dumpToArtifacts(self, dump_path: Path) -> CacheableBPEArtifacts:
+        return CacheableBPEArtifacts(
+            types=CacheableBPEArtifacts._loadTypes(dump_path),
+            merges=CacheableBPEArtifacts._loadMerges(dump_path)
+        )
+
+
+class PMIBPEVocabulariser(_BPEVocabulariser_DifferentMetric):
+    """
+    BPE variant using a score that is monotonously related to PMI as the argmax objective for pairs.
+    According to HuggingFace, this BPE vocabulariser should be called WordPiece.
+    """
+
+    def __init__(self, preprocessor: Preprocessor, vocab_size: int, character_coverage: float, max_type_length: int):
+        super().__init__(preprocessor=preprocessor, backend=_ChizhovBackend_PMIBPE(
+            preprocessor=preprocessor,
+            vocab_size=vocab_size,
+            max_type_length=max_type_length,
+            character_coverage=character_coverage
+        ))
+
+    def _metric_name(self) -> str:
+        return "pmi"
+
+WordPieceVocabulariser = PMIBPEVocabulariser
 
 
 class _SBPEObjective(CountingObjective):
@@ -122,7 +235,7 @@ class _ChizhovBackend_SBPE(_ChizhovBackend_BPE):  # Inherits the preprocessing a
                 return delta < self._threshold*self._delta_0
 
 
-class SBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):  # Analogous to BPEVocabulariser_Chizhov
+class SBPEVocabulariser(_BPEVocabulariser_DifferentMetric):
     """
     Implementation of S-BPE by Vilar & Federico (2021).
     https://aclanthology.org/2021.iwslt-1.31/
@@ -136,17 +249,8 @@ class SBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts])
             moving_average_threshold=threshold
         ))
 
-    def _cacheSubfolder(self) -> str:
-        return "s-bpe"
-
-    def _cacheType(self):
-        return CacheableBPEArtifacts
-
-    def _dumpToArtifacts(self, dump_path: Path) -> CacheableBPEArtifacts:
-        return CacheableBPEArtifacts(
-            types=CacheableBPEArtifacts._loadTypes(dump_path),
-            merges=CacheableBPEArtifacts._loadMerges(dump_path)
-        )
+    def _metric_name(self) -> str:
+        return "s"
 
 
 class _DLGBPEObjective(CountingObjective):
@@ -395,21 +499,13 @@ class _DLGBPEObjective(CountingObjective):
 
 class _ChizhovBackend_DLGBPE(_ChizhovBackend_BPE):  # Inherits the preprocessing and dumping logic.
 
-    def __init__(self, preprocessor: Preprocessor, vocab_size: int, character_coverage: float, max_type_length: int):
-        super().__init__(
-            preprocessor=preprocessor,
-            vocab_size=vocab_size,
-            character_coverage=character_coverage,
-            max_type_length=max_type_length,
-        )
-
     def _initialize_state(self) -> _ChizhovTrainingContext:
         state = super()._initialize_state()
         state.pairs = _DLGBPEObjective()
         return state
 
 
-class DLGBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):  # Analogous to BPEVocabulariser_Chizhov
+class DLGBPEVocabulariser(_BPEVocabulariser_DifferentMetric):
     """
     BPE variant using description length gain (DLG) as the argmax objective for pairs.
     https://aclanthology.org/W99-0701
@@ -423,17 +519,8 @@ class DLGBPEVocabulariser(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts
             character_coverage=character_coverage
         ))
 
-    def _cacheSubfolder(self) -> str:
-        return "dlg-bpe"
-
-    def _cacheType(self):
-        return CacheableBPEArtifacts
-
-    def _dumpToArtifacts(self, dump_path: Path) -> CacheableBPEArtifacts:
-        return CacheableBPEArtifacts(
-            types=CacheableBPEArtifacts._loadTypes(dump_path),
-            merges=CacheableBPEArtifacts._loadMerges(dump_path)
-        )
+    def _metric_name(self) -> str:
+        return "dlg"
 
 
 def pairs_with_token(token: Token) -> set[Pair]:
