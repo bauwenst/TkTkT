@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Callable
 from enum import Enum
 import numpy as np
 
@@ -22,52 +22,42 @@ def shash(s: str, bits: int=40) -> str:
     return _lib.sha256(s.encode("utf-8")).hexdigest()[:bits//4]
 
 
+########################################################################################################################
+
+
 def prefixIfNotEmpty(prefix: str, s: str) -> str:
+    """Adds the given prefix before the given string if it is not empty."""
     return prefix*bool(s) + s
 
 
 def suffixIfNotEmpty(s: str, suffix: str) -> str:
+    """Adds the given suffix after the given string if it is not empty."""
     return s + suffix*bool(s)
 
 
 def circumfixIfNotEmpty(prefix: str, s: str, suffix: str) -> str:
+    """Adds the given prefix and suffix around the given string if it is not empty."""
     return prefix*bool(s) + s + suffix*bool(s)
 
 
 def interfixIfNotEmpty(s1: str, interfix: str, s2: str) -> str:
+    """Adds the given interfix between the two strings if they are both non-empty."""
     return s1 + interfix*(bool(s1) and bool(s2)) + s2
 
 
-def findLongestCommonPrefix(strings: Iterable[str]) -> str:
-    ref = None
-    for string in strings:
-        # Trivial cases
-        if ref is None:
-            ref = string
-            continue
-        elif not ref:
-            break
+def surround(text: str, frame_character: str= "#", frame_width: int=1) -> str:
+    """Adds a frame around the given line(s) of text, ASCII-art style, for display purposes."""
+    assert len(frame_character) == 1
+    lines = text.split("\n")
+    base_width = max(map(len, lines))
 
-        # Shorten the reference
-        if len(string) < len(ref):
-            ref = ref[:len(string)]
-        for i in range(len(ref)):
-            if string[i] != ref[i]:
-                ref = ref[:i]
-                break
-
-    return ref or ""
-
-
-def anySubstringIn(substrings: Iterable[str], string: str) -> bool:
-    return any(sub in string for sub in substrings)
-
-
-def getAlphabet(strings: Iterable[str]) -> set[str]:
-    alphabet = set()
-    for s in strings:
-        alphabet.update(s)
-    return alphabet
+    full_width = base_width + 2 + 2*frame_width
+    output_lines = []
+    output_lines.append(frame_character*full_width)
+    for line in lines:
+        output_lines.append(frame_character*frame_width + " " + line + " "*(base_width - len(line)) + " " + frame_character*frame_width)
+    output_lines.append(frame_character*full_width)
+    return "\n".join(output_lines)
 
 
 def indent(level: int, multiline_string: str, tab: str=" "*4) -> str:
@@ -155,18 +145,71 @@ def convertCase(text: str, from_case: Case, to_case: Case) -> str:
         raise NotImplementedError(to_case)
 
 
-def surround(text: str, frame_character: str= "#", frame_width: int=1) -> str:
-    assert len(frame_character) == 1
-    lines = text.split("\n")
-    base_width = max(map(len, lines))
+class Disambiguator:
+    """
+    Used like
 
-    full_width = base_width + 2 + 2*frame_width
-    output_lines = []
-    output_lines.append(frame_character*full_width)
-    for line in lines:
-        output_lines.append(frame_character*frame_width + " " + line + " "*(base_width - len(line)) + " " + frame_character*frame_width)
-    output_lines.append(frame_character*full_width)
-    return "\n".join(output_lines)
+        disambiguate = Disambiguator()
+
+        for string in many_strings:
+            print(disambiguate(string))
+
+    where each call of disambiguate() will produce a unique result.
+    """
+
+    def __init__(self, disambiguation_transform: Callable[[str,int],str]=lambda s,t: suffixIfNotEmpty(s, f"_{t+1}")):
+        self._seen = set()
+        self._disambiguator = disambiguation_transform
+
+    def __call__(self, s: str) -> str:
+        if not s and s in self._seen:
+            raise ValueError("Cannot disambiguate an empty string.")
+
+        modified_s = s
+        tries = 0
+        while modified_s in self._seen:
+            tries += 1
+            modified_s = self._disambiguator(s, tries)
+
+        self._seen.add(modified_s)
+        return modified_s
+
+
+########################################################################################################################
+
+
+def findLongestCommonPrefix(strings: Iterable[str]) -> str:
+    ref = None
+    for string in strings:
+        # Trivial cases
+        if ref is None:
+            ref = string
+            continue
+        elif not ref:
+            break
+
+        # Shorten the reference
+        if len(string) < len(ref):
+            ref = ref[:len(string)]
+        for i in range(len(ref)):
+            if string[i] != ref[i]:
+                ref = ref[:i]
+                break
+
+    return ref or ""
+
+
+def anySubstringIn(substrings: Iterable[str], string: str) -> bool:
+    """Generalisation of 'sub in full' with many different substrings."""
+    return any(sub in string for sub in substrings)
+
+
+def getAlphabet(strings: Iterable[str]) -> set[str]:
+    alphabet = set()
+    for s in strings:
+        alphabet.update(s)
+    return alphabet
+
 
 ########################################################################################################################
 

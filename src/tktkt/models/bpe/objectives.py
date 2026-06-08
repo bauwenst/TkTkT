@@ -26,14 +26,14 @@ class _BigramOverUnigramObjective(CountingObjective):
 
     which is related to
 
-        PMI(x,y) = ln( P(x,y)/(P(x) * P(y)) )
+        PMI(x,y) = log2( P(x,y)/(P(x) * P(y)) )
 
     by the naive expression
 
-        PMI(x,y) = ln( P(x,y)/(P(x) * P(y)) )
-                 = ln( count(x,y)/|T| / ( count(x)/|T| * count(y)/|T| )
-                 = ln(|T| * count(x,y) / ( count(x) * count(y) )
-                 = ln |T| + ln score(x,y)
+        PMI(x,y) = log2( P(x,y)/(P(x) * P(y)) )
+                 = log2( count(x,y)/|T| / ( count(x)/|T| * count(y)/|T| )
+                 = log2(|T| * count(x,y) / ( count(x) * count(y) )
+                 = log2 |T| + log2 score(x,y)
 
     which is a monotonous transform of score(x,y). Because the score is independent of global statistics like CTC,
     updates can be computed as efficiently as they are for BPE.
