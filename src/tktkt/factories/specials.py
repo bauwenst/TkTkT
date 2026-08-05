@@ -44,7 +44,7 @@ class GptSpecials(Specials):  # GPT actually doesn't even have an UNK.
 
 
 @dataclass
-class LLamaSpecials(GptSpecials):  # LLama's tokeniser by default uses the same template as GPT-2, but can be configured to distinguish BOS from EOS (https://github.com/meta-llama/llama/blob/main/llama/tokenizer.py).
+class LLamaSpecials(GptSpecials):  # LLaMa's tokeniser by default uses the same template as GPT-2, but can be configured to distinguish BOS from EOS (https://github.com/meta-llama/llama/blob/main/llama/tokenizer.py).
     EOS: int
 
     def _singleSentenceTemplate(self, ids: list[int]) -> list[int]:
@@ -52,6 +52,11 @@ class LLamaSpecials(GptSpecials):  # LLama's tokeniser by default uses the same 
 
     def _pairedSentenceTemplate(self, ids_1: list[int], ids_2: list[int]) -> list[int]:
         return self._singleSentenceTemplate(ids_1) + self._singleSentenceTemplate(ids_2)
+
+
+@dataclass
+class LLamaSpecialsWithMask(LLamaSpecials):  # Basically equivalent to RoBERTa's set of specials, except in paired examples, the second is surrounded by BOS...EOS instead of EOS...EOS.
+    MASK: int
 
 
 @dataclass

@@ -16,6 +16,13 @@ class Return_PrReF1:
     f1: float
 
 
+@dataclass
+class Return_MeanStd:
+    n: int
+    mean: float
+    std: float
+
+
 class ConfusionMatrix:
 
     def __init__(self):
@@ -255,4 +262,23 @@ class NestedAverage:
         return NestedAverage.NestedAverage(
             micro=self._total_sum / self._total_n_instances,
             macro=self._total_local_average / self._total_n_examples
+        )
+
+
+class ClassicAverage:
+    def __init__(self):
+        self._n  = 0
+        self._ls = 0
+        self._ss = 0
+
+    def add(self, value: float):
+        self._n  += 1
+        self._ls += value
+        self._ss += value**2
+
+    def compute(self):
+        return Return_MeanStd(
+            n=self._n,
+            mean=self._ls / self._n,
+            std=1 / (self._n - 1) * (self._ss - self._n * (self._ls / self._n) ** 2)  # Formula taken from BIRCH cluster features (BCF).
         )
