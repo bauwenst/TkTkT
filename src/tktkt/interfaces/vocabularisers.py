@@ -3,14 +3,13 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from collections import Counter
 
-from modest.formats.tsv import iterateTsv
+from modest.formats.tsv import iterateTsv, countLines
 from modest.interfaces.datasets import ModestDataset
 
 from . import Preprocessor
 from .artifactories import Artifacts, CacheableArtifacts
 from .identifiers import UnidentifiedVocab
 from ..paths import TkTkTPaths
-from ..util.iterables import streamProgress
 from ..util.strings import prefixIfNotEmpty
 from ..util.types import NamedIterable, HuggingfaceDataset, anypartial, generated
 from ..util.interfaces import Cache
@@ -87,14 +86,37 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
         return sentence_iterable.map(self.preprocessor.do).map(sep.join)
 
     def _preprocessSentencesToPretokenCounts(self, sentence_iterable: NamedIterable[str]) -> NamedIterable[tuple[str,int]]:
-        counter = Counter()
-        def iterator():
-            if not counter:
-                for word in streamProgress(sentence_iterable, "Counting pretokens"):
-                    counter.update(self.preprocessor.do(word))
+        def computeIterable():
+            print("Counting pretokens...")
+            counter: Counter[str] = Counter()
+            for word in sentence_iterable:
+                counter.update(self.preprocessor.do(word))
+            return counter.items()  # Note: This is actually a re-iterable, not an iterator.
 
-            yield from counter.items()
-        return NamedIterable(generated(iterator), name=sentence_iterable.name)
+        return NamedIterable(computeIterable, name=sentence_iterable.name)
+
+    def _preprocessWordsToPretokenCounts(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[tuple[str,int]]:
+        """
+        Apply the preprocessor to each word, count the pretokens separately, and return the pretoken counts.
+        This requires loading all pretokens into memory.
+        """
+        def computeIterable():
+            print("Counting pretokens...")
+            counter: Counter[str] = Counter()
+            for word, count in word_iterable:
+                for pretoken in self.preprocessor.do(word):
+                    counter[pretoken] += count
+            return counter.items()
+
+        return NamedIterable(computeIterable, name=word_iterable.name)
+
+    def _preprocessWordsToPretokenCounts_approx(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[tuple[str,int]]:
+        """
+        Apply the preprocessor onto the given words, CONCATENATE the resulting pretokens, and return the result with
+        the given counts. Loses the pretoken boundaries, but unlike _preprocessWordsToPretokens_counter, you don't have
+        to keep more than the current word in memory.
+        """
+        return word_iterable.map(lambda tup: ("".join(self.preprocessor.do(tup[0])), tup[1]))
 
     def _preprocessWordsToSentences(self, word_iterable: NamedIterable[tuple[str, int]]) -> NamedIterable[str]:
         """
@@ -125,52 +147,42 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
     def _preprocessWordsToTsv(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[str]:
         return word_iterable.map(lambda tup: f"{tup[0]}\t{tup[1]}\n")
 
-    def _preprocessWordsToPretokenCounts_approx(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[tuple[str,int]]:
-        """
-        Apply the preprocessor onto the given words, CONCATENATE the resulting pretokens, and return the result with
-        the given counts. Loses the pretoken boundaries, but unlike _preprocessWordsToPretokens_counter, you don't have
-        to keep more than the current word in memory.
-        """
-        return word_iterable.map(lambda tup: ("".join(self.preprocessor.do(tup[0])), tup[1]))
-
-    def _preprocessWordsToPretokenCounts(self, word_iterable: NamedIterable[tuple[str,int]]) -> NamedIterable[tuple[str,int]]:
-        """
-        Apply the preprocessor to each word, count the pretokens separately, and return the pretoken counts.
-        This requires loading all pretokens into memory.
-        """
-        counter = Counter()
-        def iterator():
-            if not counter:
-                for word,count in streamProgress(word_iterable, "Counting pretokens"):
-                    for pretoken in self.preprocessor.do(word):
-                        counter[pretoken] += count
-            yield from counter.items()
-        return NamedIterable(generated(iterator), name=word_iterable.name)
-
     # User-facing interface (all cached)
 
-    def vocabulariseFromTsv(self, word_frequency_tsv: Path, name_instead_of_stem: str="") -> T_CacheableArtifact:
+    def vocabulariseFromTsv(self, word_frequency_tsv: Path, name_instead_of_stem: str="", tqdm: bool=False) -> T_CacheableArtifact:
+        with open(word_frequency_tsv, "r", encoding="utf-8") as handle:
+            known_size = countLines(handle)
         iterable = NamedIterable(
-            generated(lambda: ((word,int(count)) for word, count in iterateTsv(word_frequency_tsv, verbose=True))),
-            name=name_instead_of_stem or word_frequency_tsv.stem
+            generated(lambda: ((word,int(count)) for word, count in iterateTsv(word_frequency_tsv))),
+            name=name_instead_of_stem or word_frequency_tsv.stem, known_size=known_size
         )
+        if tqdm:
+            iterable = iterable.tqdm()
         return self._cacheRun(iterable.name, lambda: self._vocabulariseFromWords(iterable))
 
-    def vocabulariseFromCounter(self, word_frequency_counter: Counter, name: str="[unnamed_counter]") -> T_CacheableArtifact:
-        iterable = NamedIterable(generated(lambda: word_frequency_counter.items()), name=name)
+    def vocabulariseFromCounter(self, word_frequency_counter: Counter, name: str="[unnamed_counter]", tqdm: bool=False) -> T_CacheableArtifact:
+        iterable = NamedIterable(word_frequency_counter.items(), name=name)  # .items() is re-iterable
+        if tqdm:
+            iterable = iterable.tqdm()
         return self._cacheRun(iterable.name, lambda: self._vocabulariseFromWords(iterable))
 
-    def vocabulariseFromWordIterable(self, word_iterable: Union[NamedIterable[tuple[str,int]],Iterable[tuple[str,int]]], name_if_not_named: str="[unnamed_iterable]") -> T_CacheableArtifact:
+    def vocabulariseFromWordIterable(self, word_iterable: Union[NamedIterable[tuple[str,int]],Iterable[tuple[str,int]]], name_if_not_named: str="[unnamed_iterable]", tqdm: bool=False) -> T_CacheableArtifact:
         iterable = word_iterable if isinstance(word_iterable, NamedIterable) else NamedIterable(word_iterable, name=name_if_not_named)
+        if tqdm:
+            iterable = iterable.tqdm()
         return self._cacheRun(iterable.name, lambda: self._vocabulariseFromWords(iterable))
 
-    def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]], name_if_not_named: str="[unnamed_iterable]") -> T_CacheableArtifact:
+    def vocabulariseFromStringIterable(self, string_iterable: Union[NamedIterable[str],Iterable[str]], name_if_not_named: str="[unnamed_iterable]", tqdm: bool=False) -> T_CacheableArtifact:
         iterable = string_iterable if isinstance(string_iterable, NamedIterable) else NamedIterable(string_iterable, name=name_if_not_named)
+        if tqdm:
+            iterable = iterable.tqdm()
         return self._cacheRun(iterable.name, lambda: self._vocabulariseFromSentences(iterable))
 
-    def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str, name_if_not_named: str="[unnamed_HF]") -> T_CacheableArtifact:
+    def vocabulariseFromHf(self, dataset: HuggingfaceDataset, text_field: str, name_if_not_named: str="[unnamed_HF]", tqdm: bool=False) -> T_CacheableArtifact:
         iterable = NamedIterable(dataset, name=dataset.info.dataset_name if dataset.info.dataset_name is not None else name_if_not_named) \
             .map(anypartial(dict.get, ..., text_field))  # Equivalent to `lambda example: example[text_field]` but this one can be pickled.
+        if tqdm:
+            iterable = iterable.tqdm()
         return self._cacheRun(iterable.name, lambda: self._vocabulariseFromSentences(iterable))
 
 

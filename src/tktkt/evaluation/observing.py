@@ -182,7 +182,7 @@ class ObservableIterable(ObservableRoot[Sent]):
 
 class ObservableWordCopies(ObservableIterable[str]):
     def __init__(self, experiment_id: str, word: str, n: int, observers: list[Observer[Sent]]=None):
-        super().__init__(experiment_id=experiment_id, iterable=NamedIterable(generated(lambda: (word for _ in range(n))), name=f"{word}_{n}"), observers=observers)
+        super().__init__(experiment_id=experiment_id, iterable=NamedIterable(generated(lambda: (word for _ in range(n))), name=f"{word}_{n}", known_size=n), observers=observers)
 
 
 class ObservableIdentity(ImmediatelyObservableObserver[Sent,Sent]):

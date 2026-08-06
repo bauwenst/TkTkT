@@ -2,12 +2,16 @@
 Contains type aliases and classes which are mainly a type of data -- something you could see in a type annotation of
 a method/function -- rather than being focused on operations, as well as lowercase classes that mimic extra builtins.
 """
-from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Sequence
+from typing import Protocol, TypeVar, Iterable, Callable, Iterator, Union, Sequence, Optional
 from abc import abstractmethod, ABC
 from datasets import Dataset, IterableDataset
 from functools import partial
 import numpy.random as npr
 from langcodes import Language
+
+
+def is_reiterable(iterable: Iterable) -> bool:
+    return hasattr(iterable, "__iter__") and not hasattr(iterable, "__next__")
 
 # There are four canonical ways to represent the segmentation of a known string:
 #     - A list of token strings;
@@ -28,33 +32,78 @@ T = TypeVar("T")
 T2 = TypeVar("T2")
 T3 = TypeVar("T3")
 
+LazyIterable = Callable[[], Iterable[T]]
+
 class NamedIterable(Iterable[T]):  # This T is so that type signatures like NamedIterable[str] actually cause type inference for return values once iterating.
     """
     An iterable that has a string attached to it. Handy when e.g. you have a streamable corpus and want to name the
     results based on the name of the corpus.
     """
-    def __init__(self, iterable: Iterable[T], name: str):  # This T is so that the above T is be inferred from the constructor if there is no type signature.
-        self.name = name
-        self._iterable = iterable
-        self._tqdm = False
-
-        if hasattr(iterable, "__next__"):
+    def __init__(self, iterable: Union[Iterable[T],LazyIterable[T]], name: str,
+                 known_size: int=None, tqdm: bool=False):  # This T is so that the above T is be inferred from the constructor if there is no type signature.
+        if is_reiterable(iterable):
+            self._is_lazy = False
+        elif callable(iterable):
+            if known_size is not None:
+                raise ValueError("No iterable was given yet a known size was.")
+            self._is_lazy = True
+        elif hasattr(iterable, "__iter__"):
             raise TypeError("The given iteraBLE is an iteraTOR, and hence may not be re-iterable.")
+        else:
+            raise TypeError("NamedIterable must be constructed with an iterable or a function that produces an iterable.")
+
+        self.name = name
+        self._iterable   = iterable
+        self._known_size = known_size
+        self._tqdm       = tqdm
+
+        # Impute length and check against user-provided value.
+        size = self.__impute_size()
+        if size is not None:
+            if known_size is None:
+                self._known_size = size
+            elif known_size != size:
+                raise ValueError(f"Given known size ({known_size}) is not equal to the found size ({size}).")
+            else:
+                raise ValueError("Don't pass a known size to NamedIterable manually when it can be deduced from the iterable.")
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + "(" + self.name + ")"
 
+    def __impute_size(self) -> Optional[int]:
+        if self._is_lazy:
+            return None
+        elif isinstance(self._iterable, NamedIterable):
+            return self._iterable._known_size
+        elif hasattr(self._iterable, "__len__"):
+            return len(self._iterable)
+        else:
+            return None
+
     def __iter__(self):
+        if self._is_lazy:
+            self._iterable = self._iterable()
+            if not is_reiterable(self._iterable):
+                raise RuntimeError(f"Lazily computed value of type {type(self._iterable)} is not re-iterable.")
+            self._is_lazy = False
+            self._known_size = self.__impute_size()
+
         from .iterables import streamProgress
-        return self._iterable.__iter__() if not self._tqdm else streamProgress(self._iterable).__iter__()
+        return self._iterable.__iter__() if not self._tqdm else streamProgress(self._iterable, known_size=self._known_size).__iter__()
+
+    def take(self, n: int) -> "NamedIterable[T]":
+        if self._known_size is not None and self._known_size < n:
+            return self
+
+        from .iterables import take
+        return NamedIterable(wrappediterable(partial(take, n), self), name=self.name, known_size=n)
 
     def tqdm(self) -> "NamedIterable[T]":
-        self._tqdm = True
-        return self
+        return NamedIterable(self, name=self.name, tqdm=True)
 
     def map(self, func: Callable[[T],T2]) -> "NamedIterable[T2]":
         """Refer to the documentation of the `mapped` class."""
-        return NamedIterable(mapped(func, self), name=self.name)
+        return NamedIterable(mapped(func, self), name=self.name, known_size=self._known_size)
 
     def flatmap(self, func: Callable[[T],Iterable[T2]]) -> "NamedIterable[T2]":
         """Refer to the documentation of `flatmapped` class."""
