@@ -1,3 +1,3 @@
 from .paths import setTkTkToutputRoot
 
-__version__ = "v2026.05.01"
+__version__ = "v2026.08.01"
