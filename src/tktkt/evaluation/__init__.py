@@ -2,7 +2,7 @@
 from .observing import ObservableIterable, ObservableFunction, ObservableFilter, ObservablePreprocessor, HoldoutObserver, ObservableTokeniser, ObservableWordCopies
 from .context import AccessorCounting, AccessorVariety
 from .fertility import PossibleSegmentations, SegmentationProperties
-from .entropy import TokenUnigramDistribution, TTR, MATTR, SegmentationDistribution, SegmentationDiversity, RenyiEntropy, RenyiEfficiencyWithBounds
+from .entropy import TokenUnigramDistribution, TTR, MATTR, SegmentationDistribution, SegmentationDiversity, Entropy, RenyiEntropy, RenyiEfficiencyWithBounds
 from .morphological import MorphologyIterable, MorphologyAsClassification, AlignmentPlausibility
 
 # Observers

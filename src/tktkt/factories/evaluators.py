@@ -5,15 +5,26 @@ from ..evaluation.observing import *
 from ..evaluation.morphological import *
 from ..evaluation.entropy import *
 from ..interfaces import TokeniserWithVocabulary
+from ..util.types import Number
 
 
-def evaluateTokeniser(experiment_id: str, corpus: NamedIterable[str], tokeniser: Tokeniser, token_consumers: list[Observer[Tokens]]):
+def isIterableWithCounts(iterable: Union[Iterable[str], Iterable[tuple[str,Number]]]) -> bool:
+    for thing in iterable:
+        if isinstance(thing, tuple) and len(thing) == 2 and isinstance(thing[0], str) and isinstance(thing[1], (int,float)):
+            return True
+        else:
+            return False
+    return False
+
+
+def evaluateTokeniser(experiment_id: str, corpus: Union[NamedIterable[str],NamedIterable[tuple[str,float]]], tokeniser: Tokeniser, token_consumers: list[Observer[Tokens]]):
     """
     Functional shorthand for one specific instance of the general object-oriented Observable/Observer approach,
     for cases where you want to tokenise strings in a corpus and compute metrics over the tokeniser's token outputs.
     """
     ObservableIterable(
         experiment_id=experiment_id,
+        already_contains_weights=isIterableWithCounts(corpus),
         iterable=corpus,
         observers=[
             ObservableTokeniser(
@@ -24,12 +35,13 @@ def evaluateTokeniser(experiment_id: str, corpus: NamedIterable[str], tokeniser:
     ).run()
 
 
-def evaluateTokeniserOnWords(experiment_id: str, corpus: NamedIterable[str], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: list[Observer[Tokens]]):
+def evaluateTokeniserOnWords(experiment_id: str, corpus: Union[NamedIterable[str],NamedIterable[tuple[str,float]]], word_preprocessor: Preprocessor, tokeniser: Tokeniser, token_consumers: list[Observer[Tokens]]):
     """
     Same as evaluateTokeniser except now you split the strings into "words" beforehand.
     """
     ObservableIterable(
         experiment_id=experiment_id,
+        already_contains_weights=isIterableWithCounts(corpus),
         iterable=corpus,
         observers=[
             ObservablePreprocessor(

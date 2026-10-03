@@ -226,6 +226,11 @@ class RenyiEntropy(ImmediatelyObservableObserver[ReturnUnigramDistribution,Retur
         )
 
 
+class Entropy(RenyiEntropy):
+    def __init__(self, vocab_size_in_denominator: int=None, observers: list[Observer[ReturnRenyiEntropy]]=None):
+        super().__init__(alpha=SHANNON_RENYI_ALPHA, vocab_size_in_denominator=vocab_size_in_denominator, observers=observers)
+
+
 @dataclass
 class ReturnRenyiEfficiencyWithBounds:
     alpha: float
