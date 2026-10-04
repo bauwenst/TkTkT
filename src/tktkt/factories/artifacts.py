@@ -232,7 +232,7 @@ class KudoPieceArtifacts_HuggingFace(KudoPieceArtifacts):
 
     def preprocessorEffective(self) -> Preprocessor:
         # We assume they didn't use the pretoken separator trick TkTkT used, and probably just used spaces.
-        preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=False)
+        preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, followed_by_tokeniser_that_adds_prefix_space=False)
         preprocessor.splitter = PretokeniserSequence([
             preprocessor.splitter,
             MapperAsPretokeniser(ReplaceBoundary(" ", KudoSpaceMarker))
@@ -282,10 +282,10 @@ class KudoPiece32ki_SlimPajama3M(KudoPieceArtifacts):
         return {t: float(l) for t,l in iterateTsv(self._getVocabFile())}
 
     def preprocessorNative(self) -> Preprocessor:
-        return SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=True)  # E.g. say our preprocessor could produce a string "New York", will be sent to the tokeniser as "New York", which will turn it into " New York" and turn that into "_New_York".
+        return SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, followed_by_tokeniser_that_adds_prefix_space=True)  # E.g. say our preprocessor could produce a string "New York", will be sent to the tokeniser as "New York", which will turn it into " New York" and turn that into "_New_York".
 
     def preprocessorEffective(self) -> Preprocessor:
-        preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, prefix_space_already_added=False)
+        preprocessor = SentencePiecePreprocessor_SpaceConcatenable(marker_location=KudoSpaceMarker.location, followed_by_tokeniser_that_adds_prefix_space=False)
         preprocessor.splitter = PretokeniserSequence([
             preprocessor.splitter,
             MapperAsPretokeniser(ReplaceBoundary(" ", KudoSpaceMarker))

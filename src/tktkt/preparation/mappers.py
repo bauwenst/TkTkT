@@ -92,7 +92,7 @@ class TruncateOnNearestWhitespace(TextMapper):
 
 class FilterRegex(TextMapper):
     """
-    Erases everything that matches the given pattern.
+    Erases all charcaters matching the given pattern.
     """
 
     def __init__(self, pattern: Union[re.Pattern, regex.Pattern], replacement: str=""):
@@ -116,6 +116,18 @@ class FilterWhitespace(FilterRegex):
 class FilterHyperlinks(FilterRegex):  # Source: https://stackoverflow.com/a/6041965/9352077
     def __init__(self):
         super().__init__(re.compile(r"""(https?|ftp)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])"""))
+
+
+class FilterDiacritics(TextMapper):
+    """
+    Removes diacritics ("accents"). Not the characters they are on.
+    """
+    def __init__(self):
+        from tokenizers.normalizers import Sequence, StripAccents, NFD, NFC
+        self.stripper = Sequence([NFD(), StripAccents(), NFC()])
+
+    def convert(self, text: str) -> str:
+        return self.stripper.normalize_str(text)
 
 
 class SwallowIfContains(TextMapper):
@@ -261,6 +273,9 @@ class InvertibleMapperSequence(InvertibleTextMapper, _PreprocessorComponentSeque
 
 
 class IdentityMapper(InvertibleTextMapper):  # Not equivalent to InvertibleMapperSequence([]) because the latter doesn't return itself during __iter__ (which could be seen as a bug).
+
+    def __bool__(self):
+        return False
 
     def convert(self, text: str) -> str:
         return text

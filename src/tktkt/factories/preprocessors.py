@@ -192,19 +192,19 @@ class SentencePiecePreprocessor_SpaceConcatenable(ModernEnglishPreprocessor):
     and it doesn't split hyphenated words, which means hyphens will appear in subwords.
     Pretokens resulting from this pretokeniser can be concatenated with spaces and then fed into a SentencePiece vocabulariser.
     """
-    def __init__(self, marker_location: BoundaryMarkerLocation, prefix_space_already_added: bool=False, truncate_text_after_chars: int=1_000_000):
+    def __init__(self, marker_location: BoundaryMarkerLocation, followed_by_tokeniser_that_adds_prefix_space: bool=False, truncate_text_after_chars: int=1_000_000):
         """
-        :param prefix_space_already_added: Whether the tokeniser that follows after this is expected to add a space to
-                                           every pretoken it receives or not. Normally, this should always be False; the
-                                           only reason it would be True is if you accidentally set add_dummy_prefix to True
-                                           when vocabularising, whose effect is to add a space in front of the sentences in
-                                           the dataset during training (not in front of every pretoken, because the concept
-                                           of "pretoken" doesn't exist in SentencePiece; there are uncrossable boundaries
-                                           within a string, but it always remains one sentence) and this carries over to
-                                           adding a space in front of every pretoken during inference because TkTkT sends
-                                           individual pretokens to the tokeniser, which SP sees as one-word sentences.
+        :param followed_by_tokeniser_that_adds_prefix_space: Whether the tokeniser that follows after this is expected to add a space to
+                                                             every pretoken it receives or not. Normally, this should always be False; the
+                                                             only reason it would be True is if you accidentally set add_dummy_prefix to True
+                                                             when vocabularising, whose effect is to add a space in front of the sentences in
+                                                             the dataset during training (not "in front of every pretoken" because the concept
+                                                             of "pretoken" doesn't exist in SentencePiece; there are uncrossable boundaries
+                                                             within a string, but it always remains one sentence) and this carries over to
+                                                             adding a space in front of every pretoken during inference (because TkTkT sends
+                                                             individual pretokens to the tokeniser, which SP sees as one-word sentences).
         """
-        marker = NoSpaceMarker if prefix_space_already_added else BoundaryMarker(substitute=" ", detached=True, location=marker_location)
+        marker = NoSpaceMarker if followed_by_tokeniser_that_adds_prefix_space else BoundaryMarker(substitute=" ", detached=True, location=marker_location)
         super().__init__(marker, truncate_text_after_chars)
         self.splitter = ModernEnglishPretokeniser(marker, do_split_after_placing_boundaries=False)
 

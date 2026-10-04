@@ -41,8 +41,19 @@ class Vocabulariser(Cache[T_CacheableArtifact], ABC):
         return TkTkTPaths.pathToModels(self._cacheSubfolder(), self._cacheSubfolder() + prefixIfNotEmpty("_", self._identifierFull(external_identifier)))
 
     def _cacheFinalise(self, loaded: T_CacheableArtifact) -> T_CacheableArtifact:
-        loaded.setPreprocessors(self.preprocessor)
+        loaded.setPreprocessors(native=self.preprocessor, effective=self._effectivisePreprocessor())
         return loaded
+
+    def _effectivisePreprocessor(self) -> Preprocessor:
+        """
+        Some vocabularisers use toolkits that apply their own preprocessing steps after our preprocessor.
+        The preprocessor used when talking to that toolkit (self.preprocessor) is called "native" because it
+        is compatible with it. The preprocessor that effectively defines the vocabulary is modelled here and is not native to that toolkit.
+
+        Note: In the future, we may add a method _nativisePreprocessor in case there are special adaptations needed to the user-given preprocessor
+        to get toolkits to work properly. Either way, it is an impossible problem to solve in general due to bad design of non-TkTkT toolkits.
+        """
+        return self.preprocessor
 
 
 class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):

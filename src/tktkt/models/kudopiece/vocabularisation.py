@@ -12,6 +12,7 @@ import json
 import shutil
 from modest.formats.tsv import iterateTsv
 
+from tst.inference.viterbi.test_enumerate import preprocessor
 from ...interfaces import Artifacts, CacheableArtifacts
 from ...preparation.boundaries import BoundaryMarkerLocation
 from ...interfaces.vocabularisers import *
@@ -194,6 +195,17 @@ class KudoPieceVocabulariser(UnsupervisedVocabulariser[CacheableKudoPieceArtifac
 
     def _cacheType(self):
         return CacheableKudoPieceArtifacts
+
+    def _effectivisePreprocessor(self) -> Preprocessor:  # It is expected that all preprocessors used with this vocabulariser add a space in front of words, as this is the only way to make SP produce its underscore marker.
+        from ...factories.preprocessors import PretokeniserSequence, MapperAsPretokeniser, ReplaceBoundary, KudoSpaceMarker
+        return Preprocessor(
+            uninvertible_mapping=self.preprocessor.irreversible,
+            invertible_mapping=self.preprocessor.reversible,
+            splitter=PretokeniserSequence([
+                self.preprocessor.splitter,
+                MapperAsPretokeniser(ReplaceBoundary(" ", KudoSpaceMarker))
+            ])
+        )
 
     def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableKudoPieceArtifacts:
         """

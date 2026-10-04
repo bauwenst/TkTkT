@@ -87,6 +87,9 @@ class PretokeniserSequence_Diagnostic(PretokeniserSequence):
 
 class IdentityPretokeniser(Pretokeniser):
 
+    def __bool__(self):
+        return False
+
     def split(self, text: str) -> Pretokens:
         return [text]
 

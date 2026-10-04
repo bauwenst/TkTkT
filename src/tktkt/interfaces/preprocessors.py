@@ -30,6 +30,9 @@ class _PreprocessorComponent(ABC):
     def __iter__(self) -> Iterator["_PreprocessorComponent"]:
         pass
 
+    def __bool__(self):  # Will be overridden by identity or empty sequence.
+        return True
+
     def __repr__(self) -> str:
         return self.__class__.__name__
 
@@ -39,6 +42,12 @@ class _PreprocessorComponentSequence(_PreprocessorComponent):
     Implementations of the preprocessor properties for components that don't yield themselves when being iterated over,
     which is the case for sequence classes.
     """
+
+    def __bool__(self):  # Returns True when any component contained by this sequence is non-identity.
+        for thing in self:
+            if thing:
+                return True
+        return False
 
     def _modifyAlphabet(self, known: list[str]) -> list[str]:
         for component in self:  # Note: Recursion can be implemented in two ways: either you iterate `for node in self.childNodes(): node.recurse()` or, what we do here, you iterate `for leaf in self.leafNodes(): leaf.method()`. What's good about the latter is that a nested sequence is iterated as if it is flat. The only downside is that you only run the composite method once, which means that nested composite nodes cannot contribute anything to the result.
