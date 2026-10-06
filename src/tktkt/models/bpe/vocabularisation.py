@@ -13,7 +13,7 @@ from pickybpe.vocabularisation import EventType, BPETrainer as _BPETrainerBase, 
 from ...preparation.boundaries import BoundaryMarker, BoundaryMarkerLocation
 from ...preparation.mappers import PseudoByteMapping
 from ...factories.preprocessors import KudoSpaceMarker
-from ...interfaces.artifactories import Artifacts, CacheableArtifacts
+from ...interfaces.artifactories import Artifacts, CacheableArtifactsWithVocabulary
 from ...interfaces.vocabularisers import *
 from ...interfaces.vocabularisers import T_CacheableArtifact
 from ...util.dicts import substituteKey, argmax
@@ -36,21 +36,17 @@ class BPEArtifacts(Artifacts):
         pass
 
 
-class CacheableBPEArtifacts(CacheableArtifacts, BPEArtifacts):
+class CacheableBPEArtifacts(CacheableArtifactsWithVocabulary, BPEArtifacts):
 
     def __init__(self, types: list[str], merges: list[tuple[str,...]]):
-        super().__init__()
-        self._types = types
+        super().__init__(types=types)
         self._merges = merges
-
-    def _getVocabulary(self) -> UnidentifiedVocab:
-        return self._types
 
     def getMerges(self) -> list[tuple[str, ...]]:
         return self._merges
 
     def store(self, cache_path: Path):
-        self._storeTypes(cache_path, self._types)
+        super().store(cache_path)
         self._storeMerges(cache_path, self._merges)
 
     @classmethod
@@ -59,10 +55,7 @@ class CacheableBPEArtifacts(CacheableArtifacts, BPEArtifacts):
 
     @classmethod
     def exists(cls, cache_path: Path) -> bool:
-        return cls._existsTypes(cache_path) and (cache_path / "merges.txt").exists()
-
-    def _bakedSpecials(self) -> set[str]:
-        return set()
+        return super().exists(cache_path) and (cache_path / "merges.txt").exists()
 
     # @classmethod
     # def _storeVocab(cls, vocab: Union[OrderedDict[str, int], Dict[str, int], Iterable[str]], folder: Path) -> Path:

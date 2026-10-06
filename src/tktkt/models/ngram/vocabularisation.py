@@ -10,7 +10,8 @@ import numpy.random as npr
 from collections import Counter
 
 from ..word.vocabularisation import CountWords, CountingConfig
-from ...interfaces import Artifacts, CacheableArtifacts
+from ...interfaces import Artifacts
+from ...interfaces.artifactories import CacheableArtifactsWithVocabulary
 from ...interfaces.preprocessors import Pretokeniser, Pretokens
 from ...interfaces.vocabularisers import *
 from ...preparation.splitters import PretokeniserSequence
@@ -23,24 +24,8 @@ class NgramArtifacts(Artifacts):
     pass
 
 
-class CacheableNgramArtifacts(NgramArtifacts, CacheableArtifacts):
-    def __init__(self, types: list[str]):
-        super().__init__()
-        self._types = types
-
-    def _getVocabulary(self) -> UnidentifiedVocab:
-        return self._types
-
-    @classmethod
-    def exists(cls, cache_path: Path) -> bool:
-        return cls._existsTypes(cache_path)
-
-    @classmethod
-    def load(cls, cache_path: Path) -> Self:
-        return CacheableNgramArtifacts(types=cls._loadTypes(cache_path))
-
-    def store(self, cache_path: Path):
-        self._storeTypes(cache_path, self._types)
+class CacheableNgramArtifacts(CacheableArtifactsWithVocabulary, NgramArtifacts):
+    pass
 
 
 class NgramVocabulariser(UnsupervisedVocabulariser[CacheableNgramArtifacts]):

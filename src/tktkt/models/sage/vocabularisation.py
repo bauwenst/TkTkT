@@ -5,12 +5,8 @@ Builds a vocabulary using the SaGe algorithm described in
 During vocabulary building, words are kept in the context of their sentences rather than coming from a word frequency
 list. The resulting vocabulary is just a set of subwords without context, however.
 """
-from pathlib import Path
-from typing import Self
-
-import warnings
-
-from ...interfaces import Artifacts, CacheableArtifacts
+from ...interfaces import Artifacts
+from ...interfaces.artifactories import CacheableArtifactsWithVocabulary
 from ...interfaces.vocabularisers import *
 from ...util.iterables import deduplicate
 from ...util.strings import shash
@@ -21,24 +17,8 @@ class SageArtifacts(Artifacts):
     pass
 
 
-class CacheableSageArtifacts(SageArtifacts, CacheableArtifacts):
-    def __init__(self, types: list[str]):
-        super().__init__()
-        self._types = types
-
-    def _getVocabulary(self) -> UnidentifiedVocab:
-        return self._types
-
-    def store(self, cache_path: Path):
-        self._storeTypes(cache_path, self._types)
-
-    @classmethod
-    def load(cls, cache_path: Path) -> Self:
-        return CacheableSageArtifacts(types=cls._loadTypes(cache_path))
-
-    @classmethod
-    def exists(cls, cache_path: Path) -> bool:
-        return cls._existsTypes(cache_path)
+class CacheableSageArtifacts(CacheableArtifactsWithVocabulary, SageArtifacts):
+    pass
 
 
 class SageVocabulariser(UnsupervisedVocabulariser[CacheableSageArtifacts]):

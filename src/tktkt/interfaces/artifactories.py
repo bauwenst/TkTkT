@@ -1,4 +1,5 @@
 from typing import TypeVar, Generic, Union, Optional, Callable, Iterable
+from typing_extensions import Self
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -124,15 +125,19 @@ class CacheableArtifacts(Artifacts, Cacheable):
     """
     Artifacts constructed in the same runtime as they are loaded.
 
-    The implication is that all the objects used to construct these Artifacts (e.g. Vocabulariser parameters, Preprocessor, ...)
-    all still exist in the runtime, and do not have to be defined by this object, nor serialised (the Python script is that serialised form, really).
+    The implication is that
+        1. all the objects used to construct these Artifacts (e.g. Vocabulariser, Preprocessor, ...) all still exist
+           in the runtime, and do not have to be defined by this object, nor serialised (the Python script is that
+           serialised form, really). This is in contrast to a non-cacheable Artifacts object, which has to define its preprocessor by overriding.
+        2. the artifact objects don't come from disk, which means subclasses of this class will implement persistence methods,
+           and, as a consequence, their computation is cacheable.
     """
     def __init__(self):
         super().__init__()
         self._preprocessor_effective: Optional[Preprocessor] = None
         self._preprocessor_native:    Optional[Preprocessor] = None
 
-    def _bakedSpecials(self) -> set[str]:
+    def _bakedSpecials(self) -> set[str]:  # TkTkT-native vocabularisers make sure to never bake specials into our vocabularies.
         return set()
 
     def setPreprocessors(self, effective: Preprocessor, native: Optional[Preprocessor]=None):
@@ -146,6 +151,30 @@ class CacheableArtifacts(Artifacts, Cacheable):
     def preprocessorEffective(self) -> Preprocessor:
         assert self._preprocessor_effective is not None
         return self._preprocessor_effective
+
+
+class CacheableArtifactsWithVocabulary(CacheableArtifacts):
+    """
+    Cacheable artifacts with a simple vocabulary txt.
+    """
+
+    def __init__(self, types: Iterable[str]):
+        super().__init__()
+        self._types = list(types)
+
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        return self._types
+
+    def store(self, cache_path: Path):
+        self._storeTypes(cache_path, self._types)
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        return cls(types=cls._loadTypes(cache_path))
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return cls._existsTypes(cache_path)
 
     # Auxiliary methods for saving vocabularies as a simple txt.
 

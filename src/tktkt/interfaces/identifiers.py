@@ -12,6 +12,7 @@ from copy import deepcopy
 from ..util.iterables import areContiguous, fst, areUnique, arePositive, snd
 from ..util.dicts import getattr_recursive, setattr_recursive, intersect_dicts
 from ..util.exceptions import EmptyTokenError, DuplicateTokenError
+from ..util.strings import shash
 
 
 class _ProhibitDeclaringConstructor(type):
@@ -289,6 +290,7 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
         self.__next_id = max(max(self.values(), default=-1), max(self.specials, default=-1)) + 1
 
     def size(self):
+        """Returns the amount of IDs in the vocabulary. len() gives the amount of non-special types."""
         return len(self) + len(list(self.specials)) + 1
 
     def __repr__(self):
@@ -321,6 +323,9 @@ class Vocab(dict[str, int], Generic[WithSpecials]):
 
         union = self | specials_mapping
         return {k: union[k] for k in sorted(union.keys(), key=union.get)}
+
+    def fingerprint(self):
+        return shash(" ".join(self))
 
     # TODO: For the below operations, we need to keep some kind of changelog / transaction journal that allows
     #       easy interpretation by a function that modifies an old embedding matrix into a new one.

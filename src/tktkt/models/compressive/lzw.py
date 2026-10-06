@@ -5,10 +5,8 @@ and first implemented in
     https://github.com/zouharvi/tokenization-principle
 I've reimplemented the LZW vocabulariser to support TkTkT's preprocessors and corpora, and also made stuff faster and correcter.
 """
-from pathlib import Path
-from typing_extensions import Self
-
-from ...interfaces import Artifacts, CacheableArtifacts
+from ...interfaces import Artifacts
+from ...interfaces.artifactories import CacheableArtifactsWithVocabulary
 from ...interfaces.vocabularisers import *
 from ...interfaces.tokenisers import Tokeniser, Preprocessor
 from ...models.greedy.directional import L2R_Greedy
@@ -21,24 +19,8 @@ class LzwArtifacts(Artifacts):
     pass
 
 
-class CacheableLzwArtifacts(CacheableArtifacts):
-    def __init__(self, types: list[str]):
-        super().__init__()
-        self._types = types
-
-    def _getVocabulary(self) -> UnidentifiedVocab:
-        return self._types
-
-    def store(self, cache_path: Path):
-        self._storeTypes(cache_path, self._types)
-
-    @classmethod
-    def load(cls, cache_path: Path) -> Self:
-        return CacheableLzwArtifacts(types=cls._loadTypes(cache_path))
-
-    @classmethod
-    def exists(cls, cache_path: Path) -> bool:
-        return cls._existsTypes(cache_path)
+class CacheableLzwArtifacts(CacheableArtifactsWithVocabulary, LzwArtifacts):
+    pass
 
 
 class LzwVocabulariser(UnsupervisedVocabulariser[CacheableLzwArtifacts]):

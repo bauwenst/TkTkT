@@ -9,7 +9,8 @@ from collections import defaultdict
 from pickybpe.vocabularisation import logger, EventType, PickyBPETrainer as _PickyBPETrainerBase
 from pickybpe.segmentation import Token, MergeEventIds, SplitEventIds, SplitResults, PickyBPESegmenter as _PickyBPETokeniserBackend
 
-from ...interfaces import Artifacts, CacheableArtifacts
+from ...interfaces import Artifacts
+from ...interfaces.artifactories import CacheableArtifactsWithVocabulary
 from ...interfaces.vocabularisers import UnidentifiedVocab
 from ...interfaces.tokenisers import *
 from ...util.iterables import sunion
@@ -35,18 +36,14 @@ class PickyBPEArtifacts(Artifacts):
         pass
 
 
-class CacheablePickyBPEArtifacts(PickyBPEArtifacts, CacheableArtifacts):
+class CacheablePickyBPEArtifacts(CacheableArtifactsWithVocabulary, PickyBPEArtifacts):
 
     _NAME_EVENTS = "events.txt"
 
     def __init__(self, present_types: list[str], all_types: list[str], events: list[Event]):
-        super().__init__()
-        self._present_types = present_types
-        self._all_types     = all_types
-        self._events = events
-
-    def _getVocabulary(self) -> UnidentifiedVocab:
-        return self._present_types
+        super().__init__(types=present_types)
+        self._all_types = all_types
+        self._events    = events
 
     def getInternalTypes(self) -> UnidentifiedVocab:
         """
@@ -65,7 +62,7 @@ class CacheablePickyBPEArtifacts(PickyBPEArtifacts, CacheableArtifacts):
         logger.info(f'Dumping model to {folder.as_posix()}...')
 
         # Vocabulary stores types (not verbose types, because we can reconstruct them from merges)
-        self._storeTypes(folder, self._present_types)
+        self._storeTypes(folder, self._types)
         self._storeTypes(folder, self._all_types, stem="vocab_internal")
 
         # Event list is a generalisation of the merge list. "+" means token merge, "-" means token split.
@@ -83,7 +80,7 @@ class CacheablePickyBPEArtifacts(PickyBPEArtifacts, CacheableArtifacts):
 
     @classmethod
     def exists(cls, cache_path: Path) -> bool:
-        return cls._existsTypes(cache_path) and (cache_path / CacheablePickyBPEArtifacts._NAME_EVENTS).exists()
+        return super().exists(cache_path) and (cache_path / CacheablePickyBPEArtifacts._NAME_EVENTS).exists()
 
     @classmethod
     def load(cls, cache_path: Path) -> Self:
