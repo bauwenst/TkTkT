@@ -7,20 +7,23 @@ from dataclasses import dataclass
 
 import gc
 
+from ...interfaces.vocabularisers import T_CacheableArtifact
 from ...paths import TkTkTPaths
 from ...interfaces import Artifacts, CacheableArtifacts
 from ...interfaces.vocabularisers import *
 from ...util.printing import intsep, percent, pluralise
-from ...util.strings import shash
+from ...util.strings import shash, substrings
 
 import logging
 logger = logging.getLogger(__name__)
 
-_NAME_COUNTS = "words.tsv"
+__all__ = ["CountWords", "CountSubstrings", "CountCharacters", "CountingConfig"]
+
+
 _NAME_CORPUS = "name.txt"
 
 
-class WordFrequencyList(Artifacts):
+class StringFrequencies(Artifacts):
     @abstractmethod
     def getFrequencies(self) -> Iterable[tuple[str,int]]:
         pass
@@ -30,7 +33,46 @@ class WordFrequencyList(Artifacts):
         pass
 
 
-class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
+class CacheableStringFrequencies(CacheableArtifacts, StringFrequencies):
+
+    _NAME_COUNTS = "strings.tsv"
+
+    def __init__(self, strings_with_counts: Iterable[tuple[str,int]], corpus_name: str):
+        super().__init__()
+        self._strings_with_counts = list(strings_with_counts)
+        self._corpus_name = corpus_name
+
+    def _getVocabulary(self) -> UnidentifiedVocab:
+        for word, _ in self._strings_with_counts:
+            yield word
+
+    def getFrequencies(self) -> Iterable[tuple[str,int]]:
+        return self._strings_with_counts
+
+    def getCorpusName(self) -> str:
+        return self._corpus_name
+
+    def store(self, cache_path: Path):
+        CacheableWordFrequencyList._writeTsv(cache_path / self._NAME_COUNTS, self._strings_with_counts)
+        with open(cache_path / _NAME_CORPUS, "w", encoding="utf-8") as handle:
+            handle.write(self._corpus_name + "\n")
+
+    @classmethod
+    def load(cls, cache_path: Path) -> Self:
+        counts = CacheableWordFrequencyList._readTsv(cache_path / cls._NAME_COUNTS)
+        with open(cache_path / _NAME_CORPUS, "r", encoding="utf-8") as handle:
+            name = handle.readline().rstrip()
+        return CacheableStringFrequencies(counts, name)
+
+    @classmethod
+    def exists(cls, cache_path: Path) -> bool:
+        return (cache_path / cls._NAME_COUNTS).exists()
+
+
+class CacheableWordFrequencyList(CacheableArtifacts, StringFrequencies):
+
+    _NAME_COUNTS = "words.tsv"
+
     def __init__(self, final_tsv_path: Path, corpus_name: str):  # We save the corpus name only because the result is itself a kind of "corpus". We don't do this for tokenisers.
         super().__init__()
         self._path = final_tsv_path
@@ -49,7 +91,7 @@ class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
     ####################################################################################################################
 
     def store(self, cache_path: Path):
-        expected_path = cache_path / _NAME_COUNTS
+        expected_path = cache_path / self._NAME_COUNTS
         if self._path != expected_path:
             shutil.copy(self._path, expected_path)  # Or something like _writeTsv(expected, _readTsv(path)) or just move (because the file can be quite big). Moving is allowed because this class is not supposed to be instantiated by a client script, and thus the only time when the path is specified is when it has just been filled by the Vocabulariser.
         with open(cache_path / _NAME_CORPUS, "w", encoding="utf-8") as handle:
@@ -59,11 +101,11 @@ class CacheableWordFrequencyList(WordFrequencyList, CacheableArtifacts):
     def load(cls, cache_path: Path) -> Self:
         with open(cache_path / _NAME_CORPUS, "r", encoding="utf-8") as handle:
             name = handle.readline().rstrip()
-        return CacheableWordFrequencyList(cache_path / _NAME_COUNTS, name)
+        return CacheableWordFrequencyList(cache_path / cls._NAME_COUNTS, name)
 
     @classmethod
     def exists(cls, cache_path: Path) -> bool:
-        return (cache_path / _NAME_COUNTS).exists()
+        return (cache_path / cls._NAME_COUNTS).exists()
 
     ####################################################################################################################
 
@@ -292,3 +334,70 @@ class CountWords(UnsupervisedVocabulariser[CacheableWordFrequencyList]):
     def _removeCheckpoint(self, folder: Path, checkpoint_id: int):
         path = folder / f"_{checkpoint_id}.tsv"
         path.unlink()
+
+
+class CountSubstrings(UnsupervisedVocabulariser[CacheableStringFrequencies]):
+    """
+    Count the frequency of a set of types as substrings in a corpus.
+    """
+
+    def __init__(self, artifacts: Artifacts):
+        super().__init__(preprocessor=artifacts.preprocessorEffective())
+        self._vocabulary = artifacts.getVocabulary()
+
+    def _cacheSubfolder(self) -> str:
+        return "counts"
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor)) + "_" + self._vocabulary.fingerprint()
+
+    def _cacheType(self):
+        return CacheableStringFrequencies
+
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> T_CacheableArtifact:
+        return self._vocabulariseFromWords(sentence_iterable.map(lambda s: (s,1)))
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> T_CacheableArtifact:
+        counter = Counter()
+        for typ in self._vocabulary:
+            counter[typ] = 0
+
+        for word, count in word_iterable:
+            for pretoken in self.preprocessor.do(word):
+                for substring in substrings(pretoken):  # More efficient than "for typ in vocab: if typ in word: ..."
+                    if substring in self._vocabulary:
+                        counter[substring] += count
+
+        return CacheableStringFrequencies(( (t,counter[t]) for t in self._vocabulary ), word_iterable.name)
+
+
+class CountCharacters(UnsupervisedVocabulariser[CacheableStringFrequencies]):
+    """
+    Count the frequency of a set of types as substrings in a corpus.
+    """
+
+    def _cacheSubfolder(self) -> str:
+        return "counts"
+
+    def _identifierPartial(self) -> str:
+        return shash(repr(self.preprocessor))
+
+    def _cacheType(self):
+        return CacheableStringFrequencies
+
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> T_CacheableArtifact:
+        return self._vocabulariseFromWords(sentence_iterable.map(lambda s: (s,1)))
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> T_CacheableArtifact:
+        counter = Counter()
+        for c in self.preprocessor.getAlphabet():
+            counter[c] += 0
+
+        for word, count in word_iterable:
+            for pretoken in self.preprocessor.do(word):
+                for c in pretoken:
+                    counter[c] += count
+
+        alphabet = self.preprocessor.getAlphabet()
+        alphabet_complement = sorted([c for c in counter if c not in alphabet])
+        return CacheableStringFrequencies(strings_with_counts=((c,counter[c]) for c in alphabet + alphabet_complement), corpus_name=word_iterable.name)
