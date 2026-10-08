@@ -2,245 +2,310 @@
 Heavily refactored version of the code found at https://github.com/Jingjing-NLP/VOLT
 for the Xu e.a. (2021) paper https://aclanthology.org/2021.acl-long.571/.
 
-TODO: In the original code, they don't sort by frequency, but by BPE priority, despite the paper claiming otherwise,
-      UNLESS the authors thought that OrderedDict is actually a max-heap and hence their implementation should want to
-      keep frequency order instead of merge order.
+There are at least three inconsistencies between the paper and the code:
+    1. Whether to order the seed lexicon by corpus substring frequency (paper) or BPE merge rank (code);
+    2. Distance matrix calculation between characters and tokens being length-based (paper) or rank-based (code);
+    3. Whether to maximise -(H2 - H1) (paper) or Sinkhorn output 2 - Sinkhorn output 1 (code).
 
-TODO: I've added a FIXME in the code that shows a line that definitely can't be right.
+We expose these differences where possible. See the constructor documentation.
 """
-from typing import Optional
+from abc import abstractmethod
+from typing import Optional, Iterable, Union
+from pathlib import Path
+from dataclasses import dataclass
 
 import numpy as np
-from tqdm import tqdm
-from pathlib import Path
-from collections import OrderedDict, Counter
+from math import log
+from modest.formats.tsv import iterateTsv
 
-import ot  # https://github.com/PythonOT/POT/tree/master
-
-from ...util.iterables import take
-
-
-def countCharacters(corpus: Path, n_max_lines: int=int(1e7), tokenizer_name: str= 'subword-nmt') -> Counter[str]:
-    counts = Counter()
-    with open(corpus, "r", encoding="utf-8") as handle:
-        for i,line in enumerate(take(n_max_lines,handle)):
-            if tokenizer_name == 'subword-nmt':
-                line = line.replace("@@ ", "")
-
-            for word in line.split(" "):
-                for c in word:
-                    if not c.isspace():
-                        counts[c] += 1
-    return counts
+from ..word.vocabularisation import CountSubstrings, CountCharacters
+from ...evaluation import FutureObserver
+from ...evaluation.entropy import Entropy, TokenUnigramDistribution
+from ...factories.evaluators import evaluateTokeniser
+from ...interfaces import Artifacts, TokeniserWithVocabulary, Vocab
+from ...interfaces.artifactories import CacheableArtifactsWithVocabulary
+from ...interfaces.identifiers import NoSpecials
+from ...interfaces.vocabularisers import UnsupervisedVocabulariser, T_CacheableArtifact
+from ...util.iterables import snd, most
+from ...util.strings import shash
+from ...util.types import NamedIterable
 
 
-def countCharactersAndFilter(source_corpus: Path, target_corpus: Optional[Path], tokenizer_name='subword-nmt') -> Counter[str]:
-    counts = countCharacters(source_corpus, tokenizer_name=tokenizer_name)
-    if target_corpus is not None:
-        counts += countCharacters(target_corpus, tokenizer_name=tokenizer_name)
+_DEFINE_MUV_BY_GRID_STEP = True  # If set to True, the ΔV in MUV == -ΔH/ΔV is defined as the difference in seed vocabulary sizes
+                                 # (as seems to be the case in the paper) rather than the difference in pruned vocabulary sizes (even though it is the pruned vocabularies that produce the entropies for ΔH).
 
-    # Filter characters with frequency less than 2.
-    return Counter({key: val for key, val in counts.items() if val > 2})
+@dataclass
+class VOLTResult:
+    """One point in the grid search."""
+    seed_size: int
+    pruned_size: int
+    sinkhorn_loss: float
+    entropy: float
 
+    def serialise(self) -> tuple[int,int,float,float]:
+        return (self.seed_size, self.pruned_size, self.sinkhorn_loss, self.entropy)
 
-def countTokens(presegmented_corpus: Path, n_max_lines: int=int(1e7), tokenizer_name='subword-nmt'):
-    """
-    Count tokens in a corpus where they are already separated by spaces.
-    """
-    counts = Counter()
-    with open(presegmented_corpus, "r", encoding="utf-8") as handle:
-        for i,line in enumerate(take(n_max_lines,handle)):
-            for token in line.split():
-                if tokenizer_name == 'subword-nmt' and not token.endswith("@@"):
-                    token += "</w>"
-                counts[token] += 1
-
-    return counts
+    def __lt__(self, other: "VOLTResult") -> bool:
+        return self.seed_size < other.seed_size
 
 
-def countMergeApplicationsGivenTokenCounts(bpe_merge_file: Path, token_counts: Counter[str], min_number: int=1, tokenizer_name='subword-nmt'):
-    """
-    Count the amount of times a BPE merge was applied.
-    """
-    merge_applications: OrderedDict[str,int] = OrderedDict()
-    with open(bpe_merge_file, 'r', encoding="utf-8") as handle:
-         for line in tqdm(handle):
-             if tokenizer_name == 'subword-nmt' and line.startswith("#version"):
-                 continue
+@dataclass
+class VOLTResults:
+    """All points in the grid search."""
+    data: list[VOLTResult]
 
-             merge_string = line.strip()
-             parts = merge_string.split(" ")
-             merge_result = "".join(parts)
-             merge_applications[merge_string] = min_number
-             for large_token, freq in token_counts.items():
-                 if merge_result in large_token:  # FIXME: This is definitely NOT how you measure whether a merge was applied to reach large_token.
-                     merge_applications[merge_string] += freq
+    def __iter__(self):
+        return iter(self.data)
 
-    return merge_applications
+    def getMarginalLosses(self) -> dict[int,float]:
+        size_with_loss = [(record.seed_size, record.sinkhorn_loss) for record in sorted(self.data)]
+        return {size_curr: loss_curr - loss_prev for (_,loss_prev),(size_curr,loss_curr) in zip(size_with_loss, size_with_loss[1:])}
+
+    def getMUVs(self, normalise_by_pruned_size: bool=True) -> dict[int,float]:
+        """
+        :param normalise_by_pruned_size: whether to normalise by the difference in sizes of the vocabularies that were
+                                         used for segmentation, rather than the size of the seed vocabularies used to get to those vocabularies.
+        """
+        size_with_entropy = [(record.pruned_size if normalise_by_pruned_size else record.seed_size, record.entropy) for record in sorted(self.data)]
+        return {size_curr: -(entropy_curr - entropy_prev)/(size_curr - size_prev) for (size_prev,entropy_prev),(size_curr,entropy_curr) in zip(size_with_entropy, size_with_entropy[1:])}
+
+    def getOptimalSeedSize(self) -> int:
+        if most(record.entropy == 0 for record in self.data):  # Then loss was used.
+            scores = self.getMarginalLosses()
+        else:  # Then MUV was used.
+            scores = self.getMUVs(normalise_by_pruned_size=_DEFINE_MUV_BY_GRID_STEP)
+        return max(scores.keys(), key=scores.get)
 
 
-def countMergeApplications(source_corpus: Path, target_corpus: Optional[Path], bpe_merge_file: Path, tokenizer_name='subword-nmt'):
-    """
-    Get all token candidates associated with their frequencies. Here we take BPE-generated code segmentation as token candidates.
-    Arguments:
-        source_corpus (str): the source file from machine translation
-        target_corpus (str): the target file from machine translation
-        bpe_merge_file: the token candidate file. Here we take BPE-generated code segmentation as candidates.
-    """
-    tokens = countTokens(source_corpus, tokenizer_name=tokenizer_name)
-    if target_corpus is not None:
-        tokens += countTokens(target_corpus, tokenizer_name=tokenizer_name)
-    return countMergeApplicationsGivenTokenCounts(bpe_merge_file, tokens, tokenizer_name=tokenizer_name)
+class VOLTArtifacts(Artifacts):
+
+    @abstractmethod
+    def getResults(self) -> VOLTResults:
+        pass
+
+    def getOptimalSeedSize(self) -> int:
+        return self.getResults().getOptimalSeedSize()
+
+    def getOptimalVocabSize(self) -> int:
+        return len(self.getVocabulary())
+
+
+class CacheableVOLTArtifacts(CacheableArtifactsWithVocabulary, VOLTArtifacts):
+
+    _STATISTICS_FILENAME = "stats.tsv"
+
+    def __init__(self, selected_types: Iterable[str], statistics: list[VOLTResult]):
+        super().__init__(types=selected_types)
+        self._stats = VOLTResults(statistics)
+
+    def getResults(self) -> VOLTResults:
+        return self._stats
+
+    @classmethod
+    def load(cls, cache_path: Path):
+        return CacheableVOLTArtifacts(
+            cls._loadTypes(cache_path),
+            [VOLTResult(int(s1), int(s2), float(l), float(e)) for s1, s2, l, e in iterateTsv(cache_path / cls._STATISTICS_FILENAME)]
+        )
+
+    def store(self, cache_path: Path):
+        super().store(cache_path)
+        with open(cache_path / self._STATISTICS_FILENAME, "w", encoding="utf-8") as handle:
+            for stat in self._stats:
+                handle.write("\t".join(map(str,stat.serialise())) + "\n")
+
+
+OrderedStringCounts = list[tuple[str,int]]
+
+class VOLTVocabulariser(UnsupervisedVocabulariser[CacheableVOLTArtifacts]):
+
+    def __init__(self,
+                 initial_ordered_vocabulary: Artifacts,
+                 vocab_size_max: int,
+                 vocab_size_step: int=1000,
+
+                 reorder_vocabulary_by_frequency: bool=False,
+                 length_based_distance: bool=False,
+                 segmenter_for_entropy: Optional[TokeniserWithVocabulary]=None,
+
+                 max_iterations: int=500,
+                 conservation_threshold: float=0.00001):
+        """
+        Vocabulary learning with optimal transport.
+
+        The default values of this constructor reproduce the scripts of the VOLT authors, although it deviates from the paper
+        in three different ways.
+            1. The scripts consider a vocabulary ordered beforehand according to BPE, not by frequency.
+            2. The scripts build the distance matrix based on ranks, not based on length.
+            3. The scripts maximise the marginal Sinkhorn loss, not MUV. For MUV, you need to segment the corpus
+               in some kind of way given the vocabulary produced by Sinkhorn, and so you need a segmenter.
+
+        By changing the values of these parameters, you will get further from their scripts but closer to the paper.
+
+        :param initial_ordered_vocabulary: Seed vocabulary from which the optimal subset will be selected.
+                                           The process is repeated for all prefixes of this vocabulary
+                                           of sizes n x vocab_size_step, which is why the order of the vocabulary matters.
+                                           (Either you order by frequency as counted in the corpus, or you use the order given by the Artifacts, e.g. BPE ranking.)
+        :param segmenter_for_entropy: If not given, marginal Sinkhorn loss is used to decide the optimal vocabulary.
+                                      Else, this should be a fully configured tokeniser whose vocabulary will be swapped out by the Sinkhorn vocabularies.
+                                      Do not use a tokeniser which has other internal structures that are tied to the vocabulary (e.g. a BPE or ULM tokeniser).
+        :param conservation_threshold: Threshold above which tokens are kept. Higher threshold means more tokens won't make it and are thus removed from the initial vocabulary once
+                                       optimal transport is finished. The paper recommends 0.001, the scripts recommend a more conservative 0.00001 and thus we go with that.
+        """
+        import ot  # Checks whether you have installed https://github.com/PythonOT/POT
+
+        super().__init__(preprocessor=initial_ordered_vocabulary.preprocessorEffective())
+        self.initial_vocabulary = initial_ordered_vocabulary
+        self.vocab_size_step = vocab_size_step
+        self.vocab_size_max  = vocab_size_max
+
+        self.reorder_vocabulary_by_frequency = reorder_vocabulary_by_frequency
+        self.length_based_distance = length_based_distance
+        self.segmenter_for_entropy = segmenter_for_entropy
+
+        self.max_iterations  = max_iterations
+        self.threshold       = conservation_threshold
+
+    def _cacheSubfolder(self) -> str:
+        return "volt"
+
+    def _cacheType(self):
+        return CacheableVOLTArtifacts
+
+    def _identifierPartial(self) -> str:
+        return shash(f"{self.reorder_vocabulary_by_frequency}+{self.segmenter_for_entropy.getName()}+{self.length_based_distance}"
+                     f"{self.vocab_size_step}+{self.vocab_size_max}+{self.max_iterations}+{self.threshold}") + "_" + self.initial_vocabulary.getVocabulary().fingerprint()
+
+    def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> CacheableVOLTArtifacts:
+        return self._vocabulariseFromCounts(
+            char_counts=list(CountCharacters(self.preprocessor).vocabulariseFromWordIterable(word_iterable).getFrequencies()),
+            token_counts=list(CountSubstrings(self.initial_vocabulary).vocabulariseFromWordIterable(word_iterable).getFrequencies()),
+            source=word_iterable
+        )
+
+    def _vocabulariseFromSentences(self, sentence_iterable: NamedIterable[str]) -> T_CacheableArtifact:
+        raise NotImplementedError()
+
+    def _vocabulariseFromCounts(self, char_counts: OrderedStringCounts, token_counts: OrderedStringCounts, source: Union[NamedIterable[str],NamedIterable[tuple[str,int]]]) -> CacheableVOLTArtifacts:
+        if self.reorder_vocabulary_by_frequency:
+            token_counts = sorted(token_counts, key=lambda t: t[1], reverse=True)
+
+        # Grid search
+        optimal_seed_size, diagnostics = self._searchBestSize(tokens=token_counts, characters=char_counts, source=source)
+
+        # Re-create the best solution, just to get the vocabulary.
+        _, P = self._solveOptimalTransport(tokens=token_counts[:optimal_seed_size], characters=char_counts, max_iterations=self.max_iterations, length_based_distance=self.length_based_distance)
+        conserved_types = self._getPrunedVocabulary(token_counts, char_counts, P, self.threshold)
+        return CacheableVOLTArtifacts(conserved_types, diagnostics.data)
+
+    def _searchBestSize(self, tokens: OrderedStringCounts, characters: OrderedStringCounts, source: Union[NamedIterable[str],NamedIterable[tuple[str,int]]]) -> tuple[int, VOLTResults]:
+        sizes      = []
+        reductions = []
+        losses     = []
+        entropies  = []
+
+        for size in range(self.vocab_size_step, self.vocab_size_max, self.vocab_size_step):
+            loss, P = self._solveOptimalTransport(tokens[:size], characters, max_iterations=self.max_iterations, length_based_distance=self.length_based_distance)
+            vocab   = Vocab(self._getPrunedVocabulary(tokens[:size], characters, P, threshold=self.threshold), specials=NoSpecials())
+            sizes     .append(size)
+            reductions.append(len(vocab))
+            losses    .append(loss)
+            if self.segmenter_for_entropy is not None:
+                # Use the vocabulary to get entropy.
+                self.segmenter_for_entropy.preprocessor = self.preprocessor
+                self.segmenter_for_entropy.vocab = vocab
+                future = FutureObserver()
+                evaluateTokeniser(self._identifierPartial() + f"_{size}", source, self.segmenter_for_entropy, token_consumers=[
+                    TokenUnigramDistribution(ensured_vocabulary=vocab, observers=[
+                        Entropy(observers=[
+                            future
+                        ])])])
+                entropies.append(future.resolve().entropy)  # .................................
+            else:
+                entropies.append(0)
+
+        # Maximise
+        results = VOLTResults([VOLTResult(*t) for t in zip(sizes, reductions, losses, entropies)])
+        return results.getOptimalSeedSize(), results
+
+    ### All the methods below are classmethods so that they are accessible externally. We may change this in the future.
+
+    @classmethod
+    def _getDistanceMatrix(cls, characters: OrderedStringCounts, tokens: OrderedStringCounts, length_based_distance: bool) -> np.ndarray:
+        """
+        Initialize distance matrix in optimal transport. if the i-th char in j-th token, their distance is set to be a very small value, otherwize a large value.
+        Return a 2-dimension distance matrix.
+        """
+        BIG = 1e6
+
+        matrix = np.zeros((len(characters), len(tokens)))
+        for i, (char, _) in enumerate(characters):
+            for j, (token, _) in enumerate(tokens):
+                if char in token:
+                    matrix[i][j] = 0.001 * j if not length_based_distance else log(len(token))  # == -log(1.0 / len(token))
+                else:
+                    matrix[i][j] = BIG
+
+        return matrix
+
+    @classmethod
+    def _getPrunedVocabulary(cls, tokens: OrderedStringCounts, characters: OrderedStringCounts,
+                             ot_matrix: np.ndarray, threshold: float) -> list[str]:
+        """
+        Conserve types based on the optimal-transport matrix P.
+
+        :param ot_matrix: The chars x tokens P-matrix as generated by Sinkhorn optimal transport. Column j must correspond to
+                          tokens[j] (same order used when P was built).
+        :param threshold: The filter ratio from the optimal transportation matrix to the real vocabulary.
+                          Higher threshold means that more tokens are removed from the token candidates.
+        """
+        assert ot_matrix.shape == (len(characters), len(tokens))
+
+        vocab_size = len(tokens)
+        relevant_characters_by_type: dict[str, dict[str, float]] = dict()  # Maps a type to each character, and each character to some kind of number. The number seems purely for logging reasons; what this dictionary actually measures is whether there exists any character that has a high enough score when interacting with a given type.
+        for j, (typ, count_typ) in enumerate(tokens):
+            if typ.strip() == "":  # TODO: Probably this is the wrong place for this check.
+                continue
+
+            relevant_characters_by_type[typ] = dict()
+            for i, (char, _) in enumerate(characters):  # There is no constraint here that says the character must be in the type; it could be added but is probably not necessary since the distance matrix pushes OT away from this kind of solution.
+                merge_versus_char_score = float(ot_matrix[i][j] * vocab_size)
+                if ot_matrix[i][j] != 0 and merge_versus_char_score > threshold * count_typ:
+                    relevant_characters_by_type[typ][char] = merge_versus_char_score  # * len(tokens[j][0])
+
+        return [typ for typ, _ in tokens if relevant_characters_by_type[typ]]
+
+    @classmethod
+    def _solveOptimalTransport(cls, tokens: OrderedStringCounts, characters: OrderedStringCounts, max_iterations: int, length_based_distance: bool) -> tuple[float, np.ndarray]:
+        total_chars  = getTotalFromCountIterable(characters)
+        total_tokens = getTotalFromCountIterable(tokens)
+
+        d_matrix = cls._getDistanceMatrix(characters, tokens, length_based_distance=length_based_distance)
+        a = getExpectedCharacters(characters, total_chars, force_value_to_1=True)
+        b = getExpectedCharacters(tokens, total_tokens)
+
+        # TODO: Why are these here?
+        from ot import sinkhorn
+        epsilon = 0.1  # entropy parameter
+        alpha = 1.0  # Unbalanced KL relaxation parameter
+        loss, P = sinkhorn(a, b, d_matrix, reg=1.0, method='sinkhorn', numItermax=max_iterations, epsilon0=1e-6)
+        return loss, P
 
 
 ##########################################################################################################
 
 
-FixedOrderCounts = list[tuple[str,int]]
+def getTotalFromCountIterable(counts: OrderedStringCounts) -> int:
+    return sum(map(snd, counts))
 
-def buildDistanceMatrix(chars_with_counts: FixedOrderCounts, merges_with_counts: FixedOrderCounts) -> np.ndarray:
+
+def getExpectedCharacters(strings_with_counts: OrderedStringCounts, denominator: int, force_value_to_1: bool=False):
     """
-    Initialize distance matrix in optimal transport. if the i-th char in j-th token, their distance is set to be a very small value, otherwize a large value.
-    Return a 2-dimension distance matrix.
-    """
-    matrix = np.zeros((len(chars_with_counts), len(merges_with_counts)))
-    rows = len(chars_with_counts)
-    cols = len(merges_with_counts)
-    for i in range(rows):
-        for j in range(cols):
-            if chars_with_counts[i][0] in merges_with_counts[j][0]:
-                matrix[i][j] = 0.001 * j  # /len(tokens[j][0])#0.00001*tokens[j][1]#-math.log(tokens[j][1]*1.0/total_tokens)*1.0/len(tokens[j][0]) + 0.1/
-            else:
-                matrix[i][j] = 100  # 0
-    return matrix
+    Compute how many characters each item in the given iterator is expected to produce given a unigram item generation process.
 
-
-def getCharacterDistribution(strings_with_counts: FixedOrderCounts, denominator: int, count_individual_characters: bool=False):
-    """
-    Compute how many characters are represented by each item in the given sequence.
-        - For characters, this is just their frequencies.
-        - For tokens, this is their frequencies multiplied by their length: for example, give a token 'cat' with
-          frequency 500, it requires 500 'c', 500 'a', and 500 't'. Therefore, it requires 1500 characters in total.
-
-    The result is not a probability distribution due to this reweighting.
-
-    :param count_individual_characters: whether to take token length into account or treat everything like a character.
+    :param force_value_to_1: whether to force the amount of characters produced to be 1.
     """
     return [
-        (len(token) if count_individual_characters else 1) * freq/denominator + 1e-4
+        (len(token) if not force_value_to_1 else 1) * freq/denominator + 1e-4
         for token,freq in strings_with_counts
     ]
-
-
-def pruneMerges(candidate_merges: Counter[str], chars: Counter[str],
-                p_matrix: np.ndarray, threshold: float=0.0001) -> list[str]:
-    """
-    Conserve merges based on the optimal-transport matrix P.
-
-    :param p_matrix: The P matrix as generated by Sinkhorn optimal transport. Should be indexed on characters and tokens
-                     in such a way that the highest-frequency tokens and characters are the lowest indices.
-    :param threshold: The filter ratio from the optimal transportation matrix to the real vocabulary. Here we set a
-                      small value. Higher threshold means that more tokens are removed from the token candidates.
-    """
-    # Step 1: Create a data structure that captures (1) all BPE merges but (2) which merges (and by extension, types) make the cut.
-    candidate_merges = candidate_merges.most_common()
-    chars            = chars.most_common()
-    vocab_size = len(candidate_merges)
-    merges_to_chars_to_score = dict()  # Maps a merge string to each character and each character to some kind of number. The number seems purely for logging reasons; what this dictionary actually measures is whether there exists any character that has a high enough score when interacting with a given merge.
-    for j in tqdm(range(len(p_matrix[0]))):
-        merge_string, merge_count = candidate_merges[j]
-        if merge_string.strip() == "":
-            continue
-
-        merges_to_chars_to_score[merge_string] = dict()
-        for i in range(len(p_matrix)):
-            char = chars[i][0]
-            merge_versus_char_score = p_matrix[i][j]*vocab_size
-            if p_matrix[i][j] != 0 and merge_versus_char_score > threshold*merge_count:
-                merges_to_chars_to_score[merge_string][char] = merge_versus_char_score  # * len(tokens[j][0])
-
-    # Step 2: For each merge, check if it is conserved, and if so, register the parent types that need to be kept to apply this merge (even if their merge didn't make the cut).
-    deleted_actions = dict()
-    types_necessary_for_merges = dict()  # Once again, this is a dictionary for logging purposes only. The key set is what you want. The values just explain for which merge the given type is necessary.
-    for merge_string in merges_to_chars_to_score.keys():
-        if len(merges_to_chars_to_score[merge_string]) > 0:
-            left, right = merge_string.split(" ")
-            types_necessary_for_merges[left]  = merge_string
-            types_necessary_for_merges[right] = merge_string
-        else:
-            pass
-            # print(merge_string, merges_to_chars_to_score[merge_string])
-            # deleted_actions[merge_string.replace(" ", "")] = merge_string
-
-    # Step 3: Look up the merges that make the necessary types and add them to the rest of the conserved merges.
-    final_merges = []
-    for merge_string in merges_to_chars_to_score.keys():
-        merge_result = merge_string.replace(" ", "")
-        if merge_result in types_necessary_for_merges or len(merges_to_chars_to_score[merge_string]) > 0:
-            final_merges.append(merge_string)
-        else:
-            pass
-            # print(merge_string, merges_to_chars_to_score[merge_string])
-
-    return final_merges
-
-
-def searchBestSize(candidate_merges: Counter[str], chars: Counter[str],
-                   max_number: int=30000, interval: int=1000, n_max_iters: int=300) -> int:
-    scores = {}
-    previous_entropy = 0
-
-    sorted_chars: FixedOrderCounts = chars.most_common()
-    total_chars = chars.total()
-
-    sorted_merges_all: FixedOrderCounts = candidate_merges.most_common()
-    for Vsize in range(interval, max_number, interval):  # iteration_numbers:
-        sorted_merges_current = sorted_merges_all[:Vsize]
-        total_merges = sum(map(lambda merge_with_freq: merge_with_freq[1], sorted_merges_current))
-
-        d_matrix = buildDistanceMatrix(sorted_chars, sorted_merges_current)
-        a = getCharacterDistribution(sorted_chars, total_chars)
-        b = getCharacterDistribution(sorted_merges_current, total_merges, True)
-
-        epsilon = 0.1  # entropy parameter
-        alpha = 1.0  # Unbalanced KL relaxation parameter
-        current_entropy, _ = ot.sinkhorn(a, b, d_matrix, 1.0, method='sinkhorn', numItermax=n_max_iters, epsilon0=1e-6)
-        if Vsize == interval:
-            # print("finish reading", iter_number, Gs, (Gs-current_entropy)/2)
-            previous_entropy = current_entropy
-        else:
-            # print("finish running", iter_number, current_entropy, current_entropy-previous_entropy)
-            scores[Vsize] = current_entropy - previous_entropy
-            previous_entropy = current_entropy
-
-    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    print("Best size:", sorted_scores[0][0])
-    print("One optional solution is that you can use this size to generated vocabulary in subword-nmt or sentencepiece")
-    return sorted_scores[0][0]
-
-
-def solveTransportMatrix(candidate_merges: Counter[str], chars: Counter[str],
-                         optimal_size: int, n_max_iters: int=300) -> np.ndarray:
-    sorted_chars: FixedOrderCounts = chars.most_common()
-    total_chars = chars.total()
-
-    sorted_tokens: FixedOrderCounts = candidate_merges.most_common(optimal_size)
-    total_tokens = sum(map(lambda token_freq: token_freq[1], sorted_tokens))
-
-    d_matrix = buildDistanceMatrix(sorted_chars, sorted_tokens)
-    a = getCharacterDistribution(sorted_chars, total_chars)
-    b = getCharacterDistribution(sorted_tokens, total_tokens, True)
-
-    epsilon = 0.1  # entropy parameter
-    alpha = 1.0  # Unbalanced KL relaxation parameter
-    _, P = ot.sinkhorn(a, b, d_matrix, 1.0, method='sinkhorn', numItermax=n_max_iters, epsilon0=1e-6)
-    return P
-
-
-def volt(source_file: Path, target_file: Optional[Path], token_candidate_file: Path, tokenizer_name: str,
-         max_number: int=10_000, interval: int=1000, num_iter_max: int=500, threshold: float=0.00001):
-    merge_counts = countMergeApplications(source_file, target_file, token_candidate_file, tokenizer_name=tokenizer_name)  # get token candidates and their frequencies
-    char_counts  = countCharactersAndFilter(source_file, target_file, tokenizer_name=tokenizer_name)  # get chars and their frequencies
-    optimal_size = searchBestSize(merge_counts, char_counts, max_number, interval, num_iter_max)  # generate the best ot size
-    P = solveTransportMatrix(merge_counts, char_counts, optimal_size, num_iter_max)  # generate the optimal matrix based on the ot size
-    return pruneMerges(merge_counts, char_counts, P, threshold)  # generate the vocabulary based on the optimal matrix

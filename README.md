@@ -40,6 +40,9 @@ Currently, the package implements:
 - Subword regularisers:
   - **GRaMPa** ([Bauwens et al., 2025](https://aclanthology.org/2025.acl-long.1180/)): randomised segmentation constrained by a vocabulary.
   - **StochasTok** ([Sims et al., 2025](https://iclr.cc/virtual/2025/33365))
+- **VOLT** ([Xu et al., 2021](https://aclanthology.org/2021.acl-long.571/)) vocabularisation. Reimplementation of the original codebase with two big improvements:
+  - Tokeniser-agnostic rather than BPE-focused.
+  - Customisable to reproduce the VOLT from the paper vs. the VOLT from the original codebase, which are inconsistent with each other.
 - **SaGe** ([Yehezkel & Pinter, 2023](https://aclanthology.org/2023.eacl-main.45/)) vocabularisation.
 - **Derivative leverager (DeL)** ([Hofmann et al., 2021](https://aclanthology.org/2021.acl-long.279/)), both training and segmentation.
 - Other, less interesting tokenisers:
@@ -51,7 +54,6 @@ Currently work in progress:
 - [Tokenmonster](https://github.com/alasdairforsythe/tokenmonster)
 - [DPE](https://aclanthology.org/2020.acl-main.275/)
 - Morfessor family
-- VOLT (mostly already present in TkTkT)
 
 #### Multiplexing
 TkTkT is the only package that supports **multiplexing** multiple tokenisers into one big tokeniser that alternates 

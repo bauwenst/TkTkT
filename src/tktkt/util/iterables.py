@@ -269,6 +269,15 @@ def count(iterable: Iterable[T]) -> int:
     return total
 
 
+def most(iterable: Iterable[bool], fraction: float=0.5) -> bool:  # An in-between between any() and all().
+    trues = 0
+    total = 0
+    for thing in iterable:
+        trues += thing
+        total += 1
+    return trues >= fraction*total
+
+
 def maxargmax(iterable: Iterable[CT]) -> tuple[CT, int]:
     max_element    = None
     argmax_element = None

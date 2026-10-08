@@ -1,4 +1,4 @@
-from typing import Iterable, Callable
+from typing import Iterable, Callable, Iterator
 from enum import Enum
 import numpy as np
 
@@ -176,6 +176,16 @@ class Disambiguator:
 
 
 ########################################################################################################################
+
+
+def substrings(s: str) -> Iterator[str]:
+    n = len(s)
+    # for i in range(n):
+    #     for j in range(i+1,n+1):
+    #         yield s[i:j]
+    for l in range(1, n+1):
+        for i in range(n-l+1):
+            yield s[i:i+l]
 
 
 def findLongestCommonPrefix(strings: Iterable[str]) -> str:
