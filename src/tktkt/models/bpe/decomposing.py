@@ -1,6 +1,8 @@
 """
 Tokenisers that have flags attached to types in the vocabulary and recursively decompose the results of BPE merging
 until no token has a flag.
+
+ScaffoldBPE and TrimmedBPE are like this.
 """
 from typing_extensions import Self
 from pathlib import Path
@@ -18,7 +20,7 @@ from ...interfaces.tokenisers import *
 from ...util.types import NamedIterable, Tokens
 from ...util.strings import shash
 
-__all__ = ["ScaffoldBPE", "TrimmedBPE"]
+__all__ = ["ScaffoldBPE", "TrimmedBPE", "RandomDropBPE"]
 
 
 class RecursivelyDecomposingBPE(_DeterministicBPETokeniser[WithSpecials]):

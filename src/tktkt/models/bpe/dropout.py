@@ -113,11 +113,7 @@ class BPEBreakdown(_NonDeterministicBPETokeniser[WithSpecials]):
 
     def __init__(self, preprocessor: Preprocessor, vocab: Vocab[WithSpecials], merges: MergeList,
                  within_tree: bool=False, breakdown_probability: float=0.33):
-        super().__init__(
-            vocab=vocab, merges=merges,
-
-            preprocessor=preprocessor
-        )
+        super().__init__(vocab=vocab, merges=merges, preprocessor=preprocessor)
         self.rng = npr.default_rng(0)
         self.p = breakdown_probability
         self.within_tree = within_tree

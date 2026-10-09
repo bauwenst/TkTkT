@@ -18,6 +18,28 @@ from .vocabularisation import Preprocessor, _ChizhovBackend_BPE, _ChizhovTrainin
     _VocabulariserWithChizhovBackend, CacheableBPEArtifacts
 
 
+__all__ = ["PMIBPEVocabulariser", "SBPEVocabulariser", "DLGBPEVocabulariser", "WordPieceVocabulariser"]
+
+
+class _BPEVocabulariser_DifferentMetric(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):  # Analogous to BPEVocabulariser_Chizhov
+
+    @abstractmethod
+    def _metric_name(self) -> str:
+        pass
+
+    def _cacheSubfolder(self) -> str:
+        return self._metric_name() + "-bpe"
+
+    def _cacheType(self):
+        return CacheableBPEArtifacts
+
+    def _dumpToArtifacts(self, dump_path: Path) -> CacheableBPEArtifacts:
+        return CacheableBPEArtifacts(
+            types=CacheableBPEArtifacts._loadTypes(dump_path),
+            merges=CacheableBPEArtifacts._loadMerges(dump_path)
+        )
+
+
 class _BigramOverUnigramObjective(CountingObjective):
     """
     Tracks the pair score
@@ -87,25 +109,6 @@ class _ChizhovBackend_PMIBPE(_ChizhovBackend_BPE):  # Inherits the preprocessing
         state = super()._initialize_state()
         state.pairs = _BigramOverUnigramObjective()
         return state
-
-
-class _BPEVocabulariser_DifferentMetric(_VocabulariserWithChizhovBackend[CacheableBPEArtifacts]):  # Analogous to BPEVocabulariser_Chizhov
-
-    @abstractmethod
-    def _metric_name(self) -> str:
-        pass
-
-    def _cacheSubfolder(self) -> str:
-        return self._metric_name() + "-bpe"
-
-    def _cacheType(self):
-        return CacheableBPEArtifacts
-
-    def _dumpToArtifacts(self, dump_path: Path) -> CacheableBPEArtifacts:
-        return CacheableBPEArtifacts(
-            types=CacheableBPEArtifacts._loadTypes(dump_path),
-            merges=CacheableBPEArtifacts._loadMerges(dump_path)
-        )
 
 
 class PMIBPEVocabulariser(_BPEVocabulariser_DifferentMetric):
