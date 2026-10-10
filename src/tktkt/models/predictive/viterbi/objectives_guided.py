@@ -1,18 +1,12 @@
 """
 Guided score functions. These are informed by knowledge of the language, e.g. models that estimate the probability of a
 token appearing at all (with or without considering context), or models that estimate the probability of a split point.
-
-TODO: Another idea:
-    - There is still quite a big difference between a SubstringClassifier and the idea of turning a CharacterClassifier
-      into a SubstringClassifier, which is that a SubstringClassifier normalises across all possible steps from length 1 to K
-      that you can take (e.g. a softmax over the vocab, although you lose mass because only a few of those are actually
-      allowed as a step at the current position) whilst if you use boundary probabilities, you're only going to be normalised for each of the 2^k boundary configurations of
-      a fixed length k.
 """
-from typing import MutableSequence
+from typing import MutableSequence, Sequence
 from abc import abstractmethod, ABC
 
 import numpy as np
+
 try:
     import torch
 except ImportError:
@@ -22,6 +16,7 @@ from math import log as ln
 
 from .framework import ViterbiStepScoreGenerator, ViterbiStepScores, INFTY
 from ....util.printing import sgnprint
+from ....util.iterables import cumsum
 
 __all__ = ["BoundaryScoresChosen", "BoundaryScoresAll",
            "BoundaryPrefixLength", "BoundarySuffixLength", "BoundaryPrefixLengthExtended", "BoundarySuffixLengthExtended",
@@ -52,6 +47,10 @@ class SubstringClassifier(ABC):
         """
         Returns a matrix of log probabilities that say, for each substring of length k starting at each of the n characters,
         what its probability of occurring is across some domain of substrings (e.g. a subword vocabulary).
+
+        Note: When these probabilities are normalised by an external constraint (like in ULM: across
+        the entire vocabulary, type probabilities sum to 1) rather than an internal constraint (like in GRaMPa: across
+        the edges exiting from a node, probabilities sum to 1), optimising paths will lead to a length bias.
         """
         pass
 
@@ -160,6 +159,27 @@ class PiecewisePT(ProbabilityTransform):
 
     def __repr__(self):
         return self.__class__.__name__ + f"({sgnprint(self.a)},{sgnprint(self.b)})" + ("_NegComp")*self.negate_as_complement
+
+
+class SigmoidPT(ProbabilityTransform):
+    """
+    Implements a symmetric sigmoid around 0.5 with maximum of 1.
+    Any steepness under 5 is basically just a straight line. Above 15 is very steep.
+    """
+
+    def __init__(self, steepness: float):
+        super().__init__(negate_as_complement=False)  # Doesn't matter because f(1-p) == -f(p) anyway.
+        self.steepness = steepness
+        self.normalisation = 2 * (1 + exp(-0.5*steepness)) / (1 - exp(-0.5*steepness))
+
+        self.inv_steepness     = 1/self.steepness
+        self.inv_normalisation = 1/self.normalisation
+
+    def probabilityToScore(self, p: float) -> float:
+        return self.normalisation * (1/(1 + exp(-self.steepness*(p-0.5))) - 0.5)
+
+    def scoreToProbability(self, s: float) -> float:
+        return 0.5 - self.inv_steepness * ln(1/(s*self.inv_normalisation + 0.5) - 1)
 
 
 class MultiplicativelyBalancedProbabilityTransform(ProbabilityTransform):
@@ -319,10 +339,22 @@ class _ScoreGeneratorUsingCharacterClassifierForTransform(_ScoreGeneratorUsingCh
         super().__init__()
         self.T = transform
 
-    def getBoundaryScores(self, string: str) -> list[float]:
-        boundary_scores = list(map(self.T.probabilityToScore, map(exp, self.logprob_classifier.getPointLogProbabilities(string))))  # one entry for each character
-        boundary_scores[-1] = self.T.probabilityToScore(0.5)  # Score you get from walking straight to the end is indifferent. I.e.: doing it is not punished so much you take other bad splits, but it's not rewarded so much you don't go looking for better splits.
-        return boundary_scores
+    def getBoundaryScores(self, string: str) -> list[float]:  # Produces len(string) values, one for each post-character position.
+        return list(map(self.T.probabilityToScore, map(exp, self.logprob_classifier.getPointLogProbabilities(string))))  # one entry for each character
+
+    def generateGrids(self, string: str, max_k: int, widths: list[int]) -> list[ViterbiStepScores]:
+        token_ends = tuple(cumsum(widths))
+
+        all_scores  = self.getBoundaryScores(string)
+        dummy_score = self.T.probabilityToScore(0.5)
+        for end in token_ends:
+            all_scores[end-1] = dummy_score  # Since every segmentation visits the post-last-character position, this score does not matter. It just cannot be an absorbing element (-infty for addition, 0 for multiplication). We use the score transform because potentially the user chose it to produce the neutral element of the combining operation at 50% probability (not necessarily the case, but no score is going to score 0.5 with an absorbing element).
+
+        return [self._generateGrid(all_scores[start:end], max_k) for start,end in zip((0,) + token_ends, token_ends)]
+
+    @abstractmethod
+    def _generateGrid(self, scores: Sequence[float], max_k: int) -> ViterbiStepScores:
+        pass
 
     def __repr__(self):
         return self.__class__.__name__ + "(" + self.T.__repr__() + ")"
@@ -355,16 +387,15 @@ class BoundaryScoresChosen(_ScoreGeneratorUsingCharacterClassifierForTransform):
     transform and then summing instead of multiplying is worthwhile.
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_scores = self.getBoundaryScores(string)
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=0)
+    def _generateGrid(self, scores: Sequence[float], max_k: int) -> ViterbiStepScores:
+        N = len(scores)
+        grid = ViterbiStepScores(N, max_k, default=0)  # Default doesn't matter because the entire grid is filled.
         for n in range(N):
             K = min(max_k, N-n)  # Example: you are at n == 5 and there are N == 7 characters. This means you still need to include character 5 and 6 in the segmentation, using the probabilities at n+0 and n+1. Hence, there are K == N-n steps available.
             for k in range(K):
-                scores.set(n,k, boundary_scores[n+k])  # Example: you are at n == 0. For k == 1, you take the second-smallest step, to 2. The probability of hitting a boundary by doing so is the probability of a boundary being after 1 == n+k.
+                grid.set(n, k, scores[n + k])  # Example: you are at n == 0. For k == 1, you take the second-smallest step, to 2. The probability of hitting a boundary by doing so is the probability of a boundary being after 1 == n+k.
 
-        return scores
+        return grid
 
 
 class BoundaryScoresAll(_ScoreGeneratorUsingCharacterClassifierForTransform):
@@ -385,63 +416,23 @@ class BoundaryScoresAll(_ScoreGeneratorUsingCharacterClassifierForTransform):
     There's a funky equivalence here: you could convert the CharacterClassifier into a SubstringClassifier first, and
     then use that SubstringClassifier with its usual grid generator.
 
-    TODO: As it turns out, for symmetric scores (not regular probabilities), this is mathematically equivalent to only considering chosen boundaries.
-          Given the preferred score at position i, you can either choose to split there or not. You get the score at that position when you do.
-            - If it's not a split and you do split, you receive a score, but it's negative.
-            - If it's not a split and you don't split, you don't receive a score, which is +1 over the alternative decision.
-            - If it's a split and you don't split, you don't receive a score.
-            - If it's a split and you do split, you receive a score and it's positive, which is +1 over the alternative decision.
-         In other words, when you DON'T SPLIT somewhere, the net reward of that decision doesn't have to be accounted for
-         explicitly because it already was.
-         The reason why this is different in the LogProbability class is because the ln(1-p) is not -ln(p) and hence if
-         you add ln(1-p) as extra "negative reward", this is NOT equivalent to missing ln(p), unlike subtracting ln(p) would be.
-         |
-         I wonder what happens when you have asymmetric rewards. We want to incentivise precision (because you need smaller
-         gains in precision to get bigger gains in F1), which means disencentivising (bad) splitting as much as possible.
-         Right now, for the same word, it is equally scored to have
-            - 2 good splits + 2 bad splits == 1 good + 1 bad.
-            - 2 good splits + 1 bad splits == 1 good + 0 bad.
-        In the second case, even though the net score is the same, the second one has better precision (and worse recall).
-        It's not obvious that you want to lower recall, but in any case, either use a tiebreaker objective or punish bad
-        splits more: with weight -2, you would get
-            - +2 + -4 != +1 -2
-            - +2 + -2 != +1 +0
-        The obvious danger is of course that you won't go get a reachable split if it requires one bad split.
-        |
-        One more thing to prove: if you have this kind of negative reward, is it useful to count untaken splits, or is
-        it again mathematically equivalent?
-            - If it's not a split (carried score -2) and you do split, you receive -2.
-            - If it's not a split (carried score -2) and you don't split, you receive +0 (boundary-only) or +2 (joint), so joint gives twice the benefit for being correct. Net +2 vs. net +4.
-            - If it's a split (carried score +1) and you don't split, you receive +0 (boundary-only) or -1 (joint).
-            - If it's a split (carried score +1) and you do split, you receive +1, so again joint just gives twice the benefit for being correct. Net +1 vs. net +2.
-        There is also an alternative, keeping the positive and negative ranges fixed:
-            - If it's not a split (carried score -2) and you do split, you receive -2.
-            - If it's not a split (carried score -2) and you don't split, you receive +0 (boundary-only) or +1 (joint). Net +2 vs. net +3.
-            - If it's a split (carried score +1) and you don't split, you receive +0 (boundary-only) or -2 (joint).
-            - If it's a split (carried score +1) and you do split, you receive +1. Net +1 vs. net +3.
-        In one, the net reward for being correct is doubled from boundary-only to joint.
-        In the other, the net reward for a correct positive versus a correct negative is different (boundary-only) or the same (joint).
-        |
-        To figure out which of these two effects results in an equivalence between boundary-only and joint, you should
-        implement both strategies and run all 4 variants. There are two ways to implement these asymmetric ranges:
-            - Linear: min + P*(max-min)
-            - Piecewise: (2*P-1)*max if P > 0.5 else (1-2*P)*min
-        So actually, there are 8 variants that test 4 functions.
+    Note: for certain score functions, it is mathematically provable that they are equivalent in BoundaryScoresAll and
+    in BoundaryScoresChosen, and in others it is mathematically provable that they are not equivalent but do lose all
+    of their expressivity in BoundaryScoresAll rather than BoundaryScoresChosen. So choose wisely whether you want this.
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_scores = self.getBoundaryScores(string)
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=0)
+    def _generateGrid(self, scores: Sequence[float], max_k: int) -> ViterbiStepScores:
+        N = len(scores)
+        grid = ViterbiStepScores(N, max_k, default=0)
         for n in range(N):
             K = min(max_k, N-n)  # Like above.
             for k in range(K):
-                cumulative_score = boundary_scores[n+k]  # Like above.
+                cumulative_score = scores[n+k]  # Like above.
                 for i in range(k):
-                    cumulative_score += self.T.complement(boundary_scores[n+i])
-                scores.set(n, k, cumulative_score)
+                    cumulative_score += self.T.complement(scores[n+i])
+                grid.set(n, k, cumulative_score)
 
-        return scores
+        return grid
 
 
 ########################################################################################################################
@@ -466,27 +457,57 @@ class _ScoreGeneratorUsingCharacterClassifierForHardBoundaries(_ScoreGeneratorUs
         self.punishment = -abs(punishment)  # User can give positive or negative values, doesn't matter.
         self.do_normalise = do_normalise
 
-    def getHardBoundaryIndices(self, string: str) -> list[int]:
-        """
-        Returns the INDICES of which characters are preceded by a boundary with probability > 0.5.
-        Always includes index 0 and len(string), which are imaginary boundaries.
-        """
-        # To reiterate how indexing works in the Viterbi framework:
-        #   - The step score at [n,k] is the score you get when you are at the split position BEFORE character n (with n being 0-based) and take a step of k+1 characters.
-        #   - The boundary probability at n is the probability of there being a split AFTER character n.
-        # In other words: steps scores are indexed by inter-character positions (including two at the ends), boundary probabilities are indexed by character.
+    # def getHardBoundaryIndices(self, string: str) -> list[int]:
+    #     """
+    #     Returns the INDICES of which characters are PRECEDED by a boundary with probability > 0.5.
+    #     Always includes index 0 and len(string), which are imaginary boundaries.
+    #     """
+    #     # To reiterate how indexing works in the Viterbi framework:
+    #     #   - The step score at [n,k] is the score you get when you are at the split position BEFORE character n (with n being 0-based) and take a step of k+1 characters.
+    #     #   - The boundary probability at n is the probability of there being a split AFTER character n.
+    #     # In other words: steps scores are indexed by inter-character positions (including two at the ends), boundary probabilities are indexed by character.
+    #
+    #     # If the proposed segmentation is "w|or|d", thresholding the probabilities gives a mask [1, 0, 1, 0].
+    #     # Index i then says whether there is a boundary AFTER character i.
+    #     boundary_after_asmask = [1 * (exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
+    #
+    #     # We turn it into "|w|or|d|" with mask [1,   1, 0, 1,   1].
+    #     # Index i will now say whether there is a boundary BEFORE character i,
+    #     # with an extra position at the end for a boundary behind the last character.
+    #     boundary_before_asmask = [1] + boundary_after_asmask
+    #     boundary_before_asmask[-1] = 1
+    #
+    #     # Finally, convert this to indices. In the above example: [0, 1, 3, 4].
+    #     boundary_before = np.nonzero(boundary_before_asmask)[0]  # np.nonzero produces one array PER dimension. No errors are thrown if you forget the [0], but the zip() below will be empty!
+    #     return boundary_before.tolist()
 
-        # If the proposed segmentation is "w|or|d", the raw probability mask would be [1, 0, 1, 0].
-        # Index n says whether there is a boundary AFTER character n.
-        boundary_after_asmask = [1 * (exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]
-        # We turn it into "|w|or|d|" with mask [1,   1, 0, 1,   1].
-        # Index n now says whether there is a boundary BEFORE character n,
-        # with an extra position at the end for a boundary behind the last character.
-        boundary_before_asmask = [1] + boundary_after_asmask
-        boundary_before_asmask[-1] = 1
-        # Finally, convert this to indices. In the above example: [0, 1, 3, 4].
-        boundary_before = np.nonzero(boundary_before_asmask)[0]  # np.nonzero produces one array PER dimension. No errors are thrown if you forget the [0], but the zip() below will be empty!
-        return boundary_before.tolist()
+    def getHardIndices(self, string: str, widths: list[int]) -> list[Sequence[int]]:
+        """
+        First computes thresholded post-character split probabilities, overwritten by slice boundaries wherever applicable,
+        then takes slices, converts the mask to (slice-local) split-point indices, and prepends the starting index 0.
+
+        This code was tested for correctness. It works as long as sum(widths) == len(string).
+        """
+        M_boundary_before_char = [None] + [1 * (exp(ln) > 0.5) for ln in self.logprob_classifier.getPointLogProbabilities(string)]  # The None is intentional. It means that now a boundary after 2 characters means M[2] = 1.
+        # Example: thresholding says A/BC/DEF/GHIJK/ then the mask is
+        # M_boundary_before_char = [None] + [1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1]
+
+        token_ends = tuple(cumsum(widths))
+        for end in token_ends:
+            M_boundary_before_char[end] = 1
+
+        hard_indices = []
+        for start,end in zip((0,) + token_ends, token_ends):
+            partial_mask = [1] + M_boundary_before_char[start+1:end+1]
+            hard_indices.append(tuple(i for i in range(len(partial_mask)) if partial_mask[i]))
+        return hard_indices
+
+    def generateGrids(self, string: str, max_k: int, widths: list[int]) -> list[ViterbiStepScores]:
+        return [self._generateGrid(boundaries, width, max_k) for width, boundaries in zip(widths, self.getHardIndices(string, widths))]
+
+    @abstractmethod
+    def _generateGrid(self, boundaries: Sequence[int], width: int, max_k: int) -> ViterbiStepScores:
+        pass
 
     def __repr__(self):
         return self.__class__.__name__ + "_Normed"*self.do_normalise + f"(pm={self.punishment}))"
@@ -512,12 +533,9 @@ class BoundaryPrefixLength(_ScoreGeneratorUsingCharacterClassifierForHardBoundar
     a boundary.)
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_before = self.getHardBoundaryIndices(string)
-
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=self.punishment)  # Every step that is NOT a prefix is discouraged, and more such steps are more discouraged.
-        for start,end in zip(boundary_before[:-1], boundary_before[1:]):
+    def _generateGrid(self, boundaries: Sequence[int], width: int, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(width, max_k, default=self.punishment)  # Every step that is NOT a prefix is discouraged, and more such steps are more discouraged.
+        for start,end in zip(boundaries[:-1], boundaries[1:]):
             span_length = end-start
             denominator = span_length if self.do_normalise else 1
 
@@ -538,17 +556,14 @@ class BoundaryPrefixLengthExtended(_ScoreGeneratorUsingCharacterClassifierForHar
     can jump a gap and still harvest the score for the boundary you end up at!
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_before = self.getHardBoundaryIndices(string)
+    def _generateGrid(self, boundaries: Sequence[int], width: int, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(width, max_k, default=self.punishment)
 
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=self.punishment)
-
-        for n, n_where_reward_stagnates in zip(boundary_before[:-1], boundary_before[1:]):
+        for n, n_where_reward_stagnates in zip(boundaries[:-1], boundaries[1:]):
             steps_with_increasing_reward = n_where_reward_stagnates - n  # == span_length above.
             denominator = steps_with_increasing_reward if self.do_normalise else 1
 
-            K = min(max_k, N-n)
+            K = min(max_k, width-n)
             for k in range(K):
                 scores.set(n, k, min(steps_with_increasing_reward, k+1)/denominator)  # Increasing as long as k <= steps_with_increasing_reward-1, then stays at that value. E.g.: if you have |wo|rd|, the outer loop will produce (n,end) == (0,2), so taking a step of k+1 == 1 will get you reward k+1 == 1, a step of k+1 == 2 will get k+1 == 2, but a step of k+1 == 3 will still give reward end-n == 2. You hence got 2 iterations of increasing reward.
 
@@ -565,13 +580,10 @@ class BoundarySuffixLength(_ScoreGeneratorUsingCharacterClassifierForHardBoundar
     (e.g. "fgh").
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_before = self.getHardBoundaryIndices(string)
+    def _generateGrid(self, boundaries: Sequence[int], width: int, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(width, max_k, default=self.punishment)
 
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=self.punishment)
-
-        for start,end in zip(boundary_before[:-1], boundary_before[1:]):
+        for start,end in zip(boundaries[:-1], boundaries[1:]):
             span_length = end - start
             denominator = span_length if self.do_normalise else 1
 
@@ -587,19 +599,45 @@ class BoundarySuffixLengthExtended(_ScoreGeneratorUsingCharacterClassifierForHar
     Analogue of BoundaryPrefixLengthExtended.
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_before = self.getHardBoundaryIndices(string)
+    def _generateGrid(self, boundaries: Sequence[int], width: int, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(width, max_k, default=self.punishment)
 
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=self.punishment)
-
-        for n_where_reward_stagnates, n in zip(boundary_before[:-1], boundary_before[1:]):
+        for n_where_reward_stagnates, n in zip(boundaries[:-1], boundaries[1:]):
             steps_with_increasing_reward = n - n_where_reward_stagnates
             denominator = steps_with_increasing_reward if self.do_normalise else 1
 
             K = min(max_k, n)  # K is the amount of steps you move back. If you are on index n, you move back 1 steps to n-1, 2 steps to n-2, ..., n steps to 0, and you can't go further.
             for k in range(K):
                 scores.set(n-(k+1), k, min(steps_with_increasing_reward, k+1)/denominator)
+
+        return scores
+
+
+class BoundaryPrefixAndSuffixLength(_ScoreGeneratorUsingCharacterClassifierForHardBoundaries):
+    """
+    Combination of prefix and suffix scores. See BoundaryPrefixAndSuffixLengthExtended for documentation.
+    This is the version without extension, i.e. you get no
+    """
+
+    def _generateGrid(self, boundaries: Sequence[int], width: int, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(width, max_k, default=self.punishment)
+
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            span_length = end-start
+            denominator = span_length if self.do_normalise else 1
+
+            # Prefix score
+            K_nodes_forward = min(max_k, span_length-1)  # Either limited by max step OR by the next boundary (which can be the edge of the graph); the step to the boundary itself is not yet scored.
+            for k in range(K_nodes_forward):
+                scores.set(start, k, (k+1)/denominator)
+
+            # Suffix score
+            K_nodes_back = min(max_k, span_length-1)  # Idem
+            for k in range(K_nodes_back):
+                scores.set(end-(k+1), k, (k+1)/denominator)
+
+            # Exact-match score gets a slight boost so that it can be differentiated from matching a token with a prefix and suffix back-to-back.
+            scores.set(start, span_length-1, (span_length + 0.01)/denominator)
 
         return scores
 
@@ -632,36 +670,27 @@ class BoundaryPrefixAndSuffixLengthExtended(_ScoreGeneratorUsingCharacterClassif
         - /abcdefg/ = 2 + 5 = 7
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        boundary_before = self.getHardBoundaryIndices(string)
+    def _generateGrid(self, boundaries: Sequence[int], width: int, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(width, max_k, default=self.punishment)
 
-        N = len(string)
-        scores = ViterbiStepScores(N, max_k, default=self.punishment)
-
-        visited_indices = set()
-
-        for start, end in zip(boundary_before[:-1], boundary_before[1:]):
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
             span_length = end-start
             denominator = span_length if self.do_normalise else 1
 
             # Prefix score
-            K_nodes_forward = min(max_k, N-start)
+            K_nodes_forward = min(max_k, width-start)
             for k in range(K_nodes_forward):
-                if (start,k) not in visited_indices:  # Reset the punishment to 0 so you can add to it.
-                    visited_indices.add((start,k))
-                    scores.set(start, k, 0)
-                scores.add(start, k, min(span_length, k+1)/denominator)
+                scores.set(start, k, min(span_length, k+1)/denominator)
 
             # Suffix score
             K_nodes_back = min(max_k, end)
             for k in range(K_nodes_back):
-                if (end-(k+1), k) not in visited_indices:  # Reset the punishment to 0 so you can add to it.
-                    visited_indices.add((end-(k+1), k))
-                    scores.set(end-(k+1), k, 0)
-                if k != span_length-1:  # Protection against double-counting this span's prefix and suffix.
-                    scores.add(end-(k+1), k, min(span_length, k+1)/denominator)
-                else:
-                    scores.add(end-(k+1), k, 0.01/denominator)
+                suffix_start = end - (k+1)
+                if scores.get(suffix_start, k) == self.punishment:  # We want to use .add() to conserve existing scores, so if no score exists yet, ensure we don't add to the punishment.
+                    scores.set(suffix_start, k, 0)
+
+                # If k steps from exactly the start to the end, we know it already got span_length as the score. In that case, only add the tiebreaker.
+                scores.add(start, k, min(span_length, k+1)/denominator  if suffix_start != start else  0.01/denominator)
 
         return scores
 
@@ -753,7 +782,18 @@ class ScoreGeneratorUsingSubstringClassifier(ViterbiStepScoreGenerator):
     def setBackend(self, classifier: SubstringClassifier):
         self.classifier = classifier
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        scores = ViterbiStepScores(len(string), max_k)
-        scores.grid = np.array(self.classifier.getSegmentLogProbabilities(string, max_k))
-        return scores
+    def generateGrids(self, string: str, max_k: int, widths: list[int]) -> list[ViterbiStepScores]:
+        full_grid = np.array(self.classifier.getSegmentLogProbabilities(string, min(max_k, max(widths))))
+
+        pretokenised_grids = []
+        start = 0
+        for width in widths:
+            N, K = width, min(max_k, width)
+            scores = ViterbiStepScores(N, K, default=-INFTY)
+            scores.grid = full_grid[start:start+N, K]
+            scores.grid[np.fliplr(np.tri(N, K, -1)) == 1] = -INFTY  # Close to the right edge of the grid, big steps are no longer allowed. The furthest step allowed is in the final N index, a single K index. That's what this triangle is.
+
+            pretokenised_grids.append(scores)
+            start += width
+
+        return pretokenised_grids

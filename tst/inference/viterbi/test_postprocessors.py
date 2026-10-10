@@ -7,7 +7,7 @@ def test_discretisation():
     k = 6
 
     generator = DiscretiseScores(RandomScoreGenerator(), minimum_score=0, maximum_score=1, discretisation_levels=3)
-    grid = generator.nested_generator.generateGrid(word, k)
+    grid = generator.nested_generator.generateGrids(word, k, None)
     print(grid)
     generator.augmentScores(grid, word, k)
     print(grid)

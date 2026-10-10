@@ -28,16 +28,20 @@ the Viterbi decoder, but rather in the scoring grid. The grid might map the step
 """
 from dataclasses import dataclass
 from typing import Iterable, Union
+
+from torch.fx.experimental.symbolic_shapes import lru_cache
 from typing_extensions import Self
 from abc import abstractmethod, ABC
 import numpy as np
 
 from ....interfaces import TokeniserWithVocabulary, Vocab
+from ....interfaces.preprocessors import Pretokeniser
 from ....interfaces.tokenisers import Tokeniser, Preprocessor
 from ....util.printing import gridify
 from ....util.iterables import transpose
 
 INFTY = float("inf")
+CACHE_SIZE = 1024
 
 
 class ViterbiStepScores:
@@ -132,15 +136,19 @@ class ViterbiStepScoresWithTokens(ViterbiStepScores):
 
 class ViterbiStepScoreGenerator(ABC):
 
-    @abstractmethod
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
+    def generateGrids(self, string: str, max_k: int, widths: list[int]) -> list[ViterbiStepScores]:
+        """
+        :param max_k: Defines the relative walls which each starting position in the grid must hit.
+        :param widths: Defines the absolute walls that will be hit no matter the starting position.
+        :return: len(widths) grids of sizes width1 x max_k, width2 x max_k, width3 x max_k, ...
+        """
         pass
 
 
 class ViterbiStepScoreGeneratorWithTokens(ViterbiStepScoreGenerator):
 
     @abstractmethod
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScoresWithTokens:
+    def generateGrids(self, string: str, max_k: int, widths: list[int]) -> list[ViterbiStepScoresWithTokens]:
         pass
 
 
@@ -163,20 +171,31 @@ class ViterbiObjective:
 
 ViterbiObjectives = list[ViterbiObjective]
 
+DEFAULT_VITERBI_POINTER = -1
 
 @dataclass
-class ViterbiTrellis:
+class ViterbiIntermediates:
     best_objectives: list[tuple[float,...]]  # character -> objective value (and tiebreakers) of best path that has reached it so far.
     backpointers: list[int]                  # character -> index of where that path stepped from.
 
     def __init__(self, N: int, objectives: ViterbiObjectives):
         self.best_objectives = [tuple((o.initial_score if n == 0 else -INFTY) for o in objectives) for n in range(N)]
-        self.backpointers    = [-1 for _ in range(N)]
+        self.backpointers    = [DEFAULT_VITERBI_POINTER for _ in range(N)]
+
+
+@dataclass
+class ViterbiPreprocessor:
+    """
+    Two preprocessors: one decides the context of the segmentation graph generators, the other decides forced boundaries
+    and thus where the segmentation graph has bottlenecks that turn it into a sequence of smaller segmentation graphs.
+    """
+    stage1: Preprocessor  # Turns a raw text string into stage-1 pretokens that will be given to the grid generators, and the stage-2 pretokeniser.
+    stage2: Pretokeniser  # Turns a stage-1 pretoken into (the boundaries of) stage-2 pretokens, which will each get their own Viterbi grid from the grid generators, whilst the grid generators still have access to the stage-1 pretokens.
 
 
 class ViterbiTokeniser(Tokeniser):
     """
-    Maximum-score segmenter using O(N²) Viterbi decoding, for any function that scores substrings based only on their
+    Maximum-score segmenter using O(N²) Viterbi decoding, for any token scoring function that scores based only on their
     characters, characters around them, and their position in the string, but NOT the current segmentation.
 
     The scores can be laid out as the edges of a graph. In a string ABC, the following edges would get a score:
@@ -197,9 +216,11 @@ class ViterbiTokeniser(Tokeniser):
     fallback score of longest-token-used, here 4 vs. 2.
     """
 
-    def __init__(self, preprocessor: Preprocessor, max_stepsize: int,
+    def __init__(self, preprocessor: ViterbiPreprocessor, max_stepsize: int,
                  objectives: ViterbiObjectives, degenerate: bool=False, trimmed: bool=True):
         """
+        :param max_stepsize: Defines relative hard boundaries, i.e. from index i, index i+max_stepsize looks like a hard boundary even if it isn't.
+
         :param degenerate: Whether the first objective has a generator that produces its own tokens AND you want
                            to use those when tokenising.
                            When true, you hence likely cannot concatenate the produced tokens to reconstruct the input.
@@ -212,65 +233,76 @@ class ViterbiTokeniser(Tokeniser):
                         Time complexity becomes O(L x N x K') for L objectives and for some K' <= K,
                         space complexity stays O(L x N x K) because we don't truncate the grids, just how far we look in them.
         """
-        Tokeniser.__init__(self, preprocessor=preprocessor)  # Instead of super() because this class is inherited in multiple inheritance and therefore super() would be a reference to the second inherited class (the sibling/spouse of this class), not to this class's parent.
+        Tokeniser.__init__(self, preprocessor=preprocessor.stage1)  # Instead of super() because this class is inherited in multiple inheritance and therefore super() would be a reference to the second inherited class (the sibling/spouse of this class), not to this class's parent.
         if not objectives:
             raise ValueError("At least one Viterbi objective is needed to construct a trellis.")
         if degenerate and not isinstance(objectives[0].score_generator,ViterbiStepScoreGeneratorWithTokens):
             raise ValueError("To support degenerate tokenisation, the first objective must generate a token grid too.")
 
+        self.boundaries = preprocessor.stage2
         self.objectives = objectives
         self.K = max_stepsize
         self._degenerate_output = degenerate
         self._trim_fully_infinite_steps = trimmed
 
+    @lru_cache(maxsize=None)
     def tokenise(self, pretoken: str):
-        N = len(pretoken)
-        K = min(self.K, N)  # There's no point having a bigger step than the entire string's length. Biggest step is from character 0 to character N, the end-of-string position.
+        # 0. Get the length of the graphs that live within this pretoken. We call each span of pretoken to which a graph applies a "slice".
+        slice_widths = [len(t) for t in self.boundaries.split(pretoken)]
+        assert sum(slice_widths) == len(pretoken)
 
-        # 1. There is a different set of edge weights per objective and per string. Generate these for the given string.
-        graphs = [o.score_generator.generateGrid(pretoken, K) for o in self.objectives]
-        if self._trim_fully_infinite_steps:
-            K = min(graph.getEffectiveK() for graph in graphs)  # We assume that this cannot be larger than the K we already had. You're in trouble otherwise.
+        S = len(slice_widths)
+        K = min(self.K, max(slice_widths))  # Relaxation of the given K to a potentially better value, since there's no point having a bigger step than the entire grid's width. When there is only one grid, this reduces to the biggest step being from character 0 to character N, the end-of-string position.
+        B = len(self.objectives)
 
-        # 2. Walk forwards through the graphs.
-        t = ViterbiTrellis(N+1, self.objectives)  # N+1 because there is a node (node index N) after the whole string.
-        for n in range(N):
-            clipped_K = min(K, N-n)  # There are K jumps by default, but when you're at e.g. node n == N-1 (i.e. in front of the last character), there is only 1 jump to do.
-            for k in range(clipped_K):
-                offered_objective_values = tuple([o.score_combiner.combine(t.best_objectives[n][i], graphs[i].get(n, k))
-                                                  for i,o in enumerate(self.objectives)])
-                existing_objective_values = t.best_objectives[n+(k+1)]
-                if offered_objective_values > existing_objective_values:
-                    t.best_objectives[n+(k+1)] = offered_objective_values
-                    t.backpointers[n+(k+1)]    = n
+        # 1. There is a different set of edge weights per objective, per string slice.
+        all_graphs = [o.score_generator.generateGrids(pretoken, K, slice_widths) for o in self.objectives]  # len(objectives) x len(slice_widths) matrix of width x k score grids. So technically a ragged tensor.
+        assert all(len(slices) == S for slices in all_graphs)
 
-        # 3. Walk backwards over the best path.
+        # 2 and 3: Per slice, do a forward and backward pass. Because we decode backwards, we also do the slices in reverse order, so we can reverse the resulting list of tokens in one pass.
         tokens = []
+        for slice_idx, width in enumerate(reversed(slice_widths)):
+            # 2. Walk forwards through the slice's graphs.
+            objective_graphs = [all_graphs[objective_idx][S-(slice_idx+1)] for objective_idx in range(B)]
+            if self._trim_fully_infinite_steps:
+                K = min(graph.getEffectiveK() for graph in objective_graphs)  # If one of the graphs has very little movement potential (e.g. you applied a vocabulary constraint to it), then the others are assumed to have it too.
 
-        prev_index    = N  # bigger index
-        current_index = t.backpointers[prev_index]  # smaller index
-        if not self._degenerate_output:
-            indices_to_token = lambda string, left_index, right_index: string[left_index:right_index]
-        else:
-            indices_to_token = lambda string, left_index, right_index: graphs[0].getToken(left_index, right_index-left_index-1)
+            v = ViterbiIntermediates(width + 1, self.objectives)  # width+1 because there is a node after the whole string.
+            for n in range(width):
+                clipped_K = min(K, width-n)  # There are K jumps by default, but when you're at e.g. node n == width-1 (i.e. in front of the last character), there is only 1 jump to do.
+                for k in range(clipped_K):
+                    offered_objective_values = tuple([o.score_combiner.combine(v.best_objectives[n][i], objective_graphs[i].get(n, k))
+                                                      for i,o in enumerate(self.objectives)])
+                    existing_objective_values = v.best_objectives[n+(k+1)]
+                    if offered_objective_values > existing_objective_values:  # Tuple comparison
+                        v.best_objectives[n+(k+1)] = offered_objective_values
+                        v.backpointers[n+(k+1)]    = n
 
-        while current_index != -1:
-            token = indices_to_token(pretoken, current_index, prev_index)
-            tokens.insert(0, token)
+            # 3. Walk backwards over the best path.
+            prev_index    = width  # bigger index
+            current_index = v.backpointers[prev_index]  # smaller index
+            if not self._degenerate_output:
+                indices_to_token = lambda string, left_index, right_index: string[left_index:right_index]
+            else:
+                indices_to_token = lambda string, left_index, right_index: objective_graphs[0].getToken(left_index, right_index-left_index-1)
 
-            prev_index    = current_index
-            current_index = t.backpointers[prev_index]
+            while current_index != DEFAULT_VITERBI_POINTER:
+                token = indices_to_token(pretoken, current_index, prev_index)
+                tokens.append(token)
 
-        return tokens
+                prev_index    = current_index
+                current_index = v.backpointers[prev_index]
+
+        return reversed(tokens)
 
 
 class ViterbiTokeniserWithVocabulary(ViterbiTokeniser, TokeniserWithVocabulary):
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab,
+    def __init__(self, preprocessor: ViterbiPreprocessor, vocab: Vocab,
                  max_stepsize: int, objectives: ViterbiObjectives, degenerate: bool=False, trimmed: bool=True):
         # In multiple inheritance with two classes that are already derived, using super() causes errors.
         ViterbiTokeniser.__init__(self, preprocessor=preprocessor, max_stepsize=max_stepsize, objectives=objectives, degenerate=degenerate, trimmed=trimmed)
-        TokeniserWithVocabulary.__init__(self, preprocessor=preprocessor, vocab=vocab)
+        TokeniserWithVocabulary.__init__(self, preprocessor=preprocessor.stage1, vocab=vocab)
 
 
 from ....interfaces.artifactories import TokeniserFactory
@@ -279,7 +311,7 @@ class AutoViterbiTokeniser(TokeniserFactory):
     Depending on which objectives the tokeniser is instantiated with at runtime, it should have different methods.
     """
 
-    def __init__(self, preprocessor: Preprocessor, max_stepsize: int,
+    def __init__(self, preprocessor: ViterbiPreprocessor, max_stepsize: int,
                  objectives: ViterbiObjectives, accelerate: bool=True):
         self.preprocessor = preprocessor
         self.objectives = objectives

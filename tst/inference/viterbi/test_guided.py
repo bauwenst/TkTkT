@@ -53,7 +53,7 @@ def tst_verify_scoregrid():
 
     # Show score grid
     constraint = tk.objectives[0].score_generator
-    grid_wrapper = constraint.generateGrid(word, max_k=len(word))
+    grid_wrapper = constraint.generateGrids(word, max_k=len(word), widths=None)
     # grid_wrapper.grid = grid_wrapper.grid.astype(int)
     print(grid_wrapper)
 
@@ -85,8 +85,8 @@ def tst_verify_that_nonboundary_does_something():
 
     with np.printoptions(suppress=True):  # https://numpy.org/devdocs/reference/generated/numpy.set_printoptions.html
         print(np.exp(classifier.getPointLogProbabilities(word)))
-        print(g1.generateGrid(word, max_k=len(word)))
-        print(g2.generateGrid(word, max_k=len(word)))
+        print(g1.generateGrids(word, max_k=len(word), widths=None))
+        print(g2.generateGrids(word, max_k=len(word), widths=None))
 
         print(g1.nested_generator.getBoundaryScores(word))
 

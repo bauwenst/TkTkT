@@ -248,8 +248,12 @@ BoMMa(BoundaryScoresAll(PiecewisePT(-4,+1)) + VocabularyConstraintExact)
     Re: 0.8126851075719475,
     F1: 0.6796111967848965
 ```
-Weird, and I guess we can never be sure if it isn't a bug (since we've had so many even after evaluation), but the code
-is virtually the same as BoundaryScoresChosen with the addition of 2 lines of code...
+~~Weird, and I guess we can never be sure if it isn't a bug (since we've had so many even after evaluation), but the code
+is virtually the same as BoundaryScoresChosen with the addition of 2 lines of code...~~ You can prove mathematically
+that some score functions are equivalent between `BoundaryScoresChosen` and `BoundaryScoresAll` and that other score
+functions are equivalent across reward/punishment parameters specifically in `BoundaryScoresAll`. This is exactly as
+predicted by the theory, not a bug. The above `BoundaryScoresAll` all collapse to `BoundaryScoresAll(LinearPT(-1,+1))` 
+which in turn collapses into `BoundaryScoresChosen` (as the only one to do so).
 
 BoundaryScoresChosen *does* have variable results, with best F1 so far for exact constraints:
 ```
@@ -449,6 +453,8 @@ BoMMa_Sum(BoundaryPrefixLength_Normed(pm=-2)) + VocabularyConstraintExact)
    Recall:    0.8316289466331378
    F1:        0.6638563622170179
 
+---------------------------------------------------------------------------------
+
 BoMMa_Sum(BoundaryPrefixLengthExtended(pm=0)) + VocabularyConstraintExact)
    Precision: 0.5411118078866797
    Recall:    0.8197261804973456
@@ -478,6 +484,8 @@ BoMMa_Sum(BoundaryPrefixLengthExtended_Normed(pm=-2)) + VocabularyConstraintExac
    Precision: 0.5697980684811238
    Recall:    0.7797429449566918
    F1:        0.6584401948871613
+
+---------------------------------------------------------------------------------
 
 BoMMa_Sum(BoundarySuffixLength(pm=0)) + VocabularyConstraintExact)
    Precision: 0.527421487012755
@@ -509,6 +517,8 @@ BoMMa_Sum(BoundarySuffixLength_Normed(pm=-2)) + VocabularyConstraintExact)
    Recall:    0.8236658284436994
    F1:        0.6687537573303389
 
+---------------------------------------------------------------------------------
+
 BoMMa_Sum(BoundarySuffixLengthExtended(pm=0)) + VocabularyConstraintExact)
    Precision: 0.5288189089343998
    Recall:    0.8239172953338921
@@ -538,6 +548,8 @@ BoMMa_Sum(BoundarySuffixLengthExtended_Normed(pm=-2)) + VocabularyConstraintExac
    Precision: 0.5801030602587023
    Recall:    0.7706342553785974
    F1:        0.6619307613847724
+
+---------------------------------------------------------------------------------
 
 BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended(pm=0)) + VocabularyConstraintExact)
    Precision: 0.5523155130998268
@@ -569,12 +581,16 @@ BoMMa_Sum(BoundaryPrefixAndSuffixLengthExtended_Normed(pm=-2)) + VocabularyConst
    Recall:    0.8234423023190836
    F1:        0.6610663735672149
 ```
-Some conclusions:
-- Norming seems to produce better F1.
-- Prefix objectives only attain >66% F1 on two occasions, whilst suffix objectives do it consistently.
-- More punishment seems to produce better F1.
-- Norming does nothing when there is no punishment and no extension.
-- Overall, `BoundarySuffixLength_Normed` with high punishment seems to do best.
+Some conclusions about F1:
+- Norming always produces better F1, unless: 
+  - when there is no punishment because then the reward scale is not anchored.
+  - for prefix-suffix
+- The most consistent F1 65s and 66s are prefix-suffix and prefix, whilst the highest (due to highest precision) is attained by suffix.
+- More punishment seems to produce better F1 due to higher precision.
+
+Arguably you should optimise for recall:
+- Prefix objectives (without extension) are best there.
+- Extension always trades away recall to get more precision.
 
 Pulling up the punishment on `BoundarySuffixLength_Normed` has effect until about -3.5 but
 is best at -2.
@@ -698,6 +714,9 @@ LeastTokenViterbi
     F1:        0.5423441555002384
 ```
 
+<!--
+(Should be re-run due to a bug.)
+
 Adding a guided tiebreaker (`BoundaryScoresChosen` with no transform applied to the probabilities) is slightly better:
 ```
 LeastTokenViterbiWithProbabilityTiebreaker
@@ -706,3 +725,4 @@ LeastTokenViterbiWithProbabilityTiebreaker
     F1:        0.5895049272947395
 ```
 ... but it is much worse (-24% recall and -9% F1) than if you swap the main objective with the tiebreaker, see above.
+-->

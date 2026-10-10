@@ -2,9 +2,24 @@
 Unguided score functions. These are informed by nothing except the substring being scored as-is, e.g. its length.
 """
 from .framework import *
+from ....util.iterables import cumsum
 
 
-class RandomScoreGenerator(ViterbiStepScoreGenerator):
+class _ContextFreeScoreGenerator(ViterbiStepScoreGenerator):
+    """
+    A step score generator that can generate its scores from just the substring covered by the score grid, without
+    needing the surrounding context.
+    """
+    def generateGrids(self, string: str, max_k: int, widths: list[int]) -> list[ViterbiStepScores]:
+        token_ends = tuple(cumsum(widths))  # Exclusive ends
+        return [self._generateGrid(string[start:end], max_k) for start,end in zip((0,) + token_ends, token_ends)]
+
+    @abstractmethod
+    def _generateGrid(self, substring: str, max_k: int) -> ViterbiStepScores:
+        pass
+
+
+class RandomScoreGenerator(_ContextFreeScoreGenerator):
     """
     Dummy score generator with random step scores.
     """
@@ -16,22 +31,22 @@ class RandomScoreGenerator(ViterbiStepScoreGenerator):
         import numpy.random as npr
         self.rng = npr.default_rng(0)
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        scores = ViterbiStepScores(len(string), max_k, default=-INFTY)
+    def _generateGrid(self, substring: str, max_k: int) -> ViterbiStepScores:
+        scores = ViterbiStepScores(len(substring), max_k, default=-INFTY)
         self.rng.random(out=scores.grid, dtype=np.float32)
         scores.grid = self.min + (self.max - self.min)*scores.grid
         return scores
 
 
-class ConstantScore(ViterbiStepScoreGenerator):
+class ConstantScore(_ContextFreeScoreGenerator):
     """
     Sets a constant score for each step smaller than K characters.
     To minimise the amount of tokens used to segment a word, you should accumulate these scores with subtraction,
     so that more tokens lead to a more negative score and hence will be less likely picked by the maximisation framework.
     """
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        N = len(string)
+    def _generateGrid(self, substring: str, max_k: int) -> ViterbiStepScores:
+        N = len(substring)
         scores = ViterbiStepScores(N, max_k, default=+INFTY)  # Note that the bottom-right triangle of the grid will never be used by the algorithm. It can have any value, doesn't matter, won't be used.
         for n in range(N):
             for k in range(max_k):
@@ -40,10 +55,10 @@ class ConstantScore(ViterbiStepScoreGenerator):
         return scores
 
 
-class TokenLength(ViterbiStepScoreGenerator):
+class TokenLength(_ContextFreeScoreGenerator):
 
-    def generateGrid(self, string: str, max_k: int) -> ViterbiStepScores:
-        N = len(string)
+    def _generateGrid(self, substring: str, max_k: int) -> ViterbiStepScores:
+        N = len(substring)
         scores = ViterbiStepScores(N, max_k, default=-INFTY)
         for n in range(N):
             for k in range(max_k):

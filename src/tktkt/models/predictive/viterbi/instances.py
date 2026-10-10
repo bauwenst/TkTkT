@@ -5,7 +5,6 @@ from typing import Optional
 
 from . import *
 from .objectives_guided import _ScoreGeneratorUsingCharacterClassifier, CharacterClassifier, HuggingFaceForBinaryCharacterClassification
-from ....interfaces.tokenisers import Preprocessor
 
 
 class LeastTokenViterbi(ViterbiTokeniserWithVocabulary):
@@ -13,7 +12,7 @@ class LeastTokenViterbi(ViterbiTokeniserWithVocabulary):
     Minimises the amount of tokens in the result; the tiebreaker is that you maximise the length of the biggest token.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int]):
+    def __init__(self, preprocessor: ViterbiPreprocessor, vocab: Vocab, max_step: Optional[int]):
         max_step = max_step or max(len(t) for t in vocab)
         super().__init__(preprocessor=preprocessor, vocab=vocab, max_stepsize=max_step, objectives=[
             ViterbiObjective(
@@ -28,6 +27,8 @@ class LeastTokenViterbi(ViterbiTokeniserWithVocabulary):
             )
         ])
 
+PathPiece = LeastTokenViterbi
+
 
 class ProductViterbi(ViterbiTokeniserWithVocabulary):
     """
@@ -35,7 +36,7 @@ class ProductViterbi(ViterbiTokeniserWithVocabulary):
     Has weird prioritisation. For example, in a string of 6 characters, 1*1*4 < 1*5 < 6 == 2*3 < 2*2*2 == 2*4 < 3*3.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int]):
+    def __init__(self, preprocessor: ViterbiPreprocessor, vocab: Vocab, max_step: Optional[int]):
         max_step = max_step or max(len(t) for t in vocab)
         super().__init__(preprocessor=preprocessor, vocab=vocab, max_stepsize=max_step, objectives=[
             ViterbiObjective(
@@ -55,7 +56,7 @@ class BoMMa(ViterbiTokeniserWithVocabulary):
     You can make so many different models with this class that you can write an entire paper about just this one.
     """
 
-    def __init__(self, preprocessor: Preprocessor, max_step: Optional[int],  # TODO: You also probably want an extra pretokeniser, not just a preprocessor, for hard boundaries which override the model but can't be seen as pretoken boundaries.
+    def __init__(self, preprocessor: ViterbiPreprocessor, max_step: Optional[int],  # TODO: You also probably want an extra pretokeniser, not just a preprocessor, for hard boundaries which override the model but can't be seen as pretoken boundaries.
                  score_generator: _ScoreGeneratorUsingCharacterClassifier,
                  vocabulary_constraint_class: type[VocabularyConstraint], vocab: Vocab):
         max_step = max_step or max(len(t) for t in vocab)
@@ -120,12 +121,11 @@ class BoMMa_Product(BoMMa):
 class LeastTokenViterbiWithProbabilityTiebreaker(ViterbiTokeniserWithVocabulary):
     """
     Minimises the amount of tokens, using not token length as tiebreaker, but instead accumulated boundary probabilities
-    at the points you decided to split.
-
-    TODO: Any results generated for this class should be deleted because there was a bug that made the tiebreaker incorrect.
+    at the points you decided to split. (Since a tie is defined as having the same amount of tokens, it is okay to only
+    consider those probabilities.)
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
+    def __init__(self, preprocessor: ViterbiPreprocessor, vocab: Vocab, max_step: Optional[int],
                  logprob_classifier: CharacterClassifier):
         max_step = max_step or max(map(len, vocab))
         super().__init__(preprocessor=preprocessor, vocab=vocab, max_stepsize=max_step, objectives=[
@@ -136,7 +136,7 @@ class LeastTokenViterbiWithProbabilityTiebreaker(ViterbiTokeniserWithVocabulary)
             ),
             ViterbiObjective(
                 initial_score=0,
-                score_generator=VocabularyConstraintExact(BoundaryScoresChosen(IdentityPT()), vocab, reset_value=-INFTY),
+                score_generator=BoundaryScoresChosen(IdentityPT()),
                 score_combiner=ScoreSum()
             )
         ])
@@ -161,7 +161,7 @@ class ProbabilityViterbiWithLeastTokenTiebreaker(ViterbiTokeniserWithVocabulary)
      We have 3 discretisation levels since sometimes your model really is 50/50 undecided.
     """
 
-    def __init__(self, preprocessor: Preprocessor, vocab: Vocab, max_step: Optional[int],
+    def __init__(self, preprocessor: ViterbiPreprocessor, vocab: Vocab, max_step: Optional[int],
                  logprob_classifier: CharacterClassifier, discretisation_steps: int=3):
         max_step = max_step or max(map(len, vocab))
         super().__init__(preprocessor=preprocessor, vocab=vocab, max_stepsize=max_step, objectives=[
