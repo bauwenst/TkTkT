@@ -12,7 +12,6 @@ import json
 import shutil
 from modest.formats.tsv import iterateTsv
 
-from tst.inference.viterbi.test_enumerate import preprocessor
 from ...interfaces import Artifacts, CacheableArtifacts
 from ...preparation.boundaries import BoundaryMarkerLocation
 from ...interfaces.vocabularisers import *

@@ -44,7 +44,7 @@ class PrefixTrieNode:
         Compilation happens from deep to shallow nodes so that we know the inherited grandchildren aren't themselves redundant.
         """
         if self._compiledroots:
-            raise RuntimeError("Cannot compile trie after compiling its roots. Reverse the order of these two operations.")
+            raise RuntimeError("Cannot compile trie after compiling its roots. Reverse the order of these two operations.")  # The reason is that the roots and the branch keys normally don't interact EXCEPT in this method.
 
         if self._compiled:
             return
@@ -113,6 +113,8 @@ class PrefixTrieNode:
             node = self.get(word[:i+1])
             if node is not None:
                 nodes.append(node)
+            elif not self._compiled:  # If the start of the word cannot be found in an uncompiled tree, that means there is no path that makes the rest of the word. You cannot find [w, o, r, d] if the path [w, o] doesn't exist. With a compiled tree this is different, because [wo, rd] implies that "wor" is not found but "word" is.
+                break
         return nodes
 
     def getNodesWithPrefix(self, word: str, only_first: bool=False) -> list["PrefixTrieNode"]:

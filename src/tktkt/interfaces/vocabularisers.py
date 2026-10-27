@@ -63,6 +63,16 @@ class UnsupervisedVocabulariser(Vocabulariser[T_CacheableArtifact]):
 
     # Core computation
 
+    # Implementational note:
+    #
+    # There are two properties based on which you can split the implementation: whether the strings in the iterable
+    # have a count, or whether the strings in the iterable are unique.
+    #   - Argument in favour of count-based methods is that not all backends are written with counts in mind.
+    #   - Argument in favour of uniqueness-based methods is that for those implementations that do support counts, any
+    #     input data could in principle be given (since sentences can just be given a count of 1), but some algorithms
+    #     only work with unique count keys, which means the implementation for sentences is either very cheap
+    #     (add 1) or very expensive (load the entire corpus into a counter) which are then copy-pasted whenever needed.
+
     @abstractmethod
     def _vocabulariseFromWords(self, word_iterable: NamedIterable[tuple[str,int]]) -> T_CacheableArtifact:
         """
