@@ -182,8 +182,8 @@ class TokeniserMultiplexer_DifferentDomains_Stateful(TokeniserMultiplexer):
 
         if assert_matching_specials:
             specials = None
-            for subtokeniser in subtokenisers:
-                specials_dict = {t: subtokeniser.typeToId(t) for t in AutoSpecials.fromStrings(subtokeniser.types()).all_special_tokens}
+            for subtokeniser in subtokenisers:  # TODO: This doesn't really make sense from a TkTkT-centric perspective. You are assuming the vocabularies contain specials whilst actually they don't in TkTkT because we have .vocab.specials...
+                specials_dict = {t: subtokeniser.typeToId(t) for t in AutoSpecials.fromStrings(subtokeniser.types()).assignedToDict()}
                 if specials is None:
                     specials = specials_dict
                 else:

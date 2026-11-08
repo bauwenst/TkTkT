@@ -1,10 +1,9 @@
 """
 Main objects involved in identifier (ID) mappings, particularly Specials and the Vocab.
 """
-from typing import Iterator, Iterable, TypeVar, Generic, Callable, Optional, Union
+from __future__ import annotations  # To support TYPE_CHECKING
+from typing import Iterator, Iterable, TypeVar, Generic, Callable, Optional, Union, TYPE_CHECKING
 from dataclasses import dataclass, is_dataclass, fields
-
-from transformers import PreTrainedTokenizerBase
 
 import warnings
 from copy import deepcopy
@@ -132,7 +131,7 @@ class Specials(metaclass=_ProhibitDeclaringConstructor):  # This metaclass preve
 
     def _hfSpecialsMap(self) -> dict[str,str]:  # {"bos_token": "BOS", "eos_token": "EOS", ...}
         from ..interfaces.huggingface import AutoSpecials
-        return AutoSpecials.fromTktkt(self, specials_formatter=lambda x: x).special_tokens_map
+        return AutoSpecials.fromTktkt(self, specials_formatter=lambda x: x).assignedToDict()
 
     def _singleSentenceTemplate(self, ids: list[int]) -> list[int]:
         return ids
@@ -372,6 +371,10 @@ ExistingSpecialStrings = dict[str, str]  # Mapping like "BOS" -> "<s>" to link S
 class AutoVocabSpecs(Generic[WithSpecials]):
     specials_template: WithSpecials
     special_to_string: ExistingSpecialStrings
+
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedTokenizerBase
 
 
 class AutoVocab:

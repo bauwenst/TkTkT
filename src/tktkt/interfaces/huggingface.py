@@ -7,31 +7,33 @@ another member of tktkt.models. Rather, this is about needs to be implemented in
 from typing import Optional, Mapping, Iterable, Callable
 from abc import ABC, abstractmethod
 from pathlib import Path
+from dataclasses import dataclass, asdict
 
 import warnings
 import json
-from transformers import PreTrainedTokenizer, SpecialTokensMixin
+from transformers.tokenization_python import PythonBackend
 
 from .tokenisers import TokeniserWithVocabulary, WithSpecials
 from .identifiers import Specials
 
 
-class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
+class HuggingFaceTokeniserInterface(PythonBackend, ABC):
     """
-    The base class for a Pythonic HuggingFace tokeniser (transformers.PreTrainedTokenizer) has unimplemented methods,
-    yet it does NOT tag these with @abstractmethod and instead just assumes you will notice when they throw a
-    NotImplementedError.
+    The base class for a Pythonic HuggingFace tokeniser has unimplemented methods, yet it does NOT tag these with
+    @abstractmethod and instead just assumes you will notice when they throw a NotImplementedError.
 
     This class explicitly defines them as abstract methods to force inheritors to implement these methods if they
     want to be instantiated. Note that it is NOT a Protocol, because (1) a Protocol doesn't inherit implementations
     and (2) it is not us wanting to add a third party's classes to our hierarchy, but the reverse, so we can just use their existing base class.
     """
 
+    # The main method.
+
     @abstractmethod
     def _tokenize(self, text, **kwargs) -> list[str]:
         pass
 
-    # The following three methods are for interfacing with the vocabulary.
+    # The following 3 methods are for interfacing with the vocabulary.
 
     @property  # Property because that's how HuggingFace does it. Makes no sense to have getter/setter for this, but ok.
     @abstractmethod
@@ -46,7 +48,7 @@ class HuggingFaceTokeniserInterface(PreTrainedTokenizer, ABC):
     def _convert_id_to_token(self, index: int) -> str:
         pass
 
-    # The following two methods are for storage and come from the parent class of PreTrainedTokenizer.
+    # The following 2 methods are for storage and come from the parent class of PreTrainedTokenizer.
 
     @abstractmethod
     def get_vocab(self) -> Mapping[str,int]:
@@ -186,13 +188,33 @@ class TktktToHuggingFace(HuggingFaceTokeniserInterface):
             return self.get_special_tokens_mask(ids_with_specials, already_has_special_tokens=True)
 
 
+@dataclass
+class UnsafeHuggingfaceSpecials:
+    """
+    In Transformers, specials are represented by strings, which go through the same vocabulary mapping (str->id) as
+    ordinary tokens. This is unsafe because it treats user text with the machinery that handles specials. Transformers
+    hard-codes 6 special tokens. Originally this was done in a SpecialTokensMixin class. In Transformers v5, that
+    functionality was merged into PreTrainedTokenizerBase (against common-sense design principles), so to interface
+    with this part of HuggingFace tokenisers, we still need the unsafe design, but now implemented in our own class.
+    """
+    bos_token: str = None
+    eos_token: str = None
+    cls_token: str = None
+    sep_token: str = None
+    unk_token: str = None
+    mask_token: str = None
+
+    def assignedToDict(self) -> dict[str,str]:
+        return {k:v for k,v in asdict(self).items() if v}
+
+
 class AutoSpecials:
     """
-    Turns arguments into HuggingFace SpecialTokensMixin objects.
+    Turns arguments into HuggingFace-inspired UnsafeHuggingfaceSpecials objects, as an extension of AutoModel and AutoTokenizer.
     """
 
     @staticmethod
-    def fromStrings(types: Iterable[str]) -> SpecialTokensMixin:
+    def fromStrings(types: Iterable[str]) -> UnsafeHuggingfaceSpecials:
         """
         Attempt to find all the special types in the given domain (e.g. [CLS], [SEP], etc...).
         Delimiters cannot be mixed (e.g. not both [CLS] and </s>, or [UNK] and <mask>, etc...).
@@ -213,46 +235,46 @@ class AutoSpecials:
                     special_families[i].append(t)
 
         i, found_types = sorted(special_families.items(), key=lambda t: len(t[1]), reverse=True)[0]
-        mixin = SpecialTokensMixin()
+        mapping = UnsafeHuggingfaceSpecials()
         for t in found_types:
             t_lower = t.lower()
             if "bos" in t_lower:
-                if warnIfAlreadyAssigned(mixin.bos_token, t):
-                    mixin.bos_token = t
+                if warnIfAlreadyAssigned(mapping.bos_token, t):
+                    mapping.bos_token = t
             elif "eos" in t_lower:
-                if warnIfAlreadyAssigned(mixin.eos_token, t):
-                    mixin.eos_token = t
+                if warnIfAlreadyAssigned(mapping.eos_token, t):
+                    mapping.eos_token = t
             elif "cls" in t_lower:
-                if warnIfAlreadyAssigned(mixin.cls_token, t):
-                    mixin.cls_token = t
+                if warnIfAlreadyAssigned(mapping.cls_token, t):
+                    mapping.cls_token = t
             elif "sep" in t_lower:
-                if warnIfAlreadyAssigned(mixin.sep_token, t):
-                    mixin.sep_token = t
+                if warnIfAlreadyAssigned(mapping.sep_token, t):
+                    mapping.sep_token = t
             elif "pad" in t_lower:
-                if warnIfAlreadyAssigned(mixin.pad_token, t):
-                    mixin.pad_token = t
+                if warnIfAlreadyAssigned(mapping.pad_token, t):
+                    mapping.pad_token = t
             elif "unk" in t_lower:
-                if warnIfAlreadyAssigned(mixin.unk_token, t):
-                    mixin.unk_token = t
+                if warnIfAlreadyAssigned(mapping.unk_token, t):
+                    mapping.unk_token = t
             elif "msk" in t_lower or "mask" in t_lower:
-                if warnIfAlreadyAssigned(mixin.mask_token, t):
-                    mixin.mask_token = t
+                if warnIfAlreadyAssigned(mapping.mask_token, t):
+                    mapping.mask_token = t
             elif "/s" in t_lower:
-                if warnIfAlreadyAssigned(mixin.eos_token, t):
-                    mixin.eos_token = t
+                if warnIfAlreadyAssigned(mapping.eos_token, t):
+                    mapping.eos_token = t
             elif "s" in t_lower:
-                if warnIfAlreadyAssigned(mixin.bos_token, t):
-                    mixin.bos_token = t
+                if warnIfAlreadyAssigned(mapping.bos_token, t):
+                    mapping.bos_token = t
             elif "<|endoftext|>" in t_lower:
-                if warnIfAlreadyAssigned(mixin.eos_token, t):
-                    mixin.eos_token = t
+                if warnIfAlreadyAssigned(mapping.eos_token, t):
+                    mapping.eos_token = t
             else:
                 warnings.warn(f"Found special-seeming but unrecognisable type: {t}")
 
-        return mixin
+        return mapping
 
     @staticmethod
-    def fromTktkt(specials: Specials, specials_formatter: Callable[[str], str]=None) -> SpecialTokensMixin:
+    def fromTktkt(specials: Specials, specials_formatter: Callable[[str], str]=None) -> UnsafeHuggingfaceSpecials:
         """
         Tries to automatically map the given TkTkT specials to a HuggingFace mixin.
 
@@ -268,7 +290,7 @@ class AutoSpecials:
                 warnings.warn(f"Value '{value}' was not assigned to a variable since it already contained the value '{should_be_none}'.")
                 return False
 
-        mixin = SpecialTokensMixin()
+        mapping = UnsafeHuggingfaceSpecials()
 
         for special, _ in specials.__iter_keys__():
             special_lower = special.lower()
@@ -276,22 +298,22 @@ class AutoSpecials:
             # id = getattr_recursive(specials, special)  # As it turns out, HF's SpecialTokensMixin does NOT store identifiers. It stores strings that are passed to the token-to-id convertor method. Horrific.
 
             if "bos" in special_lower:
-                if warnIfAlreadyAssigned(mixin.bos_token, special):
-                    mixin.bos_token = special
+                if warnIfAlreadyAssigned(mapping.bos_token, special):
+                    mapping.bos_token = special
             elif "eos" in special_lower or "endoftext" in special_lower:
-                if warnIfAlreadyAssigned(mixin.eos_token, special):
-                    mixin.eos_token = special
+                if warnIfAlreadyAssigned(mapping.eos_token, special):
+                    mapping.eos_token = special
             elif "cls" in special_lower:
-                if warnIfAlreadyAssigned(mixin.cls_token, special):
-                    mixin.cls_token = special
+                if warnIfAlreadyAssigned(mapping.cls_token, special):
+                    mapping.cls_token = special
             elif "sep" in special_lower:
-                if warnIfAlreadyAssigned(mixin.sep_token, special):
-                    mixin.sep_token = special
+                if warnIfAlreadyAssigned(mapping.sep_token, special):
+                    mapping.sep_token = special
             elif "pad" in special_lower:
-                if warnIfAlreadyAssigned(mixin.pad_token, special):
-                    mixin.pad_token = special
+                if warnIfAlreadyAssigned(mapping.pad_token, special):
+                    mapping.pad_token = special
             elif "msk" in special_lower or "mask" in special_lower:
-                if warnIfAlreadyAssigned(mixin.mask_token, special):
-                    mixin.mask_token = special
+                if warnIfAlreadyAssigned(mapping.mask_token, special):
+                    mapping.mask_token = special
 
-        return mixin
+        return mapping
