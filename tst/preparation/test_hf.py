@@ -23,12 +23,12 @@ from tst.preamble import *
 from tktkt.models.huggingface.wrapper import HuggingFaceTokeniser
 
 from transformers import AutoTokenizer
-from transformers.models.albert.tokenization_albert_fast import AlbertTokenizerFast
+from transformers.models.albert.tokenization_albert import AlbertTokenizer
 
 
 def tst_equivalence_wrappedPreprocessor():
     s = " The Fibonacci       reconnaissance unit did not acquiesce adequately to the pernicious circumstances."
-    tk: AlbertTokenizerFast = AutoTokenizer.from_pretrained("albert/albert-base-v2")
+    tk: AlbertTokenizer = AutoTokenizer.from_pretrained("albert/albert-base-v2")
 
     wrapped_tk = HuggingFaceTokeniser(tk, for_single_words=False)
 
