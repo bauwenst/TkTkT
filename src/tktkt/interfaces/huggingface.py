@@ -193,7 +193,7 @@ class UnsafeHuggingfaceSpecials:
     """
     In Transformers, specials are represented by strings, which go through the same vocabulary mapping (str->id) as
     ordinary tokens. This is unsafe because it treats user text with the machinery that handles specials. Transformers
-    hard-codes 6 special tokens. Originally this was done in a SpecialTokensMixin class. In Transformers v5, that
+    hard-codes 7 special tokens. Originally this was done in a SpecialTokensMixin class. In Transformers v5, that
     functionality was merged into PreTrainedTokenizerBase (against common-sense design principles), so to interface
     with this part of HuggingFace tokenisers, we still need the unsafe design, but now implemented in our own class.
     """
@@ -202,6 +202,7 @@ class UnsafeHuggingfaceSpecials:
     cls_token: str = None
     sep_token: str = None
     unk_token: str = None
+    pad_token: str = None
     mask_token: str = None
 
     def assignedToDict(self) -> dict[str,str]:
